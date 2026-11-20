@@ -79,14 +79,33 @@ jobs:
               exit 1
             fi
           done
+
           CLEAN_ALIAS=$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           [[ "$CLEAN_ALIAS" == upload ]] || { echo '::error::KEY_ALIAS must be upload'; exit 1; }
+
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/upload.jks"
-          keytool -list -keystore "$RUNNER_TEMP/upload.jks" -alias upload -storepass:env STORE_PASSWORD >/dev/null
+          if ! KEYTOOL_OUT=$(keytool -list -keystore "$RUNNER_TEMP/upload.jks" -alias upload -storepass:env STORE_PASSWORD 2>&1); then
+            echo "::error::Gagal memverifikasi keystore release (cek STORE_PASSWORD / alias upload):"
+            echo "$KEYTOOL_OUT"
+            exit 1
+          fi
+          echo "Permanent release keystore verified (alias: upload)."
           echo "KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+
+          # Ensure debug.keystore exists on CI runner for debug unit tests only
           if [[ ! -f debug.keystore ]]; then
-            test -f debug.keystore.base64
-            tr -d '[:space:]' < debug.keystore.base64 | base64 --decode > debug.keystore
+            if [[ -f debug.keystore.base64 ]]; then
+              tr -d '[:space:]' < debug.keystore.base64 | base64 --decode > debug.keystore
+              echo "Decoded debug.keystore from debug.keystore.base64."
+            else
+              keytool -genkeypair \
+                -keystore debug.keystore \
+                -alias androiddebugkey \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
+              echo "Generated ephemeral CI debug.keystore for unit tests."
+            fi
           fi
 
       - name: Unit and Robolectric tests
@@ -108,7 +127,7 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "dist/$APK" | tee dist/CERT_FINGERPRINT.txt
-          ACTUAL=$(sed -n 's/.*certificate SHA-256 digest: //p' dist/CERT_FINGERPRINT.txt | sort -u)
+          ACTUAL=$(sed -n 's/.*certificate SHA-256 digest: //p' dist/CERT_FINGERPRINT.txt | sort -u | tr -d ':\r\n[:space:]' | tr '[:upper:]' '[:lower:]')
           [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED_CERT_SHA256" ]] || {
             echo "::error::Unexpected APK signing certificate! Expected: $EXPECTED_CERT_SHA256, Actual: $ACTUAL"
             exit 1
