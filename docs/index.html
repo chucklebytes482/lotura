@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lotura — Web Panduan &amp; Sinkronisasi 2 Arah Google Drive &amp; GitHub</title>
+  <style>
+    :root {
+      --bg: #0B1319;
+      --surface: #121C24;
+      --surface-alt: #1B2732;
+      --border: #2F4150;
+      --accent: #67D4E4;
+      --accent-dark: #032D35;
+      --mint: #4ADE80;
+      --amber: #FBBF24;
+      --text: #F1F5F9;
+      --muted: #9FB0BE;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top right, #112A36 0%, var(--bg) 52%);
+      color: var(--text);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 48px 20px 72px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(103, 212, 228, 0.14);
+      border: 1px solid rgba(103, 212, 228, 0.35);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+    h1 { font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.15; margin-bottom: 14px; }
+    .lead { color: var(--muted); font-size: 1.05rem; max-width: 700px; margin-bottom: 28px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 42px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 24px;
+      border-radius: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); opacity: 0.94; }
+    .btn-primary { background: var(--accent); color: var(--accent-dark); }
+    .btn-outline { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+    }
+    .card h3 { font-size: 1.05rem; margin-bottom: 8px; color: var(--accent); }
+    .card p { font-size: 0.93rem; color: var(--muted); }
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .section h2 { font-size: 1.25rem; margin-bottom: 14px; color: var(--text); }
+    .section p { color: var(--muted); margin-bottom: 12px; font-size: 0.95rem; }
+    .section ol, .section ul { padding-left: 20px; color: var(--muted); }
+    .section li { margin-bottom: 10px; font-size: 0.95rem; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: var(--surface-alt);
+      color: var(--mint);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.88em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+    }
+    th { color: var(--text); font-weight: 600; }
+    footer { color: var(--muted); font-size: 0.85rem; text-align: center; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="badge">Android Native • &lt; 10 MB • R8 arm64-v8a • Tema Otomatis Sistem</div>
+    <h1>Lotura — Web Panduan</h1>
+    <p class="lead">
+      Sinkronisasi 2 arah multi-folder perangkat Android dengan <strong>Google Drive</strong> dan
+      <strong>GitHub</strong>. Seluruh keterangan teknis, pengaturan jadwal, serta panduan setup dipusatkan
+      di halaman ini agar antarmuka aplikasi tetap bersih dan ringkas.
+    </p>
+
+    <div class="actions">
+      <a class="btn btn-primary" href="../releases/latest">Unduh APK Terbaru (GitHub Releases)</a>
+      <a class="btn btn-outline" href="./SETUP_GOOGLE_CLOUD.md">Panduan Setup Google Cloud OAuth</a>
+    </div>
+
+    <section class="grid">
+      <article class="card">
+        <h3>Drive Real-Time + Ekspor Docs</h3>
+        <p>
+          <code>FileObserver</code> memantau perubahan lokal secara langsung ketika Anda menyunting file memakai
+          <strong>Pilcrow MD</strong>, <strong>Google Docs</strong>, atau editor lain. Berkas native Google
+          Docs/Sheets/Slides diekspor otomatis ke <code>.docx</code>, <code>.xlsx</code>, dan <code>.pptx</code>
+          saat sinkronisasi serta diunggah balik ketika disunting lokal.
+        </p>
+      </article>
+      <article class="card">
+        <h3>Multi-Akun GitHub (PAT)</h3>
+        <p>
+          Setiap pasangan folder perangkat dapat ditautkan ke 1 akun GitHub dan 1 repositori beserta branch dan
+          subfolder. Fine-grained Personal Access Token (PAT) dienkripsi menggunakan
+          <strong>Android Keystore AES-256-GCM</strong> dan disimpan terpisah di perangkat.
+        </p>
+      </article>
+      <article class="card">
+        <h3>Anti Kehilangan Data</h3>
+        <p>
+          Pilih kebijakan penghapusan per pasangan folder: <strong>Dua Arah</strong> (hapus di satu sisi akan
+          memindahkan file Drive ke Trash / menghapus di sisi lain) atau <strong>Mode Aman</strong> (tidak pernah
+          menghapus otomatis). Saat terjadi konflik, versi terbaru menang dan versi kalah diamankan sebagai
+          <code>nama (konflik YYYYMMDD-HHmmss).ext</code>.
+        </p>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>Jadwal Sinkronisasi Terjadwal</h2>
+      <p>
+        Ketuk kartu prioritas <strong>#1 Sinkronisasi</strong> di Beranda untuk memilih jadwal sinkronisasi
+        otomatis. Tanpa sakelar on/off yang membingungkan, aplikasi menyediakan empat pilihan interval:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Interval</th>
+            <th>Rekomendasi Penggunaan</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>5 menit</code></td>
+            <td>Khusus sesi penyuntingan sangat aktif lintas perangkat (konsumsi baterai lebih tinggi).</td>
+          </tr>
+          <tr>
+            <td><code>15 menit</code> <strong>(Default)</strong></td>
+            <td>Pilihan standar paling seimbang antara responsivitas, hemat baterai, dan batas minimum WorkManager Android.</td>
+          </tr>
+          <tr>
+            <td><code>4 jam</code></td>
+            <td>Cocok untuk arsip catatan harian yang tidak sering berubah.</td>
+          </tr>
+          <tr>
+            <td><code>24 jam</code></td>
+            <td>Cadangan harian ringan untuk koleksi dokumen statis.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Cara Mulai Cepat</h2>
+      <ol>
+        <li>Unduh APK <code>arm64-v8a</code> terbaru dari tombol <strong>GitHub Releases</strong> di atas dan verifikasi checksum pada berkas <code>CHECKSUMS.txt</code>.</li>
+        <li>Aktifkan izin <strong>Akses Semua File</strong> (<code>MANAGE_EXTERNAL_STORAGE</code>) agar editor pihak ketiga seperti Pilcrow MD &amp; Google Docs bisa langsung menyunting folder lokal tanpa duplikasi.</li>
+        <li>Hubungkan 1 akun Google utama (<code>AuthorizationClient</code>, scope penuh <code>https://www.googleapis.com/auth/drive</code> pada mode OAuth Testing pribadi).</li>
+        <li>Jika ingin menautkan repositori GitHub, buat <strong>Fine-grained PAT</strong> dengan izin <em>Repository Contents (Read &amp; Write)</em> dan <em>Metadata (Read-only)</em>, lalu tambahkan di tab <strong>Akun</strong>.</li>
+        <li>Tambahkan <strong>Pasangan Folder</strong> baru di Beranda, pilih folder lokal, folder Drive, kebijakan hapus, dan opsional repositori GitHub beserta interval auto-commit terjadwal.</li>
+      </ol>
+    </section>
+
+    <section class="section">
+      <h2>Batasan &amp; Catatan Teknis</h2>
+      <ul>
+        <li><strong>Tema Otomatis Sistem:</strong> Tampilan terang/gelap Lotura selalu mengikuti pengaturan sistem Android tanpa menu pemilih tema tambahan.</li>
+        <li><strong>Batas Ukuran File GitHub:</strong> Berkas lokal melebihi 45 MB otomatis dilewati saat commit GitHub (tetap disinkronkan penuh ke Google Drive).</li>
+        <li><strong>Optimasi Baterai OEM:</strong> Nonaktifkan pembatasan baterai latar belakang untuk Lotura pada MIUI/HyperOS, ColorOS, atau OneUI agar <code>SyncForegroundService</code> dan <code>WorkManager</code> berjalan stabil.</li>
+        <li><strong>Aturan Pengecualian (Ignore Rules):</strong> Mendukung pola glob per pasangan folder (seperti <code>.git/</code>, <code>*.tmp</code>, <code>*.swp</code>, <code>.DS_Store</code>).</li>
+      </ul>
+    </section>
+
+    <footer>
+      Lotura (<code>com.aistudio.lotura</code>) • Dibangun otomatis lewat GitHub Actions tanpa menyimpan biner APK di repositori.
+    </footer>
+  </main>
+</body>
+</html>

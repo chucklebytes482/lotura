@@ -1,0 +1,6 @@
+{
+  "name": "Lotura",
+  "description": "Aplikasi Android ringan untuk sinkronisasi 2 arah multi-folder perangkat dengan Google Drive dan GitHub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
