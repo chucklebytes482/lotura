@@ -1,0 +1,6 @@
+Lotura permanent release signing certificate
+Package: com.aistudio.lotura
+Alias: upload
+Store type: JKS
+SHA-1: 1A:95:1D:E4:FB:08:58:63:FD:C5:39:AC:88:E3:15:5E:9D:D7:AB:8D
+SHA-256: 64:22:47:D9:76:99:BF:DB:0E:E4:C1:93:69:BF:50:10:81:CA:3F:B4:24:DE:D7:1F:E6:39:97:89:20:19:94:8E
