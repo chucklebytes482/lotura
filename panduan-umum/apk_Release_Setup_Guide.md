@@ -90,6 +90,7 @@ keystore.properties
 debug.keystore
 google-services.json
 app/google-services.json
+firebase-applet-config.json
 
 # Direktori output APK sementara
 dist/
