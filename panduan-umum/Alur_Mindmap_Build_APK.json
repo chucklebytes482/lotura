@@ -1,7 +1,7 @@
 {
   "title": "Alur Pembuatan & Build APK Android (Umum)",
   "layoutMode": "top-down",
-  "nodeCount": 26,
+  "nodeCount": 27,
   "outline": [
     "Alur Pembuatan & Build APK Android (Umum)",
     "  - 1. Konsep, Identitas & Format Data",
@@ -14,6 +14,7 @@
     "    - Daftarkan SHA-1 & SHA-256 (debug dan release) ke Firebase / Google Cloud Console",
     "    - Gunakan sinkronisasi terjadwal 2 arah (5 mnt / 15 mnt [default] / 4 jam / 24 jam) dengan status 1 baris",
     "    - Izinkan mode pakai langsung tanpa wajib login serta dukungan DataStore/Room lokal",
+    "    - Otomatiskan setup teknis (OAuth, Firebase, SHA-1 debug) oleh AI; beri deep link Google Cloud ramah HP",
     "  - 3. Kurasi Fitur, UI Ringkas & Target Ukuran < 10 MB",
     "    - Pangkas fitur opsional (termasuk pemilih tema), aset berat, dan dependensi Gradle tak terpakai",
     "    - Hapus keterangan berlebih di dalam aplikasi; pindahkan seluruh penjelasan rinci hanya ke GitHub Pages",
@@ -86,6 +87,11 @@
           {
             "id": "a1b2c3d4-2400-4000-8000-000000000001",
             "title": "Izinkan mode pakai langsung tanpa wajib login serta dukungan DataStore/Room lokal",
+            "color": "cobalt"
+          },
+          {
+            "id": "a1b2c3d4-2500-4000-8000-000000000001",
+            "title": "Otomatiskan setup teknis (OAuth, Firebase, SHA-1 debug) oleh AI; beri deep link Google Cloud ramah HP",
             "color": "cobalt"
           }
         ]
