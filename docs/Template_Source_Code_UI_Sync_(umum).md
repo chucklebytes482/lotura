@@ -1,6 +1,6 @@
 # Kumpulan Source Code Siap Salin (Standar UI, Tata Letak & Sinkronisasi)
 
-Pasangan teknis dari **`Panduan_Personality_Build_APK.md`**. Seluruh contoh memakai namespace contoh `com.contoh.aplikasi` (ganti dengan `com.aistudio.<kata_euskara>` saat memulai proyek) dan mematuhi aturan wajib:
+Pasangan teknis dari **`Panduan_Personality_Build_APK_(umum).md`**. Seluruh contoh memakai namespace contoh `com.contoh.aplikasi` (ganti dengan `com.aistudio.<kata_euskara>` saat memulai proyek) dan mematuhi aturan wajib:
 - Tema selalu otomatis mengikuti sistem (`isSystemInDarkTheme()`, tanpa pemilih tema).
 - Urutan prioritas Beranda wajib: **#1 Sinkronisasi**, **#2 Web Panduan (GitHub Pages)**.
 - Kartu status sinkronisasi **1 baris** (`Tersinkronisasi • 14 jam lalu`), tanpa sakelar on/off *Sinkronisasi Otomatis*, dengan pemilih jadwal **`5 menit`**, **`15 menit` (default)**, **`4 jam`**, **`24 jam`**, dan tanpa keterangan berlebih.
