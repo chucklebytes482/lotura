@@ -31,3 +31,4 @@ dist/
 releases/
 *.apk
 *.aab
+logs_*.zip
