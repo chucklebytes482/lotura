@@ -1,0 +1,11 @@
+*.jks
+*.keystore
+*.b64
+*.base64
+.env*
+__pycache__/
+*.pyc
+*.apk
+*.aab
+dist/
+private/
