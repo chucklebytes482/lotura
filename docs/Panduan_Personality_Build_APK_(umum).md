@@ -5,10 +5,10 @@
 Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun aplikasi Android ringan (**< 10 MB**) secara konsisten lintas proyek.
 
 ### Paket 4 Dokumen Panduan
-1. **`Panduan_Personality_Build_APK.md`** *(dokumen ini)* — Prinsip wajib, penamaan Euskara, alur Fase 1–5, templat PRD, dan checklist rilis.
-2. **`Template_Source_Code_UI_Sync.md`** — Kumpulan source code Kotlin siap salin (tema otomatis sistem, urutan prioritas Beranda, modal sinkronisasi terjadwal, auth, Drive JSON sync, selection bar, & Robolectric test).
-3. **`apk_Release_Setup_Guide.md`** — Setup keystore release, GitHub Secrets, `.gitignore`, Gradle R8, ProGuard, SHA-1/SHA-256, dan workflow GitHub Actions.
-4. **`Alur_Mindmap_Build_APK.json`** — Peta visual ringkas seluruh alur pembuatan hingga rilis APK.
+1. **`Panduan_Personality_Build_APK_(umum).md`** *(dokumen ini)* — Prinsip wajib, penamaan Euskara, alur Fase 1–5, templat PRD, dan checklist rilis.
+2. **`Template_Source_Code_UI_Sync_(umum).md`** — Kumpulan source code Kotlin siap salin (tema otomatis sistem, urutan prioritas Beranda, modal sinkronisasi terjadwal, auth, Drive JSON sync, selection bar, & Robolectric test).
+3. **`apk_Release_Setup_Guide_(umum).md`** — Setup keystore release, GitHub Secrets, `.gitignore`, Gradle R8, ProGuard, SHA-1/SHA-256, dan workflow GitHub Actions.
+4. **`Alur_Mindmap_Build_APK_(umum).json`** — Peta visual ringkas seluruh alur pembuatan hingga rilis APK.
 
 ---
 
@@ -95,7 +95,7 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
    ```bash
    gradle :app:testDebugUnitTest --no-daemon
    ```
-2. Aktifkan konfigurasi rilis R8 + shrink + `arm64-v8a` (lihat rincian kode di `apk_Release_Setup_Guide.md`).
+2. Aktifkan konfigurasi rilis R8 + shrink + `arm64-v8a` (lihat rincian kode di `apk_Release_Setup_Guide_(umum).md`).
 3. **Target Lolos Rilis:**
    - [ ] Semua Unit Test & Robolectric Test lulus (0 gagal).
    - [ ] Ukuran APK release **< 10 MB** dengan ABI `arm64-v8a`.
@@ -106,14 +106,14 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
 ## Fase 5 — Otomasi GitHub Release & GitHub Pages
 
 1. **Tanpa Biner di Repo:** Jangan commit `.apk`, `.aab`, `.jks`, atau folder `releases/` / `dist/` ke Git.
-2. **GitHub Actions Release:** Bangun, uji, verifikasi tanda tangan, dan unggah APK + `CHECKSUMS.txt` + `CERT_FINGERPRINT.txt` otomatis ke **GitHub Releases** (lihat `.github/workflows/release.yml` di `apk_Release_Setup_Guide.md`).
+2. **GitHub Actions Release:** Bangun, uji, verifikasi tanda tangan, dan unggah APK + `CHECKSUMS.txt` + `CERT_FINGERPRINT.txt` otomatis ke **GitHub Releases** (lihat `.github/workflows/release.yml` di `apk_Release_Setup_Guide_(umum).md`).
 3. **GitHub Pages (`docs/index.html`):** Pusat seluruh keterangan rinci, panduan setup, penjelasan jadwal/kebijakan, dan tombol unduh `../releases/latest`.
 
 ---
 
 ## Template Prompt / PRD Memulai Aplikasi Android Baru
 
-Salin dan isi bagian `[...]` saat memulai proyek baru (lampirkan bersama `Template_Source_Code_UI_Sync.md`):
+Salin dan isi bagian `[...]` saat memulai proyek baru (lampirkan bersama `Template_Source_Code_UI_Sync_(umum).md`):
 
 ```text
 Buat aplikasi Android (Kotlin + Jetpack Compose + Material 3 + MVVM):
