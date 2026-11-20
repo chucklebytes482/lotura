@@ -22,6 +22,7 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
 | **Sinkronisasi Drive** | Status ringkas **1 baris** (`Tersinkronisasi • 14 jam lalu`) + pemilih jadwal **`5 menit`**, **`15 menit` (default)**, **`4 jam`**, **`24 jam`**. | Sakelar on/off *Sinkronisasi Otomatis*, status jaringan/antrean mentah, atau nama folder berlebih di kartu status. |
 | **Penamaan & ID** | **1 kata asli Euskara** 3 suku kata (4–8 huruf Latin tanpa diakritik) → `com.aistudio.<kata>`. | Nama panjang > 2 kata, karakter diakritik, atau akhiran acak tanpa makna. |
 | **Ukuran & Rilis APK** | R8 + resource shrinking + ABI `arm64-v8a` (**< 10 MB**), publikasi via GitHub Actions Releases. | Menyimpan `.apk`, `.aab`, `.jks`, atau API key di repositori Git. |
+| **Otomasi Teknis (Ramah HP)** | AI **otomatiskan & kerjakan semua hal teknis** yang bisa dieksekusi (OAuth, Firebase, SHA-1/SHA-256 debug, Gradle R8, CI/CD, skrip, test) + beri **deep link langsung** untuk klik wajib akun pribadi. | Menyuruh pengguna menjalankan perintah teknis manual atau mencari menu Google Cloud Console di layar HP yang sempit (harus Mode Desktop). |
 
 ---
 
@@ -40,6 +41,10 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
    - Pastikan seluruh target sentuh minimal **48dp × 48dp** dengan `contentDescription` yang jelas.
 5. **Keamanan & Tanpa Data Palsu**
    - Jangan pernah menanamkan API key, keystore, atau kredensial di kode/Git. Gunakan secrets lingkungan atau Google Sign-In resmi.
+6. **Otomasi Teknis Penuh & Alur Ramah HP (*Mobile-First Developer*)**
+   - Asumsikan pengguna bisa bekerja dari **HP**, di mana tampilan **Google Cloud Console** sulit dinavigasi tanpa mengaktifkan **Mode Desktop**.
+   - **Wajib dikerjakan otomatis oleh AI:** provisioning OAuth & Firebase, pendaftaran `applicationId` + SHA-1/SHA-256 debug, pembacaan sidik jari keystore debug, konfigurasi Gradle R8/ProGuard, pembuatan workflow GitHub Actions, GitHub Pages, skrip otomasi CLI (`.sh`), kompilasi, dan Unit/Robolectric Test.
+   - **Khusus langkah yang wajib diklik dari akun pribadi** *(mis. tombol Enable API, menambah Test users, atau mendaftarkan SHA-1 keystore release)*: AI **wajib** menyediakan **tautan langsung (*deep link*)** yang sudah membawa `?project=<project_id>`, daftar nilai siap salin (*package name, SHA-1, SHA-256, nama secret*), serta pengingat singkat untuk mengaktifkan **Situs/Mode Desktop** di browser HP hanya jika tampilan konsol terpotong.
 
 ---
 
@@ -125,6 +130,9 @@ Buat aplikasi Android (Kotlin + Jetpack Compose + Material 3 + MVVM):
   - Prioritas #1 (paling atas): Sinkronisasi Google Drive terjadwal (5 menit / 15 menit [default] / 4 jam / 24 jam) lewat ModalBottomSheet tanpa wajib login di awal, kartu status 1 baris ringkas (mis. "Tersinkronisasi • 14 jam lalu"), tanpa sakelar on/off auto-sync.
   - Prioritas #2 (tepat di bawah Sinkronisasi): Web Panduan (GitHub Pages) yang membuka dokumentasi lengkap di browser.
   - Edge-to-edge Material 3 (WindowInsets.safeDrawing, CenterAlignedTopAppBar, lebar adaptif max 640dp, SelectionActionBar, CompactSearchBar).
+- Otomasi Teknis (Ramah HP):
+  - Kerjakan dan otomatiskan semua hal teknis yang bisa dilakukan AI (OAuth, Firebase, ekstraksi & pendaftaran SHA-1/SHA-256 debug, Gradle R8, GitHub Actions, skrip CLI, kompilasi, & pengujian).
+  - Jika ada langkah yang wajib dilakukan dari akun pribadi di Google Cloud Console, berikan tautan langsung (deep link berisi project_id) + nilai siap salin agar mudah diakses di HP tanpa repot mencari menu di Mode Desktop.
 - Pengujian & Rilis:
   - Sertakan Unit Test & Robolectric UI Test.
   - Siapkan .github/workflows/release.yml untuk rilis APK signed ke GitHub Releases tanpa menyimpan APK di repositori.
@@ -139,4 +147,5 @@ Buat aplikasi Android (Kotlin + Jetpack Compose + Material 3 + MVVM):
 - [ ] **Tanpa Pemilih Tema & Tanpa Keterangan Berlebih** di aplikasi (seluruh panduan rinci di GitHub Pages).
 - [ ] **Penamaan Euskara** konsisten di `app_name`, `applicationId`, `proguard-rules.pro`, dan OAuth/Firebase.
 - [ ] **Bebas file sensitif & biner APK** di repositori Git.
+- [ ] **Otomasi Teknis Ramah HP:** seluruh setup teknis (OAuth/Firebase/SHA-1 debug/CI-CD) sudah dieksekusi AI; sisa langkah manual memakai *deep link* langsung + nilai siap salin.
 - [ ] **Unit Test & Robolectric 100% lulus** + tanda tangan `apksigner` valid.
