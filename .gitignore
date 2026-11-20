@@ -32,3 +32,4 @@ releases/
 *.apk
 *.aab
 logs_*.zip
+public/assets/aistudio/
