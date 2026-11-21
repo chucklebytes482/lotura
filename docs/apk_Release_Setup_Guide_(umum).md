@@ -221,12 +221,13 @@ Salin baris **SHA1** dan **SHA256**, lalu daftarkan ke:
 ## 6. Workflow GitHub Actions Siap Salin (`.github/workflows/release.yml`)
 
 Simpan file berikut sebagai `.github/workflows/release.yml`. Workflow ini:
-1. Menghitung `versionCode` dan `versionName` otomatis dari `baseVersionCode` / `baseVersionName` + `GITHUB_RUN_NUMBER`.
-2. Mendekode `RELEASE_KEYSTORE_BASE64` dan `GOOGLE_SERVICES_JSON_BASE64` (opsional bila tidak memakai Firebase) di runner sementara.
-3. Menjalankan Unit Test & Robolectric (`gradle :app:testDebugUnitTest`).
-4. Merakit APK R8 `arm64-v8a` (`gradle :app:assembleRelease`).
-5. Memverifikasi tanda tangan dengan `apksigner` serta membuat `CERT_FINGERPRINT.txt` & `CHECKSUMS.txt`.
-6. Mengunggah hasilnya ke **Workflow Artifacts** dan **GitHub Releases** tanpa menyimpan biner APK di repositori.
+1. Berjalan otomatis setiap `push` ke `main`/`master` **hanya saat ada perubahan berkas aplikasi** (`app/**`, `gradle/**`, konfigurasi Gradle, atau file workflow itu sendiri — sehingga perubahan dokumentasi di `docs/**` tidak memicu rilis kosong), serta tetap mendukung pemicu manual lewat **Run workflow** (`workflow_dispatch`).
+2. Menghitung `versionCode` dan `versionName` otomatis dari `baseVersionCode` / `baseVersionName`, `GITHUB_RUN_NUMBER`, dan tag versi terakhir agar selalu meningkat dan aman menimpa pemasangan sebelumnya.
+3. Mendekode `RELEASE_KEYSTORE_BASE64` dan `GOOGLE_SERVICES_JSON_BASE64` (opsional bila tidak memakai Firebase) di runner sementara.
+4. Menjalankan Unit Test & Robolectric (`gradle :app:testDebugUnitTest`).
+5. Merakit APK R8 `arm64-v8a` (`gradle :app:assembleRelease`).
+6. Memverifikasi tanda tangan dengan `apksigner` serta membuat `CERT_FINGERPRINT.txt` & `CHECKSUMS.txt`.
+7. Mengunggah hasilnya ke **Workflow Artifacts** dan **GitHub Releases** tanpa menyimpan biner APK di repositori.
 
 > **Catatan:** Ganti nilai `APP_SLUG` dan `APP_DISPLAY_NAME` pada blok `env:` di baris atas sesuai nama aplikasi Anda.
 
@@ -238,6 +239,14 @@ on:
     branches:
       - main
       - master
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.env.example'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
@@ -264,14 +273,28 @@ jobs:
       - name: Compute Automatic Version
         shell: bash
         run: |
+          set -euo pipefail
           BASE_CODE=$(grep -E 'baseVersionCode\s*=' app/build.gradle.kts | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')
           BASE_NAME=$(grep -E 'baseVersionName\s*=' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
           BASE_CODE="${BASE_CODE:-1}"
           BASE_NAME="${BASE_NAME:-1.0}"
           RUN_NUM="${GITHUB_RUN_NUMBER:-1}"
 
-          CI_VERSION_CODE=$((BASE_CODE + RUN_NUM))
-          CI_VERSION_NAME="${BASE_NAME}.${RUN_NUM}"
+          ESCAPED_BASE=$(printf '%s' "$BASE_NAME" | sed 's/\./\\./g')
+          MAX_TAG_NUM=$(git ls-remote --tags origin "refs/tags/v${BASE_NAME}.*" 2>/dev/null \
+            | sed -nE "s|.*refs/tags/v${ESCAPED_BASE}\.([0-9]+)$|\1|p" \
+            | sort -n \
+            | tail -n 1 || true)
+          MAX_TAG_NUM="${MAX_TAG_NUM:-0}"
+
+          if [ "$RUN_NUM" -le "$MAX_TAG_NUM" ]; then
+            NEXT_NUM=$((MAX_TAG_NUM + 1))
+          else
+            NEXT_NUM="$RUN_NUM"
+          fi
+
+          CI_VERSION_CODE=$((BASE_CODE + NEXT_NUM))
+          CI_VERSION_NAME="${BASE_NAME}.${NEXT_NUM}"
           VERSION_TAG="v${CI_VERSION_NAME}"
 
           echo "CI_VERSION_CODE=${CI_VERSION_CODE}" >> "$GITHUB_ENV"

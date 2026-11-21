@@ -19,6 +19,7 @@ Seluruh konfigurasi Google Cloud OAuth, kunci penandatanganan rilis permanen, da
 | **Release SHA-1 (Permanen)** | ✅ Terdaftar | `1A:95:1D:E4:FB:08:58:63:FD:C5:39:AC:88:E3:15:5E:9D:D7:AB:8D` |
 | **Release SHA-256 (Permanen)** | ✅ Terverifikasi | `64:22:47:D9:76:99:BF:DB:0E:E4:C1:93:69:BF:50:10:81:CA:3F:B4:24:DE:D7:1F:E6:39:97:89:20:19:94:8E` |
 | **GitHub Signing Secrets** | ✅ Aktif | `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS=upload` |
+| **GitHub Actions Release** | ✅ Aktif | `.github/workflows/release.yml` — otomatis saat `push` ke `main` bila ada perubahan berkas aplikasi (`app/**`, Gradle, `.env.example`) + manual via **Run workflow** |
 | **`GOOGLE_SERVICES_JSON_BASE64`** | ℹ️ Tidak diperlukan | Lotura memakai `AuthorizationClient` + Drive REST API v3 langsung (tanpa Firebase SDK) |
 | **Web Panduan (GitHub Pages)** | ✅ Aktif | `https://chucklebytes482.github.io/lotura/` |
 
