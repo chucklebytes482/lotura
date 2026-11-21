@@ -414,7 +414,7 @@ private fun SyncPairCard(
                         )
                     }
                 }
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = pair.name,
                         style = MaterialTheme.typography.titleMedium,
@@ -422,13 +422,29 @@ private fun SyncPairCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = pair.localPath,
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (isGithub) {
+                        val ghLabel = buildString {
+                            append("${pair.githubOwner}/${pair.githubRepo}")
+                            if (pair.githubSubfolder.isNotBlank()) {
+                                append(" / ${pair.githubSubfolder}")
+                            }
+                        }
+                        Text(
+                            text = ghLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                            color = MaterialTheme.colorScheme.secondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                        Text(
+                            text = "Google Drive",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 FilledTonalIconButton(
@@ -454,50 +470,6 @@ private fun SyncPairCard(
                             contentDescription = "Sinkronkan ${pair.name}"
                         )
                     }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isGithub) {
-                    Icon(
-                        imageVector = Icons.Default.Code,
-                        contentDescription = "GitHub",
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    val ghLabel = buildString {
-                        append("${pair.githubOwner}/${pair.githubRepo}")
-                        if (pair.githubSubfolder.isNotBlank()) {
-                            append(" / ${pair.githubSubfolder}")
-                        }
-                    }
-                    Text(
-                        text = ghLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                        color = MaterialTheme.colorScheme.secondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.CloudDone,
-                        contentDescription = "Google Drive",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = pair.driveFolderName.ifBlank { "Google Drive" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
                 }
             }
 

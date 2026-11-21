@@ -244,7 +244,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 target = if (savedPair.isGithubPair) "GITHUB" else "DRIVE",
                 action = "CONFIG",
                 status = "OK",
-                message = "Pasangan folder disimpan (${savedPair.localPath})"
+                message = "Pasangan folder disimpan"
             )
             _uiState.update { it.copy(snackbarMessage = "Pasangan \"${savedPair.name}\" disimpan") }
             onSaved(savedId)

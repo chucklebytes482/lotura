@@ -89,7 +89,8 @@ class UiRobolectricTest {
         assertEquals(7L, syncedPairId)
         composeRule.onNodeWithTag("pair_syncing_notice_7", useUnmergedTree = true).assertDoesNotExist()
 
-        // No delete policy pills
+        // Local default path and delete policy pills must not appear on Home card
+        composeRule.onNodeWithText("/storage/emulated/0/Documents/docs", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("Mode Aman").assertDoesNotExist()
         composeRule.onNodeWithText("Aman").assertDoesNotExist()
 
@@ -211,6 +212,7 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("/storage/emulated/0/Documents/Catatan").assertIsDisplayed()
         composeRule.onNodeWithTag("detail_open_explorer_button").assertIsDisplayed()
         composeRule.onNodeWithTag("detail_edit_pair_button").assertIsDisplayed()
         composeRule.onNodeWithTag("detail_sync_now_button").assertDoesNotExist()
@@ -244,18 +246,24 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
-        // Legacy manual/policy/watcher/local-picker controls must not exist
+        // Legacy manual/policy/watcher/local-picker/default-path/name-preview controls must not exist
         composeRule.onNodeWithTag("pair_name_input").assertDoesNotExist()
         composeRule.onNodeWithTag("policy_safe_card").assertDoesNotExist()
         composeRule.onNodeWithTag("policy_two_way_card").assertDoesNotExist()
         composeRule.onNodeWithTag("pair_auto_drive_switch").assertDoesNotExist()
         composeRule.onNodeWithTag("pair_browse_local_button").assertDoesNotExist()
+        composeRule.onNodeWithTag("pair_resolved_local_path").assertDoesNotExist()
+        composeRule.onNodeWithTag("auto_pair_name_preview").assertDoesNotExist()
 
         // Pick Google Drive folder
         composeRule.onNodeWithTag("pair_pick_drive_folder_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("pick_drive_folder_drv-99").performClick()
         composeRule.waitForIdle()
+
+        // Still no default path card or auto pair name preview after picking source
+        composeRule.onNodeWithTag("pair_resolved_local_path").assertDoesNotExist()
+        composeRule.onNodeWithTag("auto_pair_name_preview").assertDoesNotExist()
 
         // Save pair
         composeRule.onNodeWithTag("save_pair_button").performScrollTo().performClick()
