@@ -18,7 +18,7 @@
     "  - 3. Kurasi Fitur, UI Ringkas & Target Ukuran < 10 MB",
     "    - Pangkas fitur opsional (pemilih tema, layanan latar belakang, jadwal, kebijakan hapus), aset berat, & dependensi tak terpakai",
     "    - Hapus keterangan berlebih di dalam aplikasi; pindahkan seluruh penjelasan rinci hanya ke GitHub Pages",
-    "    - Mulai editor dari Sumber -> Jalur Perangkat dengan penamaan & pembuatan folder otomatis dari sumbernya",
+    "    - Cukup pilih Sumber; nama pasangan & folder default perangkat (/Documents/<nama>) dibuat otomatis",
     "    - Sediakan bilah pencarian cepat di bagian atas layar untuk lompat langsung ke item",
     "  - 4. Pengujian, Kompresi R8 & Verifikasi Build",
     "    - Jalankan Unit Test & Robolectric UI Test untuk logika inti, serialisasi JSON, dan layar Compose",
@@ -113,7 +113,7 @@
           },
           {
             "id": "a1b2c3d4-3300-4000-8000-000000000001",
-            "title": "Mulai editor dari Sumber -> Jalur Perangkat dengan penamaan & pembuatan folder otomatis dari sumbernya",
+            "title": "Cukup pilih Sumber; nama pasangan & folder default perangkat (/Documents/<nama>) dibuat otomatis",
             "color": "sage"
           },
           {

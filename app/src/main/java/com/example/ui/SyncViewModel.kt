@@ -263,7 +263,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             refreshNetworkStatus()
             if (pairId in _uiState.value.syncingPairIds) return@launch
-            _uiState.update { it.copy(syncingPairIds = it.syncingPairIds + pairId) }
+            _uiState.update {
+                it.copy(
+                    syncingPairIds = it.syncingPairIds + pairId,
+                    snackbarMessage = "Tunggu hingga selesai agar sinkronisasi berhasil"
+                )
+            }
             try {
                 val pair = repository.getPairById(pairId) ?: return@launch
                 val message = if (pair.isGithubPair) {

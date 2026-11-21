@@ -38,11 +38,14 @@ class PairPathHelperTest {
     }
 
     @Test
-    fun extractBaseDirForEditing_returnsParentWhenMatchingSourceName() {
-        val parent = PairPathHelper.extractBaseDirForEditing(
-            existingLocalPath = "/storage/emulated/0/Documents/Catatan",
-            sourceFolderName = "Catatan"
+    fun resolveDefaultLocalTargetPath_usesDocumentsBaseDir() {
+        assertEquals(
+            "/storage/emulated/0/Documents/Catatan",
+            PairPathHelper.resolveDefaultLocalTargetPath("Catatan")
         )
-        assertEquals("/storage/emulated/0/Documents", parent)
+        assertEquals(
+            "/storage/emulated/0/Documents",
+            PairPathHelper.resolveDefaultLocalTargetPath("")
+        )
     }
 }

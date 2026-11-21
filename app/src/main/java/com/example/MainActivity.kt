@@ -156,6 +156,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
 
     LaunchedEffect(uiState.snackbarMessage) {
         val msg = uiState.snackbarMessage ?: return@LaunchedEffect
+        snackbarHostState.currentSnackbarData?.dismiss()
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeSnackbar()
     }

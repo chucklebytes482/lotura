@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.os.Environment
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,9 +21,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -32,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,132 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.github.GithubRepoSummary
 import com.example.ui.DriveBrowserUiState
 import com.example.ui.GithubBrowserUiState
 import com.example.ui.GithubFolderBrowserUiState
 import com.example.ui.theme.JetBrainsMonoFamily
-import java.io.File
-
-@Composable
-internal fun LocalFolderPickerDialog(
-    initialPath: String,
-    onDismiss: () -> Unit,
-    onSelectPath: (String) -> Unit
-) {
-    val rootStorage = remember {
-        runCatching { Environment.getExternalStorageDirectory() }.getOrElse { File("/storage/emulated/0") }
-    }
-    var currentDir by remember {
-        val init = File(initialPath)
-        mutableStateOf(if (init.exists() && init.isDirectory) init else rootStorage)
-    }
-    var newFolderName by remember { mutableStateOf("") }
-    var refreshTick by remember { mutableIntStateOf(0) }
-
-    val subdirs = remember(currentDir, refreshTick) {
-        currentDir.listFiles()
-            ?.filter { it.isDirectory && !it.name.startsWith(".") }
-            ?.sortedBy { it.name.lowercase() }
-            .orEmpty()
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (currentDir.parentFile != null && currentDir.absolutePath != rootStorage.absolutePath) {
-                    IconButton(onClick = { currentDir = currentDir.parentFile!! }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Naik folder")
-                    }
-                }
-                Text("Pilih Jalur di Perangkat", maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = currentDir.absolutePath,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newFolderName,
-                        onValueChange = { newFolderName = it },
-                        placeholder = { Text("Folder baru...") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = {
-                            val clean = newFolderName.trim()
-                            if (clean.isNotEmpty()) {
-                                val target = File(currentDir, clean)
-                                if (target.mkdirs() || target.exists()) {
-                                    newFolderName = ""
-                                    currentDir = target
-                                    refreshTick++
-                                }
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.CreateNewFolder, contentDescription = "Buat folder lokal")
-                    }
-                }
-
-                HorizontalDivider()
-
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 240.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (subdirs.isEmpty()) {
-                        item {
-                            Text(
-                                text = "Tidak ada subfolder di direktori ini.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        items(subdirs, key = { it.absolutePath }) { folder ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { currentDir = folder }
-                                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Text(folder.name, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Batal") }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSelectPath(currentDir.absolutePath) },
-                modifier = Modifier.testTag("confirm_local_path_button")
-            ) {
-                Text("Pilih Jalur Ini")
-            }
-        }
-    )
-}
 
 @Composable
 internal fun DriveFolderPickerSheet(

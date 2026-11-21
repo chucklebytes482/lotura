@@ -36,8 +36,8 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
    - Semua penjelasan detail, batasan teknis, dan panduan penggunaan **hanya boleh ditempatkan di GitHub Pages** (`docs/index.html`).
 3. **Target Ukuran APK Rilis < 10 MB**
    - Aktifkan `isMinifyEnabled = true`, `isShrinkResources = true`, dan `abiFilters += "arm64-v8a"` pada `buildTypes.release` (biarkan `debug` multi-ABI).
-4. **Antarmuka Ringkas, Urutan Sumber-Dulu & Aksesibel**
-   - Untuk aplikasi pasangan folder/dokumen, alur penambahan selalu dimulai dari **1. Memilih Sumber** (mis. Google Drive atau 1 folder khusus repositori Git) lalu **2. Memilih Jalur di Perangkat** dengan penyelarasan & pembuatan otomatis folder bernama sama.
+4. **Antarmuka Ringkas, Sumber-Dulu & Aksesibel**
+   - Untuk aplikasi pasangan folder/dokumen, cukup minta pengguna **memilih Sumber** (mis. Google Drive atau 1 folder khusus repositori Git) tanpa pemilih jalur lokal manual — gunakan direktori standar perangkat (mis. `/storage/emulated/0/Documents`) dan buat folder bernama sama secara otomatis bila belum ada.
    - Sediakan tombol sinkronisasi **hanya per kartu folder di Beranda**; gunakan *tap* kartu untuk membuka Detail dan tekan tahan untuk mode pilih banyak via `SelectionActionBar`.
    - Pastikan seluruh target sentuh minimal **48dp × 48dp** dengan `contentDescription` yang jelas.
 5. **Keamanan & Tanpa Data Palsu**
@@ -108,7 +108,7 @@ Dokumen ini adalah panduan inti (*personality* & aturan wajib) untuk membangun a
 
 1. **Tanpa Biner di Repo:** Jangan commit `.apk`, `.aab`, `.jks`, atau folder `releases/` / `dist/` ke Git.
 2. **GitHub Actions Release:** Bangun, uji, verifikasi tanda tangan, dan unggah APK + `CHECKSUMS.txt` + `CERT_FINGERPRINT.txt` otomatis ke **GitHub Releases** (lihat `.github/workflows/release.yml` di `apk_Release_Setup_Guide_(umum).md`).
-3. **GitHub Pages (`docs/index.html`):** Pusat seluruh keterangan rinci, panduan setup, penjelasan alur sinkronisasi, dan tombol unduh `../releases/latest`.
+3. **GitHub Pages (`docs/index.html`):** Pusat seluruh keterangan rinci, panduan setup, penjelasan alur sinkronisasi, dan tombol unduh `../releases/latest`. Pastikan ramah HP (*mobile-first*): hindari menaruh teks teknis panjang seperti sidik jari sertifikat SHA-256 mentah; bila ada jalur/kode panjang, bungkus di dalam kotak kode (`<pre>`) atau tabel yang bisa digulir horizontal.
 
 ---
 
@@ -132,7 +132,7 @@ Buat aplikasi Android (Kotlin + Jetpack Compose + Material 3 + MVVM):
   - Prioritas #1 (paling atas): Kartu Status Akun (membuka ModalBottomSheet Hubungkan/Putuskan saja, tanpa jadwal atau tombol sinkron).
   - Prioritas #2 (tepat di bawah Kartu Status Akun): Web Panduan (GitHub Pages) yang membuka dokumentasi lengkap di browser.
   - Sinkronisasi 2 arah manual dilakukan hanya lewat tombol ikon per folder di masing-masing kartu Beranda.
-  - Urutan pembuatan pasangan: 1. Pilih Sumber (eksklusif Cloud atau 1 folder repositori Git via pemilih interaktif) -> 2. Pilih Jalur di Perangkat (nama pasangan, label akun, dan folder perangkat otomatis mengikuti sumber dan dibuat otomatis bila belum ada).
+  - Alur pembuatan pasangan: cukup pilih Sumber (eksklusif Cloud atau 1 folder repositori Git via pemilih interaktif); nama pasangan, label akun, dan folder perangkat di direktori default (mis. /storage/emulated/0/Documents/<nama-folder>) dibuat otomatis mengikuti sumber.
   - Edge-to-edge Material 3 (WindowInsets.safeDrawing, CenterAlignedTopAppBar, lebar adaptif max 640dp, SelectionActionBar, CompactSearchBar).
 - Otomasi Teknis (Ramah HP):
   - Kerjakan dan otomatiskan semua hal teknis yang bisa dilakukan AI (OAuth, Firebase, ekstraksi & pendaftaran SHA-1/SHA-256 debug, Gradle R8, GitHub Actions, skrip CLI, kompilasi, & pengujian).

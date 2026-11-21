@@ -4,6 +4,8 @@ import java.io.File
 
 object PairPathHelper {
 
+    const val DEFAULT_LOCAL_BASE_DIR = "/storage/emulated/0/Documents"
+
     private val illegalCharsRegex = Regex("""[/\\:*?"<>|]""")
 
     fun sanitizeFolderName(raw: String): String {
@@ -37,6 +39,10 @@ object PairPathHelper {
         }
     }
 
+    fun resolveDefaultLocalTargetPath(sourceFolderName: String): String {
+        return resolveLocalTargetPath(DEFAULT_LOCAL_BASE_DIR, sourceFolderName)
+    }
+
     /**
      * Resolves the final local device directory path so its folder name always matches the remote
      * source folder name. If the chosen directory already ends with [sourceFolderName], avoids
@@ -52,23 +58,6 @@ object PairPathHelper {
             baseFile.path
         } else {
             File(baseFile, cleanFolder).path
-        }
-    }
-
-    /**
-     * Extracts the parent directory when editing an existing pair whose local path already ends
-     * with the source folder name.
-     */
-    fun extractBaseDirForEditing(existingLocalPath: String, sourceFolderName: String): String {
-        val cleanPath = existingLocalPath.trim().trimEnd('/', '\\')
-        val cleanFolder = sanitizeFolderName(sourceFolderName)
-        if (cleanPath.isEmpty() || cleanFolder.isEmpty()) return cleanPath
-        val file = File(cleanPath)
-        val parent = file.parentFile
-        return if (parent != null && file.name.equals(cleanFolder, ignoreCase = true)) {
-            parent.path
-        } else {
-            cleanPath
         }
     }
 }

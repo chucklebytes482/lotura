@@ -87,6 +87,7 @@ class UiRobolectricTest {
         // Per-folder sync button directly on pair card
         composeRule.onNodeWithTag("pair_sync_button_7").assertIsDisplayed().performClick()
         assertEquals(7L, syncedPairId)
+        composeRule.onNodeWithTag("pair_syncing_notice_7", useUnmergedTree = true).assertDoesNotExist()
 
         // No delete policy pills
         composeRule.onNodeWithText("Mode Aman").assertDoesNotExist()
@@ -94,6 +95,40 @@ class UiRobolectricTest {
 
         composeRule.onNodeWithTag("pair_card_7").assertIsDisplayed().performClick()
         assertEquals(7L, openedPairId)
+    }
+
+    @Test
+    fun homeScreen_showsWaitNoticeWhilePairIsSyncing() {
+        val samplePair = SyncPairEntity(
+            id = 9L,
+            name = "Catatan",
+            localPath = "/storage/emulated/0/Documents/Catatan",
+            driveFolderId = "drv-1",
+            driveFolderName = "Catatan"
+        )
+
+        composeRule.setContent {
+            SyncBebasTheme {
+                HomeScreen(
+                    pairs = listOf(samplePair),
+                    appPrefs = AppPrefs(driveConnected = true, googleEmail = "pengguna@gmail.com"),
+                    syncingPairIds = setOf(9L),
+                    isOnline = true,
+                    hasStoragePermission = true,
+                    onRequestStoragePermission = {},
+                    onOpenDriveSheet = {},
+                    onOpenWebGuide = {},
+                    onOpenPairDetail = {},
+                    onSyncPair = {},
+                    onDeleteSelectedPairs = {},
+                    onAddPairClick = {}
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("pair_syncing_notice_9", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Tunggu hingga selesai agar sinkronisasi berhasil", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -209,13 +244,14 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
-        // Legacy manual/policy/watcher controls must not exist
+        // Legacy manual/policy/watcher/local-picker controls must not exist
         composeRule.onNodeWithTag("pair_name_input").assertDoesNotExist()
         composeRule.onNodeWithTag("policy_safe_card").assertDoesNotExist()
         composeRule.onNodeWithTag("policy_two_way_card").assertDoesNotExist()
         composeRule.onNodeWithTag("pair_auto_drive_switch").assertDoesNotExist()
+        composeRule.onNodeWithTag("pair_browse_local_button").assertDoesNotExist()
 
-        // Step 1: Pick Google Drive folder
+        // Pick Google Drive folder
         composeRule.onNodeWithTag("pair_pick_drive_folder_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("pick_drive_folder_drv-99").performClick()
@@ -227,7 +263,7 @@ class UiRobolectricTest {
 
         assertNotNull(savedPair)
         assertEquals("Catatan Kerja", savedPair?.name)
-        assertTrue(savedPair?.localPath?.endsWith("Catatan Kerja") == true)
+        assertEquals("/storage/emulated/0/Documents/Catatan Kerja", savedPair?.localPath)
         assertFalse(savedPair?.githubEnabled == true)
         assertEquals(DeletePolicy.TWO_WAY, savedPair?.resolvedDeletePolicy)
     }
@@ -300,7 +336,7 @@ class UiRobolectricTest {
         assertNotNull(savedPair)
         assertEquals("lotura/docs", savedPair?.name)
         assertEquals("docs", savedPair?.githubSubfolder)
-        assertTrue(savedPair?.localPath?.endsWith("docs") == true)
+        assertEquals("/storage/emulated/0/Documents/docs", savedPair?.localPath)
         assertTrue(savedPair?.githubEnabled == true)
         assertEquals("", savedPair?.driveFolderId)
     }
