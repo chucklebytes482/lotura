@@ -1,0 +1,221 @@
+name: Build & Publish Android Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.env.example'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_SLUG: "lotura"
+  APP_DISPLAY_NAME: "Lotura"
+  REQUIRE_GOOGLE_SERVICES: "false"
+
+jobs:
+  build-release:
+    name: Build R8 arm64-v8a APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute Automatic Version
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_CODE=$(grep -E 'baseVersionCode\s*=' app/build.gradle.kts | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')
+          BASE_NAME=$(grep -E 'baseVersionName\s*=' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          BASE_CODE="${BASE_CODE:-1}"
+          BASE_NAME="${BASE_NAME:-1.0}"
+          RUN_NUM="${GITHUB_RUN_NUMBER:-1}"
+
+          ESCAPED_BASE=$(printf '%s' "$BASE_NAME" | sed 's/\./\\./g')
+          MAX_TAG_NUM=$(git ls-remote --tags origin "refs/tags/v${BASE_NAME}.*" 2>/dev/null \
+            | sed -nE "s|.*refs/tags/v${ESCAPED_BASE}\.([0-9]+)$|\1|p" \
+            | sort -n \
+            | tail -n 1 || true)
+          MAX_TAG_NUM="${MAX_TAG_NUM:-0}"
+
+          if [ "$RUN_NUM" -le "$MAX_TAG_NUM" ]; then
+            NEXT_NUM=$((MAX_TAG_NUM + 1))
+          else
+            NEXT_NUM="$RUN_NUM"
+          fi
+
+          CI_VERSION_CODE=$((BASE_CODE + NEXT_NUM))
+          CI_VERSION_NAME="${BASE_NAME}.${NEXT_NUM}"
+          VERSION_TAG="v${CI_VERSION_NAME}"
+
+          echo "CI_VERSION_CODE=${CI_VERSION_CODE}" >> "$GITHUB_ENV"
+          echo "CI_VERSION_NAME=${CI_VERSION_NAME}" >> "$GITHUB_ENV"
+          echo "VERSION_TAG=${VERSION_TAG}" >> "$GITHUB_ENV"
+          echo "Release version: ${VERSION_TAG} (versionCode=${CI_VERSION_CODE})"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        shell: bash
+        run: |
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $SDK_DIR/cmdline-tools" >&2
+            exit 1
+          fi
+          (yes || true) | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "platforms;android-36.1" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Release Keystore
+        shell: bash
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore
+            else
+              keytool -genkeypair \
+                -keystore debug.keystore \
+                -alias androiddebugkey \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
+            fi
+          fi
+
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            if ! printf '%s' "$RELEASE_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/upload.jks"; then
+              echo "::error::RELEASE_KEYSTORE_BASE64 tidak valid. Encode ulang file .jks tanpa spasi/baris baru."
+              exit 1
+            fi
+
+            CLEAN_STORE_PASSWORD=$(printf '%s' "$STORE_PASSWORD" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            CLEAN_KEY_PASSWORD=$(printf '%s' "${KEY_PASSWORD:-$CLEAN_STORE_PASSWORD}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            SRC_ALIAS=$(printf '%s' "${KEY_ALIAS:-}" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+            if ! keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$CLEAN_STORE_PASSWORD" >/dev/null 2>&1; then
+              echo "::error::Gagal membuka keystore. Periksa STORE_PASSWORD dan RELEASE_KEYSTORE_BASE64."
+              exit 1
+            fi
+
+            if [ -z "$SRC_ALIAS" ]; then
+              SRC_ALIAS=$(keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$CLEAN_STORE_PASSWORD" 2>/dev/null | awk -F',' '/PrivateKeyEntry/{print $1; exit}' | xargs)
+            fi
+            if [ -n "$SRC_ALIAS" ] && [ "$SRC_ALIAS" != "upload" ]; then
+              keytool -changealias \
+                -keystore "$RUNNER_TEMP/upload.jks" \
+                -alias "$SRC_ALIAS" \
+                -destalias upload \
+                -storepass "$CLEAN_STORE_PASSWORD" \
+                -keypass "$CLEAN_KEY_PASSWORD"
+            fi
+
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$CLEAN_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$CLEAN_KEY_PASSWORD" >> "$GITHUB_ENV"
+          else
+            TEMP_PASS="ci-temp-keystore-pass"
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/upload.jks" \
+              -alias upload \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$TEMP_PASS" -keypass "$TEMP_PASS" \
+              -dname "CN=${APP_DISPLAY_NAME}, OU=Mobile, O=Developer, L=Jakarta, ST=Jakarta, C=ID"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$TEMP_PASS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$TEMP_PASS" >> "$GITHUB_ENV"
+          fi
+
+      - name: Prepare google-services.json (Opsional Firebase/Google Auth)
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '[:space:]' | base64 -d > app/google-services.json
+          fi
+          if [ "$REQUIRE_GOOGLE_SERVICES" = "true" ]; then
+            if [ ! -f app/google-services.json ]; then
+              echo "::error::app/google-services.json tidak ditemukan. Tambahkan secret GOOGLE_SERVICES_JSON_BASE64."
+              exit 1
+            fi
+            if ! grep -Eq '"client_type"[[:space:]]*:[[:space:]]*3' app/google-services.json; then
+              echo "::error::app/google-services.json tidak memiliki Web OAuth Client (client_type: 3)."
+              exit 1
+            fi
+          fi
+
+      - name: Run Unit & Robolectric Tests
+        run: gradle :app:testDebugUnitTest --no-daemon --no-build-cache --stacktrace
+
+      - name: Build R8 Minified arm64-v8a APK
+        run: gradle :app:assembleRelease --no-daemon --no-build-cache --stacktrace
+
+      - name: Verify APK Signature & Package Artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          APK_SRC="app/build/outputs/apk/release/app-release.apk"
+          APK_OUT="dist/${APP_SLUG}-${VERSION_TAG}-arm64-v8a-release.apk"
+          cp "$APK_SRC" "$APK_OUT"
+
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER=$(find "$SDK_DIR/build-tools" -name apksigner 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "apksigner tidak ditemukan di $SDK_DIR/build-tools" >&2
+            exit 1
+          fi
+          "$APKSIGNER" verify --print-certs "$APK_OUT" | tee dist/CERT_FINGERPRINT.txt
+          sha256sum "$APK_OUT" | tee dist/CHECKSUMS.txt
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_SLUG }}-release-apk
+          path: dist/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION_TAG }}
+          name: ${{ env.APP_DISPLAY_NAME }} ${{ env.VERSION_TAG }}
+          files: |
+            dist/*.apk
+            dist/CHECKSUMS.txt
+            dist/CERT_FINGERPRINT.txt
+          generate_release_notes: true
+
+      - name: Clean Private Key on Runner
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/upload.jks"
