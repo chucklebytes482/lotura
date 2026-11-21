@@ -21,14 +21,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -43,9 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.db.DeletePolicy
 import com.example.data.db.FileStateEntity
 import com.example.data.db.SyncLogEntity
 import com.example.data.db.SyncPairEntity
@@ -59,8 +55,6 @@ fun PairDetailScreen(
     pair: SyncPairEntity?,
     trackedFiles: List<FileStateEntity>,
     logs: List<SyncLogEntity>,
-    isSyncing: Boolean,
-    onSyncNow: (includeGithub: Boolean) -> Unit,
     onOpenExplorer: () -> Unit,
     onEditPair: () -> Unit,
     onDeletePair: (SyncPairEntity) -> Unit,
@@ -76,6 +70,9 @@ fun PairDetailScreen(
         }
         return
     }
+
+    val isGithub = pair.isGithubPair
+    val latestSyncAt = maxOf(pair.lastDriveSyncAt, pair.lastGithubSyncAt)
 
     Box(
         modifier = modifier
@@ -107,28 +104,33 @@ fun PairDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(pair.name, style = MaterialTheme.typography.headlineSmall)
+                            Text(
+                                text = pair.name,
+                                style = MaterialTheme.typography.headlineSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(8.dp))
                             StatusPill(
-                                label = if (pair.resolvedDeletePolicy == DeletePolicy.SAFE_NO_DELETE) "Mode Aman" else "2 Arah",
-                                dotColor = if (pair.lastError.isNullOrBlank()) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
+                                label = if (isGithub) "GitHub" else "Google Drive",
+                                dotColor = if (isGithub) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             )
                         }
 
-                        DetailMetaRow("Folder Lokal", pair.localPath, monospace = true)
-                        DetailMetaRow("Google Drive", pair.driveFolderName.ifBlank { "-" })
-                        if (pair.githubEnabled && pair.githubRepo.isNotBlank()) {
-                            val sub = if (pair.githubSubfolder.isNotBlank()) "/${pair.githubSubfolder}" else ""
+                        if (isGithub) {
                             DetailMetaRow(
-                                "GitHub",
-                                "${pair.githubOwner}/${pair.githubRepo}@${pair.githubBranch}$sub • ${pair.githubIntervalMinutes} mnt",
+                                label = "Sumber GitHub",
+                                value = "${pair.githubOwner}/${pair.githubRepo}@${pair.githubBranch} / ${pair.githubSubfolder}",
                                 monospace = true
                             )
+                        } else {
+                            DetailMetaRow("Sumber Google Drive", pair.driveFolderName.ifBlank { "-" })
                         }
+
+                        DetailMetaRow("Folder Perangkat", pair.localPath, monospace = true)
                         DetailMetaRow("Berkas", "${trackedFiles.size} file")
-                        DetailMetaRow("Drive", formatRelativeTime(pair.lastDriveSyncAt))
-                        if (pair.githubEnabled) {
-                            DetailMetaRow("Commit GitHub Terakhir", formatRelativeTime(pair.lastGithubSyncAt))
-                        }
+                        DetailMetaRow("Sinkron Terakhir", formatRelativeTime(latestSyncAt))
 
                         if (!pair.lastError.isNullOrBlank()) {
                             Surface(
@@ -148,95 +150,50 @@ fun PairDetailScreen(
                 }
             }
 
-            item(key = "actions_grid") {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            item(key = "actions_row") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = onOpenExplorer,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .heightIn(min = 50.dp)
+                            .testTag("detail_open_explorer_button")
                     ) {
-                        Button(
-                            onClick = { onSyncNow(true) },
-                            enabled = !isSyncing,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 52.dp)
-                                .testTag("detail_sync_now_button")
-                        ) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (isSyncing) "Menyinkron..." else "Sinkron Sekarang", fontWeight = FontWeight.SemiBold)
-                        }
-
-                        OutlinedButton(
-                            onClick = onOpenExplorer,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 52.dp)
-                                .testTag("detail_open_explorer_button")
-                        ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Penjelajah File")
-                        }
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Penjelajah File")
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    OutlinedButton(
+                        onClick = onEditPair,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .heightIn(min = 50.dp)
+                            .testTag("detail_edit_pair_button")
                     ) {
-                        if (pair.githubEnabled) {
-                            OutlinedButton(
-                                onClick = { onSyncNow(true) },
-                                enabled = !isSyncing,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .testTag("detail_commit_github_button")
-                            ) {
-                                Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Commit GitHub")
-                            }
-                        }
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Edit")
+                    }
 
-                        OutlinedButton(
-                            onClick = onEditPair,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("detail_edit_pair_button")
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Edit")
-                        }
-
-                        OutlinedButton(
-                            onClick = { showDeleteConfirm = true },
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("detail_delete_pair_button")
-                        ) {
-                            Icon(
-                                Icons.Default.DeleteOutline,
-                                contentDescription = "Hapus Pasangan",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    OutlinedButton(
+                        onClick = { showDeleteConfirm = true },
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .heightIn(min = 50.dp)
+                            .testTag("detail_delete_pair_button")
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Hapus Pasangan",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }

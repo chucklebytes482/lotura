@@ -4,7 +4,7 @@ Panduan umum ini menjelaskan cara menyiapkan **keystore release**, mengonfiguras
 
 > **Penting:** Panduan ini bersifat umum untuk aplikasi Android berbasis Gradle (Kotlin DSL `.gradle.kts`). Ganti placeholder bertanda `<...>` sesuai identitas proyek Anda.
 > **Penamaan `applicationId` (Euskara):** Gunakan 1 kata asli Euskara 3 suku kata tanpa diakritik dengan format `com.aistudio.<kata>` *(mis. `com.aistudio.lotura`)*. Bila mengganti `applicationId`, perbarui `app/build.gradle.kts`, `proguard-rules.pro`, lalu daftarkan ulang `applicationId` + SHA-1/SHA-256 (debug & release) dan perbarui `google-services.json`.
-> **Standar UI & Sinkronisasi Wajib:** Urutan prioritas utama aplikasi adalah **#1 Sinkronisasi** (jadwal `5 menit` / `15 menit` [default] / `4 jam` / `24 jam`, status 1 baris, tanpa tombol toggle auto-sync) dan **#2 Web Panduan (GitHub Pages)**. Dilarang menyediakan pemilih tema (tema otomatis mengikuti sistem) maupun keterangan berlebih di dalam aplikasi—seluruh dokumentasi rinci hanya ditempatkan di GitHub Pages. Pastikan aturan ProGuard untuk `CoroutineWorker` tetap dipertahankan di `app/proguard-rules.pro`.
+> **Standar UI & Sinkronisasi Wajib:** Urutan prioritas utama aplikasi adalah **#1 Status Akun** (tanpa jadwal & tanpa tombol sinkron global) dan **#2 Web Panduan (GitHub Pages)**, dengan sinkronisasi 2 arah manual per folder langsung pada kartu Beranda. Dilarang menyediakan pemilih tema (tema otomatis mengikuti sistem), layanan latar belakang/jadwal tak perlu, maupun keterangan berlebih di dalam aplikasi—seluruh dokumentasi rinci hanya ditempatkan di GitHub Pages.
 > **Otomasi Teknis (Ramah HP):** Seluruh konfigurasi teknis yang bisa dieksekusi AI (provisioning OAuth/Firebase, pembacaan & pendaftaran SHA-1/SHA-256 debug, `.gitignore`, Gradle R8, ProGuard, workflow CI/CD, dan skrip otomasi `.sh`) **wajib dikerjakan otomatis oleh AI**. Untuk langkah yang hanya bisa diklik dari akun pribadi di Google Cloud Console (yang di HP memerlukan **Mode Desktop / Situs Desktop** agar seluruh menu tampil), selalu gunakan **tautan langsung (*deep link*)** berparameter `?project=<project_id>` beserta nilai siap salin.
 
 ---
@@ -92,11 +92,13 @@ google-services.json
 app/google-services.json
 firebase-applet-config.json
 
-# Direktori output APK sementara
+# Direktori output APK & berkas sementara
 dist/
 releases/
 *.apk
 *.aab
+logs_*.zip
+public/assets/aistudio/
 ```
 
 ---
@@ -170,10 +172,10 @@ android {
 # Pertahankan model data agar serialisasi JSON / Gson / Moshi / Firestore tidak terhapus R8
 -keep class <com.contoh.aplikasi>.model.** { *; }
 
-# Pertahankan WorkManager CoroutineWorker untuk sinkronisasi terjadwal (5m / 15m default / 4j / 24j)
--keep class * extends androidx.work.CoroutineWorker {
-    public <init>(android.content.Context, androidx.work.WorkerParameters);
-}
+# (Opsional — hanya jika proyek menggunakan WorkManager)
+# -keep class * extends androidx.work.CoroutineWorker {
+#     public <init>(android.content.Context, androidx.work.WorkerParameters);
+# }
 
 # Jika memakai kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
@@ -293,7 +295,7 @@ jobs:
             exit 1
           fi
           (yes || true) | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "platforms;android-36.1" "build-tools;36.0.0"
           echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
 
@@ -308,8 +310,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore
+          set -euo pipefail
+          umask 077
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              tr -d '[:space:]' < debug.keystore.base64 | base64 -d > debug.keystore
+            else
+              keytool -genkeypair \
+                -keystore debug.keystore \
+                -alias androiddebugkey \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -storepass android -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US" >/dev/null 2>&1
+            fi
           fi
 
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
@@ -413,6 +426,11 @@ jobs:
             dist/CHECKSUMS.txt
             dist/CERT_FINGERPRINT.txt
           generate_release_notes: true
+
+      - name: Clean Private Key on Runner
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/upload.jks"
 ```
 
 ---

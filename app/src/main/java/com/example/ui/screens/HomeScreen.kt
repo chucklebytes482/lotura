@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.FolderCopy
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.OpenInNew
@@ -36,7 +35,9 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,7 +53,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.db.DeletePolicy
 import com.example.data.db.SyncPairEntity
 import com.example.data.secure.AppPrefs
 import com.example.ui.components.CompactSearchBar
@@ -74,7 +74,7 @@ fun HomeScreen(
     onOpenDriveSheet: () -> Unit,
     onOpenWebGuide: () -> Unit,
     onOpenPairDetail: (Long) -> Unit,
-    onSyncSelectedPairs: (List<Long>) -> Unit,
+    onSyncPair: (Long) -> Unit,
     onDeleteSelectedPairs: (List<SyncPairEntity>) -> Unit,
     onAddPairClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -96,7 +96,8 @@ fun HomeScreen(
                 it.name.contains(q, ignoreCase = true) ||
                     it.localPath.contains(q, ignoreCase = true) ||
                     it.driveFolderName.contains(q, ignoreCase = true) ||
-                    it.githubRepo.contains(q, ignoreCase = true)
+                    it.githubRepo.contains(q, ignoreCase = true) ||
+                    it.githubSubfolder.contains(q, ignoreCase = true)
             }
         }
     }
@@ -114,14 +115,11 @@ fun HomeScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Prioritas #1: Sinkronisasi
+            // Prioritas #1: Kartu Status Akun (tanpa jadwal & tanpa tombol sinkron global)
             item(key = "drive_status_card") {
-                val latestDriveSync = pairs.maxOfOrNull { it.lastDriveSyncAt } ?: 0L
-                DriveQuickStatusCard(
+                AccountQuickStatusCard(
                     appPrefs = appPrefs,
-                    lastSyncedAtMillis = latestDriveSync,
                     isOnline = isOnline,
-                    isAnySyncing = syncingPairIds.isNotEmpty(),
                     onClick = onOpenDriveSheet
                 )
             }
@@ -142,10 +140,7 @@ fun HomeScreen(
                     SelectionActionBar(
                         selectedCount = selectedIds.size,
                         onSelectAll = { selectedIds = filteredPairs.map { it.id }.toSet() },
-                        onMoveSelected = {
-                            onSyncSelectedPairs(selectedIds.toList())
-                            selectedIds = emptySet()
-                        },
+                        onMoveSelected = null,
                         onDeleteSelected = {
                             val toDelete = pairs.filter { it.id in selectedIds }
                             onDeleteSelectedPairs(toDelete)
@@ -179,7 +174,9 @@ fun HomeScreen(
                     SyncPairCard(
                         pair = pair,
                         isSelected = isSelected,
+                        selectionMode = selectionMode,
                         isSyncing = isSyncing,
+                        onSyncClick = { onSyncPair(pair.id) },
                         onClick = {
                             if (selectionMode) {
                                 selectedIds = if (isSelected) selectedIds - pair.id else selectedIds + pair.id
@@ -193,6 +190,80 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AccountQuickStatusCard(
+    appPrefs: AppPrefs,
+    isOnline: Boolean,
+    onClick: () -> Unit
+) {
+    val dotColor = when {
+        !appPrefs.driveConnected -> AmberPending
+        !isOnline -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.secondary
+    }
+
+    val subtitleText = when {
+        !appPrefs.driveConnected -> "Belum terhubung"
+        !isOnline -> "Offline"
+        else -> appPrefs.googleEmail.ifBlank { "Terhubung" }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .testTag("home_drive_status_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (appPrefs.driveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                    contentDescription = "Status Google Drive",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "Google Drive",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            StatusPill(
+                label = if (appPrefs.driveConnected) "Aktif" else "Off",
+                dotColor = dotColor
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Buka status akun Google Drive",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
@@ -288,112 +359,20 @@ private fun StoragePermissionBanner(onGrantClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun DriveQuickStatusCard(
-    appPrefs: AppPrefs,
-    lastSyncedAtMillis: Long,
-    isOnline: Boolean,
-    isAnySyncing: Boolean,
-    onClick: () -> Unit
-) {
-    val dotColor = when {
-        !appPrefs.driveConnected -> AmberPending
-        !isOnline -> MaterialTheme.colorScheme.error
-        isAnySyncing -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.secondary
-    }
-
-    val subtitleText = when {
-        !appPrefs.driveConnected -> "Hubungkan"
-        isAnySyncing -> "Menyinkronkan..."
-        lastSyncedAtMillis > 0L -> "Tersinkronisasi • ${formatRelativeTime(lastSyncedAtMillis)}"
-        else -> "Belum disinkronkan"
-    }
-
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .testTag("home_drive_status_card")
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isAnySyncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.5.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                } else {
-                    Icon(
-                        imageVector = if (appPrefs.driveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                        contentDescription = "Sinkronisasi",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "Sinkronisasi",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitleText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            StatusPill(
-                label = when {
-                    isAnySyncing -> "Sync"
-                    appPrefs.driveConnected -> "Aktif"
-                    else -> "Off"
-                },
-                dotColor = dotColor
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Buka Sinkronisasi",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SyncPairCard(
     pair: SyncPairEntity,
     isSelected: Boolean,
+    selectionMode: Boolean,
     isSyncing: Boolean,
+    onSyncClick: () -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val isGithub = pair.isGithubPair
     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    val statusColor = when {
-        isSyncing -> MaterialTheme.colorScheme.primary
-        !pair.lastError.isNullOrBlank() -> MaterialTheme.colorScheme.error
-        pair.lastDriveSyncAt > 0L || pair.lastGithubSyncAt > 0L -> MaterialTheme.colorScheme.secondary
-        else -> AmberPending
-    }
+    val sourceAccent = if (isGithub) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
 
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -426,13 +405,11 @@ private fun SyncPairCard(
                             contentDescription = "Terpilih",
                             tint = MaterialTheme.colorScheme.primary
                         )
-                    } else if (isSyncing) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         Icon(
-                            imageVector = Icons.Default.FolderCopy,
-                            contentDescription = pair.name,
-                            tint = MaterialTheme.colorScheme.primary
+                            imageVector = if (isGithub) Icons.Default.Code else Icons.Default.CloudDone,
+                            contentDescription = if (isGithub) "GitHub" else "Google Drive",
+                            tint = sourceAccent
                         )
                     }
                 }
@@ -452,10 +429,31 @@ private fun SyncPairCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                StatusPill(
-                    label = if (pair.resolvedDeletePolicy == DeletePolicy.SAFE_NO_DELETE) "Aman" else "2 Arah",
-                    dotColor = statusColor
-                )
+
+                FilledTonalIconButton(
+                    onClick = onSyncClick,
+                    enabled = !isSyncing && !selectionMode,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("pair_sync_button_${pair.id}")
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Sinkronkan ${pair.name}"
+                        )
+                    }
+                }
             }
 
             Row(
@@ -463,34 +461,41 @@ private fun SyncPairCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.CloudDone,
-                    contentDescription = "Drive",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = pair.driveFolderName.ifBlank { "Drive belum dipilih" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (pair.githubEnabled && pair.githubRepo.isNotBlank()) {
+                if (isGithub) {
                     Icon(
                         imageVector = Icons.Default.Code,
                         contentDescription = "GitHub",
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(16.dp)
                     )
+                    val ghLabel = buildString {
+                        append("${pair.githubOwner}/${pair.githubRepo}")
+                        if (pair.githubSubfolder.isNotBlank()) {
+                            append(" / ${pair.githubSubfolder}")
+                        }
+                    }
                     Text(
-                        text = "${pair.githubOwner}/${pair.githubRepo}",
+                        text = ghLabel,
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = "Google Drive",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = pair.driveFolderName.ifBlank { "Google Drive" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }

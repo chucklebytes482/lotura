@@ -8,7 +8,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -25,10 +24,7 @@ private val Context.syncPrefsDataStore: DataStore<Preferences> by preferencesDat
 data class AppPrefs(
     val googleEmail: String = "",
     val googleDisplayName: String = "",
-    val driveConnected: Boolean = false,
-    val autoSyncEnabled: Boolean = true,
-    val syncIntervalMinutes: Int = 15,
-    val realtimeWatcherEnabled: Boolean = true
+    val driveConnected: Boolean = false
 )
 
 class SecureTokenStore(private val context: Context) {
@@ -42,9 +38,6 @@ class SecureTokenStore(private val context: Context) {
         private val KEY_GOOGLE_EMAIL = stringPreferencesKey("google_email")
         private val KEY_GOOGLE_NAME = stringPreferencesKey("google_name")
         private val KEY_DRIVE_CONNECTED = booleanPreferencesKey("drive_connected")
-        private val KEY_AUTO_SYNC = booleanPreferencesKey("auto_sync_enabled")
-        private val KEY_SYNC_INTERVAL_MINUTES = intPreferencesKey("sync_interval_minutes")
-        private val KEY_REALTIME_WATCHER = booleanPreferencesKey("realtime_watcher_enabled")
         private val KEY_DRIVE_ACCESS_TOKEN_ENC = stringPreferencesKey("drive_access_token_enc")
 
         private fun githubPatKey(accountId: Long) = stringPreferencesKey("gh_pat_enc_$accountId")
@@ -54,10 +47,7 @@ class SecureTokenStore(private val context: Context) {
         AppPrefs(
             googleEmail = prefs[KEY_GOOGLE_EMAIL].orEmpty(),
             googleDisplayName = prefs[KEY_GOOGLE_NAME].orEmpty(),
-            driveConnected = prefs[KEY_DRIVE_CONNECTED] ?: false,
-            autoSyncEnabled = prefs[KEY_AUTO_SYNC] ?: true,
-            syncIntervalMinutes = prefs[KEY_SYNC_INTERVAL_MINUTES] ?: 15,
-            realtimeWatcherEnabled = prefs[KEY_REALTIME_WATCHER] ?: true
+            driveConnected = prefs[KEY_DRIVE_CONNECTED] ?: false
         )
     }
 
@@ -92,25 +82,6 @@ class SecureTokenStore(private val context: Context) {
             prefs.remove(KEY_GOOGLE_NAME)
             prefs[KEY_DRIVE_CONNECTED] = false
             prefs.remove(KEY_DRIVE_ACCESS_TOKEN_ENC)
-        }
-    }
-
-    suspend fun setAutoSyncEnabled(enabled: Boolean) {
-        context.syncPrefsDataStore.edit { prefs ->
-            prefs[KEY_AUTO_SYNC] = enabled
-        }
-    }
-
-    suspend fun setSyncIntervalMinutes(minutes: Int) {
-        val allowed = if (minutes in setOf(5, 15, 240, 1440)) minutes else 15
-        context.syncPrefsDataStore.edit { prefs ->
-            prefs[KEY_SYNC_INTERVAL_MINUTES] = allowed
-        }
-    }
-
-    suspend fun setRealtimeWatcherEnabled(enabled: Boolean) {
-        context.syncPrefsDataStore.edit { prefs ->
-            prefs[KEY_REALTIME_WATCHER] = enabled
         }
     }
 

@@ -79,9 +79,6 @@ class SyncRepository(
     suspend fun getDriveAccessToken(): String? = secureStore.getDriveAccessToken()
     suspend fun clearGoogleAccount() = secureStore.clearGoogleAccount()
     suspend fun getAppPrefsSnapshot(): AppPrefs = secureStore.getAppPrefsSnapshot()
-    suspend fun setAutoSyncEnabled(enabled: Boolean) = secureStore.setAutoSyncEnabled(enabled)
-    suspend fun setSyncIntervalMinutes(minutes: Int) = secureStore.setSyncIntervalMinutes(minutes)
-    suspend fun setRealtimeWatcherEnabled(enabled: Boolean) = secureStore.setRealtimeWatcherEnabled(enabled)
 
     suspend fun addLog(
         pairId: Long? = null,

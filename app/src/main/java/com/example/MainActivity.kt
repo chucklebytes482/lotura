@@ -1,10 +1,7 @@
 package com.example
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,7 +47,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -120,7 +116,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     var showDriveSheet by remember { mutableStateOf(false) }
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
 
-    // Refresh storage permission & network state when returning from Android Settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -132,24 +127,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Request POST_NOTIFICATIONS runtime permission on Android 13+
-    val notificationPermLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> }
-
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
-
-    // Google AuthorizationClient resolution launcher
     val driveAuthResolutionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { activityResult ->
@@ -334,7 +311,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                         }
                     },
                     onOpenPairDetail = { id -> navController.navigate(Routes.pairDetail(id)) },
-                    onSyncSelectedPairs = { ids -> ids.forEach { viewModel.syncPairNow(it) } },
+                    onSyncPair = { id -> viewModel.syncPairNow(id) },
                     onDeleteSelectedPairs = { selected -> selected.forEach { viewModel.deletePair(it) } },
                     onAddPairClick = { navController.navigate(Routes.PAIR_CREATE) }
                 )
@@ -350,9 +327,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     githubAccountError = uiState.githubAccountError,
                     onConnectGoogle = startGoogleDriveAuth,
                     onDisconnectGoogle = { viewModel.disconnectGoogleAccount() },
-                    onAddGithubAccount = { label, pat, onOk -> viewModel.addGithubAccount(label, pat, onOk) },
-                    onDeleteGithubAccount = { viewModel.deleteGithubAccount(it) },
-                    onToggleRealtimeWatcher = { viewModel.setRealtimeWatcherEnabled(it) }
+                    onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
+                    onDeleteGithubAccount = { viewModel.deleteGithubAccount(it) }
                 )
             }
 
@@ -369,9 +345,14 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     githubAccounts = githubAccounts,
                     driveBrowser = uiState.driveBrowser,
                     githubBrowser = uiState.githubBrowser,
+                    githubFolderBrowser = uiState.githubFolderBrowser,
                     onOpenDriveFolder = { id, name -> viewModel.openDriveFolder(id, name) },
                     onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
                     onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
+                    onLoadGithubFolders = { accId, owner, repo, branch ->
+                        viewModel.loadGithubFolders(accId, owner, repo, branch)
+                    },
+                    onOpenGithubFolderPath = { path -> viewModel.openGithubFolderPath(path) },
                     onSavePair = { pair ->
                         viewModel.savePair(pair) {
                             navController.popBackStack()
@@ -392,9 +373,14 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     githubAccounts = githubAccounts,
                     driveBrowser = uiState.driveBrowser,
                     githubBrowser = uiState.githubBrowser,
+                    githubFolderBrowser = uiState.githubFolderBrowser,
                     onOpenDriveFolder = { id, name -> viewModel.openDriveFolder(id, name) },
                     onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
                     onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
+                    onLoadGithubFolders = { accId, owner, repo, branch ->
+                        viewModel.loadGithubFolders(accId, owner, repo, branch)
+                    },
+                    onOpenGithubFolderPath = { path -> viewModel.openGithubFolderPath(path) },
                     onSavePair = { pair ->
                         viewModel.savePair(pair) {
                             navController.popBackStack()
@@ -416,8 +402,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     pair = pair,
                     trackedFiles = trackedFiles,
                     logs = pairLogs,
-                    isSyncing = pairId in uiState.syncingPairIds,
-                    onSyncNow = { includeGh -> viewModel.syncPairNow(pairId, includeGh) },
                     onOpenExplorer = { navController.navigate(Routes.fileExplorer(pairId)) },
                     onEditPair = { navController.navigate(Routes.editPair(pairId)) },
                     onDeletePair = { target ->
@@ -458,18 +442,12 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     onConnectGoogleClick = startGoogleDriveAuth
                 )
             } else {
-                val latestDriveSync = pairs.maxOfOrNull { it.lastDriveSyncAt } ?: 0L
                 DriveSyncConnectedSheetContent(
                     userEmail = appPrefs.googleEmail,
-                    selectedIntervalMinutes = appPrefs.syncIntervalMinutes,
-                    lastSyncedAtMillis = latestDriveSync,
-                    isSyncing = uiState.isGlobalSyncing || uiState.syncingPairIds.isNotEmpty(),
-                    onSelectInterval = { viewModel.setSyncIntervalMinutes(it) },
                     onDisconnect = {
                         viewModel.disconnectGoogleAccount()
                         showDriveSheet = false
-                    },
-                    onSyncNow = { viewModel.syncAllPairsNow() }
+                    }
                 )
             }
         }

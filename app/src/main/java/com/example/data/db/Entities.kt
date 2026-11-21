@@ -9,6 +9,11 @@ enum class DeletePolicy {
     SAFE_NO_DELETE
 }
 
+enum class SyncSourceType {
+    DRIVE,
+    GITHUB
+}
+
 @Entity(tableName = "sync_pairs")
 data class SyncPairEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -18,14 +23,14 @@ data class SyncPairEntity(
     val driveFolderName: String,
     val deletePolicy: String = DeletePolicy.TWO_WAY.name,
     val ignorePatterns: String = DEFAULT_IGNORE_PATTERNS,
-    val autoSyncDrive: Boolean = true,
+    val autoSyncDrive: Boolean = false,
     val githubEnabled: Boolean = false,
     val githubAccountId: Long? = null,
     val githubOwner: String = "",
     val githubRepo: String = "",
     val githubBranch: String = "main",
     val githubSubfolder: String = "",
-    val githubIntervalMinutes: Int = 15,
+    val githubIntervalMinutes: Int = 0,
     val lastDriveSyncAt: Long = 0L,
     val lastGithubSyncAt: Long = 0L,
     val lastStatus: String = "Siap disinkronkan",
@@ -33,7 +38,16 @@ data class SyncPairEntity(
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val resolvedDeletePolicy: DeletePolicy
-        get() = runCatching { DeletePolicy.valueOf(deletePolicy) }.getOrDefault(DeletePolicy.TWO_WAY)
+        get() = DeletePolicy.TWO_WAY
+
+    val sourceType: SyncSourceType
+        get() = if (githubEnabled && githubRepo.isNotBlank()) SyncSourceType.GITHUB else SyncSourceType.DRIVE
+
+    val isGithubPair: Boolean
+        get() = sourceType == SyncSourceType.GITHUB
+
+    val isDrivePair: Boolean
+        get() = sourceType == SyncSourceType.DRIVE
 
     companion object {
         const val DEFAULT_IGNORE_PATTERNS = ".git/\n.DS_Store\nThumbs.db\n*.tmp\n*.swp\n*~\n.trash/"

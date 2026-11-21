@@ -11,65 +11,55 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.data.PairPathHelper
 import com.example.data.db.DeletePolicy
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.SyncPairEntity
+import com.example.data.db.SyncSourceType
 import com.example.ui.DriveBrowserUiState
 import com.example.ui.GithubBrowserUiState
+import com.example.ui.GithubFolderBrowserUiState
 import com.example.ui.theme.JetBrainsMonoFamily
 import java.io.File
 
@@ -80,9 +70,12 @@ fun PairEditorScreen(
     githubAccounts: List<GithubAccountEntity>,
     driveBrowser: DriveBrowserUiState,
     githubBrowser: GithubBrowserUiState,
+    githubFolderBrowser: GithubFolderBrowserUiState,
     onOpenDriveFolder: (parentId: String, folderName: String?) -> Unit,
     onCreateDriveFolder: (String) -> Unit,
     onLoadGithubRepos: (Long) -> Unit,
+    onLoadGithubFolders: (accountId: Long, owner: String, repo: String, branch: String) -> Unit,
+    onOpenGithubFolderPath: (String) -> Unit,
     onSavePair: (SyncPairEntity) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -91,34 +84,71 @@ fun PairEditorScreen(
 
     val defaultBaseDir = remember {
         runCatching {
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "Lotura").absolutePath
-        }.getOrDefault("/storage/emulated/0/Documents/Lotura")
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
+        }.getOrDefault("/storage/emulated/0/Documents")
     }
 
-    var name by remember(existingPair) { mutableStateOf(existingPair?.name ?: "") }
-    var localPath by remember(existingPair) { mutableStateOf(existingPair?.localPath ?: defaultBaseDir) }
+    var sourceType by remember(existingPair) {
+        mutableStateOf(existingPair?.sourceType ?: SyncSourceType.DRIVE)
+    }
+
+    // Drive source state
     var driveFolderId by remember(existingPair) { mutableStateOf(existingPair?.driveFolderId ?: "") }
     var driveFolderName by remember(existingPair) { mutableStateOf(existingPair?.driveFolderName ?: "") }
-    var deletePolicy by remember(existingPair) { mutableStateOf(existingPair?.resolvedDeletePolicy ?: DeletePolicy.TWO_WAY) }
-    var autoSyncDrive by remember(existingPair) { mutableStateOf(existingPair?.autoSyncDrive ?: true) }
-    var ignorePatterns by remember(existingPair) {
-        mutableStateOf(existingPair?.ignorePatterns ?: SyncPairEntity.DEFAULT_IGNORE_PATTERNS)
-    }
 
-    var githubEnabled by remember(existingPair) { mutableStateOf(existingPair?.githubEnabled ?: false) }
-    var githubAccountId by remember(existingPair) {
+    // GitHub source state
+    var githubAccountId by remember(existingPair, githubAccounts) {
         mutableStateOf(existingPair?.githubAccountId ?: githubAccounts.firstOrNull()?.id)
     }
     var githubOwner by remember(existingPair) { mutableStateOf(existingPair?.githubOwner ?: "") }
     var githubRepo by remember(existingPair) { mutableStateOf(existingPair?.githubRepo ?: "") }
     var githubBranch by remember(existingPair) { mutableStateOf(existingPair?.githubBranch ?: "main") }
     var githubSubfolder by remember(existingPair) { mutableStateOf(existingPair?.githubSubfolder ?: "") }
-    var githubInterval by remember(existingPair) { mutableIntStateOf(existingPair?.githubIntervalMinutes ?: 15) }
+
+    // Local device base directory (folder name is auto-matched & auto-created from source)
+    var localBasePath by remember(existingPair) {
+        val initial = if (existingPair != null) {
+            val existingSourceFolder = if (existingPair.isGithubPair) {
+                PairPathHelper.sourceFolderNameForGithub(existingPair.githubSubfolder)
+            } else {
+                PairPathHelper.sourceFolderNameForDrive(existingPair.driveFolderName)
+            }
+            PairPathHelper.extractBaseDirForEditing(existingPair.localPath, existingSourceFolder)
+        } else {
+            defaultBaseDir
+        }
+        mutableStateOf(initial)
+    }
+
+    val sourceFolderName = remember(sourceType, driveFolderName, githubSubfolder) {
+        if (sourceType == SyncSourceType.DRIVE) {
+            PairPathHelper.sourceFolderNameForDrive(driveFolderName)
+        } else {
+            PairPathHelper.sourceFolderNameForGithub(githubSubfolder)
+        }
+    }
+
+    val autoPairName = remember(sourceType, driveFolderName, githubRepo, githubSubfolder) {
+        if (sourceType == SyncSourceType.DRIVE) {
+            PairPathHelper.pairNameForDrive(driveFolderName)
+        } else {
+            PairPathHelper.pairNameForGithub(githubRepo, githubSubfolder)
+        }
+    }
+
+    val resolvedLocalPath = remember(localBasePath, sourceFolderName) {
+        PairPathHelper.resolveLocalTargetPath(localBasePath, sourceFolderName)
+    }
+
+    val localFolderExists = remember(resolvedLocalPath) {
+        resolvedLocalPath.isNotBlank() && File(resolvedLocalPath).exists()
+    }
 
     var validationError by remember { mutableStateOf<String?>(null) }
     var showLocalPicker by remember { mutableStateOf(false) }
     var showDrivePicker by remember { mutableStateOf(false) }
     var showGithubRepoPicker by remember { mutableStateOf(false) }
+    var showGithubFolderPicker by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -134,186 +164,89 @@ fun PairEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Section 1: Folder Perangkat
-            EditorSectionCard(title = "1. Folder Perangkat") {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Pasangan") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pair_name_input")
-                )
-
-                OutlinedTextField(
-                    value = localPath,
-                    onValueChange = { localPath = it },
-                    label = { Text("Path Folder") },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = JetBrainsMonoFamily),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pair_local_path_input")
-                )
-
-                OutlinedButton(
-                    onClick = { showLocalPicker = true },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("pair_browse_local_button")
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Pilih Folder")
-                }
-            }
-
-            // Section 2: Google Drive
-            EditorSectionCard(title = "2. Google Drive") {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudQueue,
-                            contentDescription = "Folder Drive",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = driveFolderName.ifBlank { "Belum dipilih" },
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (driveFolderId.isNotBlank()) {
-                                Text(
-                                    text = driveFolderId,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        onOpenDriveFolder("root", "Drive Saya")
-                        showDrivePicker = true
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("pair_pick_drive_folder_button")
-                ) {
-                    Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Pilih Folder Drive")
-                }
-
-                OutlinedTextField(
-                    value = driveFolderId,
-                    onValueChange = {
-                        driveFolderId = it.trim()
-                        if (driveFolderName.isBlank() && it.isNotBlank()) {
-                            driveFolderName = "Folder Drive ($it)"
-                        }
-                    },
-                    label = { Text("Folder ID Drive") },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pair_drive_id_input")
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Pantau Real-Time",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = autoSyncDrive,
-                        onCheckedChange = { autoSyncDrive = it },
-                        modifier = Modifier.testTag("pair_auto_drive_switch")
-                    )
-                }
-            }
-
-            // Section 3: Kebijakan Penghapusan & Ignore Rules
-            EditorSectionCard(title = "3. Kebijakan Hapus") {
+            // Langkah 1: Pilih Sumber (Google Drive atau 1 Folder GitHub)
+            EditorSectionCard(title = "1. Pilih Sumber") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    PolicyChoiceCard(
-                        title = "Dua Arah",
-                        selected = deletePolicy == DeletePolicy.TWO_WAY,
-                        onClick = { deletePolicy = DeletePolicy.TWO_WAY },
-                        testTag = "policy_two_way_card",
+                    SourceTypeChoiceCard(
+                        title = "Google Drive",
+                        icon = Icons.Default.CloudQueue,
+                        selected = sourceType == SyncSourceType.DRIVE,
+                        onClick = {
+                            sourceType = SyncSourceType.DRIVE
+                            validationError = null
+                        },
+                        testTag = "source_type_drive_card",
                         modifier = Modifier.weight(1f)
                     )
-                    PolicyChoiceCard(
-                        title = "Mode Aman",
-                        selected = deletePolicy == DeletePolicy.SAFE_NO_DELETE,
-                        onClick = { deletePolicy = DeletePolicy.SAFE_NO_DELETE },
-                        testTag = "policy_safe_card",
+                    SourceTypeChoiceCard(
+                        title = "GitHub",
+                        icon = Icons.Default.Code,
+                        selected = sourceType == SyncSourceType.GITHUB,
+                        onClick = {
+                            sourceType = SyncSourceType.GITHUB
+                            validationError = null
+                        },
+                        testTag = "source_type_github_card",
                         modifier = Modifier.weight(1f)
                     )
                 }
 
-                OutlinedTextField(
-                    value = ignorePatterns,
-                    onValueChange = { ignorePatterns = it },
-                    label = { Text("Pengecualian") },
-                    minLines = 3,
-                    maxLines = 6,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pair_ignore_input")
-                )
-            }
+                if (sourceType == SyncSourceType.DRIVE) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudQueue,
+                                contentDescription = "Folder Google Drive",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = driveFolderName.ifBlank { "Folder Drive belum dipilih" },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (driveFolderId.isNotBlank()) {
+                                    Text(
+                                        text = driveFolderId,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-            // Section 4: GitHub Opsional
-            EditorSectionCard(title = "4. GitHub") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Tautkan Repositori",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = githubEnabled,
-                        onCheckedChange = { githubEnabled = it },
-                        modifier = Modifier.testTag("pair_github_switch")
-                    )
-                }
-
-                if (githubEnabled) {
+                    OutlinedButton(
+                        onClick = {
+                            onOpenDriveFolder("root", "Drive Saya")
+                            showDrivePicker = true
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("pair_pick_drive_folder_button")
+                    ) {
+                        Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (driveFolderId.isBlank()) "Pilih Folder Google Drive" else "Ganti Folder Google Drive")
+                    }
+                } else {
                     if (githubAccounts.isEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -328,11 +261,6 @@ fun PairEditorScreen(
                             )
                         }
                     } else {
-                        Text(
-                            text = "Pilih Akun GitHub",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -341,10 +269,14 @@ fun PairEditorScreen(
                                 FilterChip(
                                     selected = githubAccountId == acc.id,
                                     onClick = {
-                                        githubAccountId = acc.id
-                                        if (githubOwner.isBlank()) githubOwner = acc.username
+                                        if (githubAccountId != acc.id) {
+                                            githubAccountId = acc.id
+                                            githubOwner = ""
+                                            githubRepo = ""
+                                            githubSubfolder = ""
+                                        }
                                     },
-                                    label = { Text("@${acc.username} (${acc.label})") },
+                                    label = { Text("@${acc.username}") },
                                     modifier = Modifier.testTag("select_gh_acc_${acc.id}")
                                 )
                             }
@@ -364,82 +296,135 @@ fun PairEditorScreen(
                             ) {
                                 Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Muat & Pilih Repositori dari GitHub")
+                                Text(
+                                    text = if (githubRepo.isBlank()) {
+                                        "Pilih Repositori GitHub"
+                                    } else {
+                                        "$githubOwner/$githubRepo ($githubBranch)"
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        if (githubAccountId != null && githubOwner.isNotBlank() && githubRepo.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = "Folder GitHub",
+                                        tint = MaterialTheme.colorScheme.secondary
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = githubSubfolder.ifBlank { "Folder repo belum dipilih" },
+                                            style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "$githubOwner/$githubRepo",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    onLoadGithubFolders(githubAccountId!!, githubOwner, githubRepo, githubBranch)
+                                    showGithubFolderPicker = true
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("pair_pick_github_folder_button")
+                            ) {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (githubSubfolder.isBlank()) "Pilih 1 Folder di Repo" else "Ganti Folder di Repo")
                             }
                         }
                     }
+                }
 
+                if (autoPairName.isNotBlank()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
-                            value = githubOwner,
-                            onValueChange = { githubOwner = it.trim() },
-                            label = { Text("Owner") },
-                            placeholder = { Text("username") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pair_github_owner_input")
+                        Text(
+                            text = "Nama Pasangan",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedTextField(
-                            value = githubRepo,
-                            onValueChange = { githubRepo = it.trim() },
-                            label = { Text("Nama Repo") },
-                            placeholder = { Text("catatan-repo") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pair_github_repo_input")
+                        Text(
+                            text = autoPairName,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("auto_pair_name_preview")
                         )
                     }
+                }
+            }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = githubBranch,
-                            onValueChange = { githubBranch = it.trim() },
-                            label = { Text("Branch") },
-                            placeholder = { Text("main") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pair_github_branch_input")
-                        )
-                        OutlinedTextField(
-                            value = githubSubfolder,
-                            onValueChange = { githubSubfolder = it.trim() },
-                            label = { Text("Subfolder (Opsional)") },
-                            placeholder = { Text("docs/catatan") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("pair_github_subfolder_input")
-                        )
-                    }
+            // Langkah 2: Pilih Jalur di Perangkat (nama folder disamakan & dibuat otomatis)
+            EditorSectionCard(title = "2. Jalur di Perangkat") {
+                OutlinedButton(
+                    onClick = { showLocalPicker = true },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("pair_browse_local_button")
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Pilih Jalur di Perangkat")
+                }
 
-                    Text(
-                        text = "Interval Commit",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        listOf(15, 30, 60, 180).forEach { mins ->
-                            FilterChip(
-                                selected = githubInterval == mins,
-                                onClick = { githubInterval = mins },
-                                label = { Text(if (mins < 60) "$mins menit" else "${mins / 60} jam") },
-                                modifier = Modifier.testTag("gh_interval_$mins")
+                        Text(
+                            text = if (sourceFolderName.isNotBlank()) "Folder Tujuan" else "Jalur Dasar",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = resolvedLocalPath.ifBlank { localBasePath },
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.testTag("pair_resolved_local_path")
+                        )
+                        if (sourceFolderName.isNotBlank()) {
+                            Text(
+                                text = if (localFolderExists) "Folder sudah ada" else "Folder dibuat otomatis saat disimpan",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (localFolderExists) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -457,39 +442,46 @@ fun PairEditorScreen(
 
             Button(
                 onClick = {
-                    val trimmedName = name.trim()
-                    val trimmedPath = localPath.trim()
+                    val isDrive = sourceType == SyncSourceType.DRIVE
                     when {
-                        trimmedName.isEmpty() -> validationError = "Nama pasangan folder wajib diisi."
-                        trimmedPath.isEmpty() -> validationError = "Path folder lokal wajib diisi."
-                        githubEnabled && githubAccountId == null -> validationError = "Pilih akun GitHub terlebih dahulu."
-                        githubEnabled && (githubOwner.isBlank() || githubRepo.isBlank()) -> {
-                            validationError = "Owner dan nama repositori GitHub wajib diisi."
+                        isDrive && (driveFolderId.isBlank() || driveFolderName.isBlank()) -> {
+                            validationError = "Pilih folder Google Drive terlebih dahulu."
+                        }
+                        !isDrive && githubAccountId == null -> {
+                            validationError = "Pilih akun GitHub terlebih dahulu."
+                        }
+                        !isDrive && (githubOwner.isBlank() || githubRepo.isBlank()) -> {
+                            validationError = "Pilih repositori GitHub terlebih dahulu."
+                        }
+                        !isDrive && githubSubfolder.trim().trim('/').isBlank() -> {
+                            validationError = "Pilih 1 folder di dalam repositori GitHub."
+                        }
+                        localBasePath.isBlank() || resolvedLocalPath.isBlank() -> {
+                            validationError = "Pilih jalur folder di perangkat terlebih dahulu."
                         }
                         else -> {
                             validationError = null
-                            val updated = (existingPair ?: SyncPairEntity(
-                                name = trimmedName,
-                                localPath = trimmedPath,
-                                driveFolderId = driveFolderId,
-                                driveFolderName = driveFolderName
-                            )).copy(
-                                name = trimmedName,
-                                localPath = trimmedPath,
-                                driveFolderId = driveFolderId,
-                                driveFolderName = driveFolderName.ifBlank {
-                                    if (driveFolderId.isNotBlank()) "Folder Drive" else ""
-                                },
-                                deletePolicy = deletePolicy.name,
-                                autoSyncDrive = autoSyncDrive,
-                                ignorePatterns = ignorePatterns,
-                                githubEnabled = githubEnabled,
-                                githubAccountId = if (githubEnabled) githubAccountId else null,
-                                githubOwner = if (githubEnabled) githubOwner.trim() else "",
-                                githubRepo = if (githubEnabled) githubRepo.trim() else "",
-                                githubBranch = if (githubEnabled) githubBranch.trim().ifBlank { "main" } else "main",
-                                githubSubfolder = if (githubEnabled) githubSubfolder.trim().trim('/') else "",
-                                githubIntervalMinutes = githubInterval
+                            val cleanSubfolder = githubSubfolder.trim().trim('/')
+                            val baseEntity = existingPair ?: SyncPairEntity(
+                                name = autoPairName,
+                                localPath = resolvedLocalPath,
+                                driveFolderId = if (isDrive) driveFolderId else "",
+                                driveFolderName = if (isDrive) driveFolderName else ""
+                            )
+                            val updated = baseEntity.copy(
+                                name = autoPairName,
+                                localPath = resolvedLocalPath,
+                                driveFolderId = if (isDrive) driveFolderId else "",
+                                driveFolderName = if (isDrive) driveFolderName else "",
+                                deletePolicy = DeletePolicy.TWO_WAY.name,
+                                autoSyncDrive = false,
+                                githubEnabled = !isDrive,
+                                githubAccountId = if (!isDrive) githubAccountId else null,
+                                githubOwner = if (!isDrive) githubOwner.trim() else "",
+                                githubRepo = if (!isDrive) githubRepo.trim() else "",
+                                githubBranch = if (!isDrive) githubBranch.trim().ifBlank { "main" } else "main",
+                                githubSubfolder = if (!isDrive) cleanSubfolder else "",
+                                githubIntervalMinutes = 0
                             )
                             onSavePair(updated)
                         }
@@ -515,13 +507,10 @@ fun PairEditorScreen(
 
     if (showLocalPicker) {
         LocalFolderPickerDialog(
-            initialPath = localPath,
+            initialPath = localBasePath,
             onDismiss = { showLocalPicker = false },
             onSelectPath = { chosen ->
-                localPath = chosen
-                if (name.isBlank()) {
-                    name = File(chosen).name.ifBlank { "Folder Lokal" }
-                }
+                localBasePath = chosen
                 showLocalPicker = false
             }
         )
@@ -541,6 +530,7 @@ fun PairEditorScreen(
                 onSelectCurrent = { id, folderName ->
                     driveFolderId = id
                     driveFolderName = folderName
+                    validationError = null
                     showDrivePicker = false
                 }
             )
@@ -548,64 +538,41 @@ fun PairEditorScreen(
     }
 
     if (showGithubRepoPicker) {
-        AlertDialog(
-            onDismissRequest = { showGithubRepoPicker = false },
-            title = { Text("Pilih Repositori GitHub") },
-            text = {
-                when {
-                    githubBrowser.isLoading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    !githubBrowser.error.isNullOrBlank() -> {
-                        Text(githubBrowser.error, color = MaterialTheme.colorScheme.error)
-                    }
-                    githubBrowser.repos.isEmpty() -> {
-                        Text("Tidak ada repositori yang dapat diakses oleh token PAT ini.")
-                    }
-                    else -> {
-                        LazyColumn(
-                            modifier = Modifier.heightIn(max = 320.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(githubBrowser.repos, key = { it.fullName }) { repo ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            githubOwner = repo.owner
-                                            githubRepo = repo.name
-                                            githubBranch = repo.defaultBranch
-                                            showGithubRepoPicker = false
-                                        }
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(repo.fullName, style = MaterialTheme.typography.titleSmall)
-                                        Text(
-                                            text = "Branch: ${repo.defaultBranch} • ${if (repo.isPrivate) "Privat" else "Publik"}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+        GithubRepoPickerDialog(
+            state = githubBrowser,
+            onDismiss = { showGithubRepoPicker = false },
+            onSelectRepo = { repo ->
+                githubOwner = repo.owner
+                githubRepo = repo.name
+                githubBranch = repo.defaultBranch
+                githubSubfolder = ""
+                validationError = null
+                showGithubRepoPicker = false
+                githubAccountId?.let { accId ->
+                    onLoadGithubFolders(accId, repo.owner, repo.name, repo.defaultBranch)
+                    showGithubFolderPicker = true
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showGithubRepoPicker = false }) { Text("Tutup") }
             }
         )
+    }
+
+    if (showGithubFolderPicker) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showGithubFolderPicker = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            GithubFolderPickerSheet(
+                state = githubFolderBrowser,
+                onOpenPath = onOpenGithubFolderPath,
+                onSelectFolder = { chosenFolder ->
+                    githubSubfolder = chosenFolder
+                    validationError = null
+                    showGithubFolderPicker = false
+                }
+            )
+        }
     }
 }
 
@@ -636,8 +603,9 @@ private fun EditorSectionCard(
 }
 
 @Composable
-private fun PolicyChoiceCard(
+private fun SourceTypeChoiceCard(
     title: String,
+    icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
     testTag: String,
@@ -645,7 +613,7 @@ private fun PolicyChoiceCard(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
@@ -656,259 +624,26 @@ private fun PolicyChoiceCard(
             .clickable(onClick = onClick)
             .testTag(testTag)
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .padding(12.dp),
-            contentAlignment = Alignment.Center
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
-    }
-}
-
-@Composable
-private fun LocalFolderPickerDialog(
-    initialPath: String,
-    onDismiss: () -> Unit,
-    onSelectPath: (String) -> Unit
-) {
-    val rootStorage = remember {
-        runCatching { Environment.getExternalStorageDirectory() }.getOrElse { File("/storage/emulated/0") }
-    }
-    var currentDir by remember {
-        val init = File(initialPath)
-        mutableStateOf(if (init.exists() && init.isDirectory) init else rootStorage)
-    }
-    var newFolderName by remember { mutableStateOf("") }
-    var refreshTick by remember { mutableIntStateOf(0) }
-
-    val subdirs = remember(currentDir, refreshTick) {
-        currentDir.listFiles()
-            ?.filter { it.isDirectory && !it.name.startsWith(".") }
-            ?.sortedBy { it.name.lowercase() }
-            .orEmpty()
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (currentDir.parentFile != null && currentDir.absolutePath != rootStorage.absolutePath) {
-                    IconButton(onClick = { currentDir = currentDir.parentFile!! }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Naik folder")
-                    }
-                }
-                Text("Pilih Folder Lokal", maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = currentDir.absolutePath,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newFolderName,
-                        onValueChange = { newFolderName = it },
-                        placeholder = { Text("Folder baru...") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = {
-                            val clean = newFolderName.trim()
-                            if (clean.isNotEmpty()) {
-                                val target = File(currentDir, clean)
-                                if (target.mkdirs() || target.exists()) {
-                                    newFolderName = ""
-                                    currentDir = target
-                                    refreshTick++
-                                }
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.CreateNewFolder, contentDescription = "Buat folder lokal")
-                    }
-                }
-
-                HorizontalDivider()
-
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 240.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (subdirs.isEmpty()) {
-                        item {
-                            Text(
-                                text = "Tidak ada subfolder di direktori ini.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        items(subdirs, key = { it.absolutePath }) { folder ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { currentDir = folder }
-                                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Text(folder.name, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Batal") }
-        },
-        confirmButton = {
-            Button(onClick = { onSelectPath(currentDir.absolutePath) }) {
-                Text("Pilih Folder Ini")
-            }
-        }
-    )
-}
-
-@Composable
-private fun DriveFolderPickerSheet(
-    state: DriveBrowserUiState,
-    onOpenFolder: (parentId: String, folderName: String?) -> Unit,
-    onCreateFolder: (String) -> Unit,
-    onSelectCurrent: (id: String, name: String) -> Unit
-) {
-    var newFolderName by remember { mutableStateOf("") }
-    val currentCrumb = state.breadcrumbs.lastOrNull() ?: ("root" to "Drive Saya")
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Pilih Folder Google Drive", style = MaterialTheme.typography.titleLarge)
-
-        Text(
-            text = state.breadcrumbs.joinToString(" / ") { it.second },
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = newFolderName,
-                onValueChange = { newFolderName = it },
-                placeholder = { Text("Buat folder Drive baru...") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            )
-            Button(
-                onClick = {
-                    if (newFolderName.isNotBlank()) {
-                        onCreateFolder(newFolderName.trim())
-                        newFolderName = ""
-                    }
-                },
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = "Buat folder")
-            }
-        }
-
-        if (state.breadcrumbs.size > 1) {
-            TextButton(
-                onClick = {
-                    val parent = state.breadcrumbs[state.breadcrumbs.size - 2]
-                    onOpenFolder(parent.first, parent.second)
-                }
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Naik ke ${state.breadcrumbs[state.breadcrumbs.size - 2].second}")
-            }
-        }
-
-        when {
-            state.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) { CircularProgressIndicator() }
-            }
-            !state.error.isNullOrBlank() -> {
-                Text(state.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            state.folders.isEmpty() -> {
-                Text(
-                    text = "Folder kosong",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 260.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(state.folders, key = { it.id }) { folder ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenFolder(folder.id, folder.name) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Text(folder.name, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { onSelectCurrent(folder.id, folder.name) }) {
-                                    Text("Pilih")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Button(
-            onClick = { onSelectCurrent(currentCrumb.first, currentCrumb.second) },
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 50.dp)
-        ) {
-            Text("Gunakan \"${currentCrumb.second}\"")
-        }
-        Spacer(Modifier.heightIn(min = 12.dp))
     }
 }

@@ -5,8 +5,6 @@
     <string name="nav_logs">Log</string>
     <string name="action_back">Kembali</string>
     <string name="action_add_pair">Tambah Pasangan</string>
-    <string name="action_sync_now">Sinkronkan Sekarang</string>
-    <string name="action_sync_github">Commit GitHub</string>
     <string name="action_open_explorer">Penjelajah File</string>
     <string name="action_save">Simpan</string>
     <string name="action_delete">Hapus</string>
@@ -15,7 +13,4 @@
     <string name="permission_storage_desc">Aktifkan Akses Semua File.</string>
     <string name="permission_storage_cta">Aktifkan</string>
     <string name="web_guide_url">https://chucklebytes482.github.io/lotura/</string>
-    <string name="notification_channel_sync_name">Sinkronisasi</string>
-    <string name="notification_channel_sync_desc">Pemantau sinkronisasi latar belakang.</string>
-    <string name="notification_sync_running">Sinkronisasi aktif</string>
 </resources>
