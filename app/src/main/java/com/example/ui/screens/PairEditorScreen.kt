@@ -60,7 +60,6 @@ import com.example.ui.DriveBrowserUiState
 import com.example.ui.GithubBrowserUiState
 import com.example.ui.GithubFolderBrowserUiState
 import com.example.ui.theme.JetBrainsMonoFamily
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -116,10 +115,6 @@ fun PairEditorScreen(
 
     val resolvedLocalPath = remember(sourceFolderName) {
         PairPathHelper.resolveDefaultLocalTargetPath(sourceFolderName)
-    }
-
-    val localFolderExists = remember(resolvedLocalPath) {
-        resolvedLocalPath.isNotBlank() && File(resolvedLocalPath).exists()
     }
 
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -339,55 +334,6 @@ fun PairEditorScreen(
                     }
                 }
 
-                if (autoPairName.isNotBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Nama Pasangan",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = autoPairName,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("auto_pair_name_preview")
-                        )
-                    }
-                }
-            }
-
-            // Folder Perangkat Otomatis (/storage/emulated/0/Documents/<nama-folder>)
-            EditorSectionCard(title = "Folder Perangkat (Otomatis)") {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = resolvedLocalPath,
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.testTag("pair_resolved_local_path")
-                        )
-                        if (sourceFolderName.isNotBlank()) {
-                            Text(
-                                text = if (localFolderExists) "Folder sudah ada" else "Dibuat otomatis saat disimpan",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (localFolderExists) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
             }
 
             if (!validationError.isNullOrBlank()) {

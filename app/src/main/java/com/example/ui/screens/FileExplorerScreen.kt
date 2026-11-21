@@ -136,7 +136,7 @@ fun FileExplorerScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = if (currentRelPath.isEmpty()) pair.localPath else "${pair.localPath}/$currentRelPath",
+                            text = if (currentRelPath.isEmpty()) pair.name else "${pair.name} / $currentRelPath",
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
                             color = MaterialTheme.colorScheme.primary
                         )
