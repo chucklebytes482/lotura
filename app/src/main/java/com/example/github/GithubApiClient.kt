@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 interface GithubRemote {
     suspend fun getAuthenticatedUser(pat: String): GithubUserInfo
     suspend fun listRepositories(pat: String): List<GithubRepoSummary>
+    suspend fun listFoldersInRepo(pat: String, owner: String, repo: String, branch: String): List<String>
     suspend fun getBranchHeadCommit(pat: String, owner: String, repo: String, branch: String): Pair<String, String>
     suspend fun listBlobsInSubfolder(
         pat: String,
@@ -108,6 +109,30 @@ class GithubApiClient(
         val commitObj = JSONObject(executeString(commitReq))
         val treeSha = commitObj.getJSONObject("tree").getString("sha")
         commitSha to treeSha
+    }
+
+    override suspend fun listFoldersInRepo(
+        pat: String,
+        owner: String,
+        repo: String,
+        branch: String
+    ): List<String> = withContext(Dispatchers.IO) {
+        val (_, rootTreeSha) = getBranchHeadCommit(pat, owner, repo, branch.ifBlank { "main" })
+        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/trees/$rootTreeSha?recursive=1")
+            .get()
+            .build()
+        val root = JSONObject(executeString(req))
+        val treeArr = root.optJSONArray("tree") ?: return@withContext emptyList()
+        val folders = mutableListOf<String>()
+        for (i in 0 until treeArr.length()) {
+            val item = treeArr.optJSONObject(i) ?: continue
+            if (item.optString("type") != "tree") continue
+            val path = item.optString("path", "").trim().trim('/')
+            if (path.isNotEmpty() && !path.startsWith(".")) {
+                folders.add(path)
+            }
+        }
+        folders.distinct().sortedBy { it.lowercase() }
     }
 
     override suspend fun listBlobsInSubfolder(

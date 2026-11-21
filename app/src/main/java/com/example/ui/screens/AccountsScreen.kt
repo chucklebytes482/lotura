@@ -34,7 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,9 +64,8 @@ fun AccountsScreen(
     githubAccountError: String?,
     onConnectGoogle: () -> Unit,
     onDisconnectGoogle: () -> Unit,
-    onAddGithubAccount: (label: String, pat: String, onSuccess: () -> Unit) -> Unit,
+    onAddGithubAccount: (pat: String, onSuccess: () -> Unit) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onToggleRealtimeWatcher: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showAddGithubDialog by remember { mutableStateOf(false) }
@@ -227,6 +225,7 @@ fun AccountsScreen(
                 }
             } else {
                 items(githubAccounts, key = { it.id }) { account ->
+                    val displayTitle = account.label.ifBlank { account.username }
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surface,
@@ -250,7 +249,7 @@ fun AccountsScreen(
                                 Icon(Icons.Default.Code, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                             }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(account.label, style = MaterialTheme.typography.titleSmall)
+                                Text(displayTitle, style = MaterialTheme.typography.titleSmall)
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -287,44 +286,10 @@ fun AccountsScreen(
                     }
                 }
             }
-
-            item(key = "preferences_card") {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text("Layanan", style = MaterialTheme.typography.titleMedium)
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Pemantau Latar Belakang",
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Switch(
-                                checked = appPrefs.realtimeWatcherEnabled,
-                                onCheckedChange = onToggleRealtimeWatcher,
-                                modifier = Modifier.testTag("accounts_realtime_switch")
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 
     if (showAddGithubDialog) {
-        var label by remember { mutableStateOf("") }
         var pat by remember { mutableStateOf("") }
 
         AlertDialog(
@@ -332,15 +297,6 @@ fun AccountsScreen(
             title = { Text("Tambah Akun GitHub") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = label,
-                        onValueChange = { label = it },
-                        label = { Text("Label Akun") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("github_label_input")
-                    )
                     OutlinedTextField(
                         value = pat,
                         onValueChange = { pat = it },
@@ -370,7 +326,7 @@ fun AccountsScreen(
                 Button(
                     enabled = !isAddingGithubAccount && pat.isNotBlank(),
                     onClick = {
-                        onAddGithubAccount(label, pat) {
+                        onAddGithubAccount(pat) {
                             showAddGithubDialog = false
                         }
                     },

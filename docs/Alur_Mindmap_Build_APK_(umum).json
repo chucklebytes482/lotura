@@ -8,17 +8,17 @@
     "    - Gunakan 1 kata Euskara 3 suku kata tanpa diakritik (com.aistudio.<kata>) & ikon adaptif kustom",
     "    - Gunakan Kotlin + Jetpack Compose + Material 3 dengan tema otomatis mengikuti sistem (tanpa pemilih tema)",
     "    - Rancang skema data seragam (JSON / DataStore / Room) lengkap dengan updatedAtMillis",
-    "    - Wajib urutan prioritas utama: #1 Sinkronisasi dan #2 Web Panduan (GitHub Pages)",
+    "    - Wajib urutan prioritas utama: #1 Status Akun dan #2 Web Panduan (GitHub Pages)",
     "  - 2. Penyimpanan & Sinkronisasi (Cloud atau Lokal)",
     "    - Sediakan Google Sign-In via Credential Manager & OAuth scope minimal (mis. drive.file)",
     "    - Daftarkan SHA-1 & SHA-256 (debug dan release) ke Firebase / Google Cloud Console",
-    "    - Gunakan sinkronisasi terjadwal 2 arah (5 mnt / 15 mnt [default] / 4 jam / 24 jam) dengan status 1 baris",
+    "    - Gunakan sinkronisasi 2 arah manual per folder di kartu Beranda (tanpa jadwal & tanpa layanan latar belakang)",
     "    - Izinkan mode pakai langsung tanpa wajib login serta dukungan DataStore/Room lokal",
     "    - Otomatiskan setup teknis (OAuth, Firebase, SHA-1 debug) oleh AI; beri deep link Google Cloud ramah HP",
     "  - 3. Kurasi Fitur, UI Ringkas & Target Ukuran < 10 MB",
-    "    - Pangkas fitur opsional (termasuk pemilih tema), aset berat, dan dependensi Gradle tak terpakai",
+    "    - Pangkas fitur opsional (pemilih tema, layanan latar belakang, jadwal, kebijakan hapus), aset berat, & dependensi tak terpakai",
     "    - Hapus keterangan berlebih di dalam aplikasi; pindahkan seluruh penjelasan rinci hanya ke GitHub Pages",
-    "    - Gunakan gestur intuitif & mode pilih banyak (Pilih Semua, Pindahkan, Hapus) dalam 1 bilah aksi",
+    "    - Mulai editor dari Sumber -> Jalur Perangkat dengan penamaan & pembuatan folder otomatis dari sumbernya",
     "    - Sediakan bilah pencarian cepat di bagian atas layar untuk lompat langsung ke item",
     "  - 4. Pengujian, Kompresi R8 & Verifikasi Build",
     "    - Jalankan Unit Test & Robolectric UI Test untuk logika inti, serialisasi JSON, dan layar Compose",
@@ -58,7 +58,7 @@
           },
           {
             "id": "a1b2c3d4-1400-4000-8000-000000000001",
-            "title": "Wajib urutan prioritas utama: #1 Sinkronisasi dan #2 Web Panduan (GitHub Pages)",
+            "title": "Wajib urutan prioritas utama: #1 Status Akun dan #2 Web Panduan (GitHub Pages)",
             "color": "teal"
           }
         ]
@@ -81,7 +81,7 @@
           },
           {
             "id": "a1b2c3d4-2300-4000-8000-000000000001",
-            "title": "Gunakan sinkronisasi terjadwal 2 arah (5 mnt / 15 mnt [default] / 4 jam / 24 jam) dengan status 1 baris",
+            "title": "Gunakan sinkronisasi 2 arah manual per folder di kartu Beranda (tanpa jadwal & tanpa layanan latar belakang)",
             "color": "cobalt"
           },
           {
@@ -103,7 +103,7 @@
         "children": [
           {
             "id": "a1b2c3d4-3100-4000-8000-000000000001",
-            "title": "Pangkas fitur opsional (termasuk pemilih tema), aset berat, dan dependensi Gradle tak terpakai",
+            "title": "Pangkas fitur opsional (pemilih tema, layanan latar belakang, jadwal, kebijakan hapus), aset berat, & dependensi tak terpakai",
             "color": "sage"
           },
           {
@@ -113,7 +113,7 @@
           },
           {
             "id": "a1b2c3d4-3300-4000-8000-000000000001",
-            "title": "Gunakan gestur intuitif & mode pilih banyak (Pilih Semua, Pindahkan, Hapus) dalam 1 bilah aksi",
+            "title": "Mulai editor dari Sumber -> Jalur Perangkat dengan penamaan & pembuatan folder otomatis dari sumbernya",
             "color": "sage"
           },
           {

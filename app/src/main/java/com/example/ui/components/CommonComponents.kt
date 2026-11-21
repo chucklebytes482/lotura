@@ -88,7 +88,7 @@ fun CompactSearchBar(
 fun SelectionActionBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
-    onMoveSelected: () -> Unit,
+    onMoveSelected: (() -> Unit)? = null,
     onDeleteSelected: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -133,18 +133,20 @@ fun SelectionActionBar(
                 Spacer(Modifier.width(4.dp))
                 Text("Semua")
             }
-            IconButton(
-                onClick = onMoveSelected,
-                enabled = selectedCount > 0,
-                modifier = Modifier
-                    .size(48.dp)
-                    .testTag("move_selected_button")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                    contentDescription = "Pindahkan item terpilih",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            if (onMoveSelected != null) {
+                IconButton(
+                    onClick = onMoveSelected,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("move_selected_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                        contentDescription = "Pindahkan item terpilih",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             IconButton(
                 onClick = onDeleteSelected,

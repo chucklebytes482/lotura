@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.SyncBebasApp
+import com.example.data.db.DeletePolicy
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.SyncLogEntity
 import com.example.data.db.SyncPairEntity
@@ -14,8 +15,6 @@ import com.example.data.secure.AppPrefs
 import com.example.drive.DriveFolderItem
 import com.example.drive.GoogleAuthManager
 import com.example.github.GithubRepoSummary
-import com.example.service.SyncForegroundService
-import com.example.service.SyncScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class DriveBrowserUiState(
     val isLoading: Boolean = false,
@@ -38,9 +38,18 @@ data class GithubBrowserUiState(
     val error: String? = null
 )
 
+data class GithubFolderBrowserUiState(
+    val isLoading: Boolean = false,
+    val owner: String = "",
+    val repo: String = "",
+    val branch: String = "main",
+    val allFolders: List<String> = emptyList(),
+    val currentPath: String = "",
+    val error: String? = null
+)
+
 data class SyncUiState(
     val syncingPairIds: Set<Long> = emptySet(),
-    val isGlobalSyncing: Boolean = false,
     val isConnectingGoogle: Boolean = false,
     val isAddingGithubAccount: Boolean = false,
     val googleAuthError: String? = null,
@@ -48,7 +57,8 @@ data class SyncUiState(
     val snackbarMessage: String? = null,
     val isOnline: Boolean = true,
     val driveBrowser: DriveBrowserUiState = DriveBrowserUiState(),
-    val githubBrowser: GithubBrowserUiState = GithubBrowserUiState()
+    val githubBrowser: GithubBrowserUiState = GithubBrowserUiState(),
+    val githubFolderBrowser: GithubFolderBrowserUiState = GithubFolderBrowserUiState()
 )
 
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
@@ -145,46 +155,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setAutoSyncEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.setAutoSyncEnabled(enabled)
-            if (enabled && appPrefs.value.realtimeWatcherEnabled && pairs.value.any { it.autoSyncDrive }) {
-                runCatching { SyncForegroundService.start(app) }
-            }
-        }
-    }
-
-    fun setSyncIntervalMinutes(minutes: Int) {
-        viewModelScope.launch {
-            repository.setSyncIntervalMinutes(minutes)
-            val allPairs = repository.getAllPairs()
-            allPairs.forEach { pair ->
-                SyncScheduler.scheduleForPair(app, pair, overrideIntervalMinutes = minutes)
-            }
-            val label = when (minutes) {
-                5 -> "5 menit"
-                240 -> "4 jam"
-                1440 -> "24 jam"
-                else -> "15 menit"
-            }
-            _uiState.update { it.copy(snackbarMessage = "Jadwal sinkronisasi diatur ke $label") }
-        }
-    }
-
-    fun setRealtimeWatcherEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.setRealtimeWatcherEnabled(enabled)
-            if (enabled) {
-                runCatching { SyncForegroundService.start(app) }
-                _uiState.update { it.copy(snackbarMessage = "Pemantau FileObserver real-time diaktifkan") }
-            } else {
-                runCatching { SyncForegroundService.stop(app) }
-                _uiState.update { it.copy(snackbarMessage = "Pemantau real-time dihentikan") }
-            }
-        }
-    }
-
-    fun addGithubAccount(label: String, pat: String, onSuccess: () -> Unit) {
+    fun addGithubAccount(pat: String, onSuccess: () -> Unit) {
         viewModelScope.launch {
             val trimmedPat = pat.trim()
             if (trimmedPat.isEmpty()) {
@@ -194,8 +165,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(isAddingGithubAccount = true, githubAccountError = null) }
             try {
                 val user = githubApi.getAuthenticatedUser(trimmedPat)
+                val autoLabel = user.name.trim().ifBlank { user.login }
                 repository.addGithubAccount(
-                    label = label.ifBlank { user.name },
+                    label = autoLabel,
                     username = user.login,
                     avatarUrl = user.avatarUrl,
                     pat = trimmedPat
@@ -233,16 +205,43 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     fun savePair(pair: SyncPairEntity, onSaved: (Long) -> Unit) {
         viewModelScope.launch {
-            val savedId = repository.savePair(pair)
-            val savedPair = pair.copy(id = savedId)
-            SyncScheduler.scheduleForPair(app, savedPair)
-            if (savedPair.autoSyncDrive && appPrefs.value.realtimeWatcherEnabled) {
-                runCatching { SyncForegroundService.start(app) }
+            val normalized = if (pair.isGithubPair) {
+                pair.copy(
+                    driveFolderId = "",
+                    driveFolderName = "",
+                    deletePolicy = DeletePolicy.TWO_WAY.name,
+                    autoSyncDrive = false,
+                    githubEnabled = true,
+                    githubIntervalMinutes = 0
+                )
+            } else {
+                pair.copy(
+                    deletePolicy = DeletePolicy.TWO_WAY.name,
+                    autoSyncDrive = false,
+                    githubEnabled = false,
+                    githubAccountId = null,
+                    githubOwner = "",
+                    githubRepo = "",
+                    githubBranch = "main",
+                    githubSubfolder = "",
+                    githubIntervalMinutes = 0
+                )
             }
+
+            // Ensure matching local device directory exists automatically
+            runCatching {
+                val dir = File(normalized.localPath)
+                if (!dir.exists()) {
+                    dir.mkdirs()
+                }
+            }
+
+            val savedId = repository.savePair(normalized)
+            val savedPair = normalized.copy(id = savedId)
             repository.addLog(
                 pairId = savedId,
                 pairName = savedPair.name,
-                target = "SYSTEM",
+                target = if (savedPair.isGithubPair) "GITHUB" else "DRIVE",
                 action = "CONFIG",
                 status = "OK",
                 message = "Pasangan folder disimpan (${savedPair.localPath})"
@@ -254,76 +253,33 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePair(pair: SyncPairEntity, onDeleted: () -> Unit = {}) {
         viewModelScope.launch {
-            SyncScheduler.cancelForPair(app, pair.id)
             repository.deletePair(pair.id)
             _uiState.update { it.copy(snackbarMessage = "Pasangan \"${pair.name}\" dihapus") }
             onDeleted()
         }
     }
 
-    fun syncPairNow(pairId: Long, includeGithub: Boolean = true) {
+    fun syncPairNow(pairId: Long) {
         viewModelScope.launch {
             refreshNetworkStatus()
+            if (pairId in _uiState.value.syncingPairIds) return@launch
             _uiState.update { it.copy(syncingPairIds = it.syncingPairIds + pairId) }
             try {
                 val pair = repository.getPairById(pairId) ?: return@launch
-                val results = mutableListOf<String>()
-
-                if (pair.driveFolderId.isNotBlank()) {
+                val message = if (pair.isGithubPair) {
+                    syncExecutor.syncPairWithGithub(pairId).summary
+                } else {
                     val token = GoogleAuthManager.tryGetSilentAccessToken(app)
                         ?: repository.getDriveAccessToken()
                     if (!token.isNullOrBlank()) {
-                        val driveRes = syncExecutor.syncPairWithDrive(pairId, token)
-                        results.add(driveRes.summary)
+                        syncExecutor.syncPairWithDrive(pairId, token).summary
                     } else {
-                        results.add("Google Drive belum terhubung")
+                        "Google Drive belum terhubung"
                     }
                 }
-
-                if (includeGithub && pair.githubEnabled && pair.githubAccountId != null) {
-                    val ghRes = syncExecutor.syncPairWithGithub(pairId)
-                    results.add(ghRes.summary)
-                }
-
-                _uiState.update {
-                    it.copy(snackbarMessage = results.joinToString(" • ").ifBlank { "Sinkronisasi selesai" })
-                }
+                _uiState.update { it.copy(snackbarMessage = message.ifBlank { "Sinkronisasi selesai" }) }
             } finally {
                 _uiState.update { it.copy(syncingPairIds = it.syncingPairIds - pairId) }
-            }
-        }
-    }
-
-    fun syncAllPairsNow() {
-        viewModelScope.launch {
-            refreshNetworkStatus()
-            val all = repository.getAllPairs()
-            if (all.isEmpty()) {
-                _uiState.update { it.copy(snackbarMessage = "Belum ada pasangan folder untuk disinkronkan") }
-                return@launch
-            }
-            _uiState.update { it.copy(isGlobalSyncing = true) }
-            try {
-                val token = GoogleAuthManager.tryGetSilentAccessToken(app)
-                    ?: repository.getDriveAccessToken()
-                var okCount = 0
-                for (pair in all) {
-                    _uiState.update { it.copy(syncingPairIds = it.syncingPairIds + pair.id) }
-                    try {
-                        if (!token.isNullOrBlank() && pair.driveFolderId.isNotBlank()) {
-                            val r = syncExecutor.syncPairWithDrive(pair.id, token)
-                            if (r.success) okCount++
-                        }
-                        if (pair.githubEnabled && pair.githubAccountId != null) {
-                            syncExecutor.syncPairWithGithub(pair.id)
-                        }
-                    } finally {
-                        _uiState.update { it.copy(syncingPairIds = it.syncingPairIds - pair.id) }
-                    }
-                }
-                _uiState.update { it.copy(snackbarMessage = "Sinkronisasi selesai ($okCount/${all.size} pasangan Drive)") }
-            } finally {
-                _uiState.update { it.copy(isGlobalSyncing = false) }
             }
         }
     }
@@ -448,6 +404,66 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+        }
+    }
+
+    fun loadGithubFolders(accountId: Long, owner: String, repo: String, branch: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    githubFolderBrowser = GithubFolderBrowserUiState(
+                        isLoading = true,
+                        owner = owner,
+                        repo = repo,
+                        branch = branch.ifBlank { "main" },
+                        currentPath = ""
+                    )
+                )
+            }
+            val pat = repository.getGithubPat(accountId)
+            if (pat.isNullOrBlank()) {
+                _uiState.update {
+                    it.copy(
+                        githubFolderBrowser = it.githubFolderBrowser.copy(
+                            isLoading = false,
+                            error = "PAT akun GitHub tidak ditemukan."
+                        )
+                    )
+                }
+                return@launch
+            }
+            try {
+                val folders = githubApi.listFoldersInRepo(pat, owner, repo, branch.ifBlank { "main" })
+                _uiState.update {
+                    it.copy(
+                        githubFolderBrowser = it.githubFolderBrowser.copy(
+                            isLoading = false,
+                            allFolders = folders,
+                            currentPath = "",
+                            error = null
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        githubFolderBrowser = it.githubFolderBrowser.copy(
+                            isLoading = false,
+                            error = e.localizedMessage ?: "Gagal memuat folder repositori GitHub."
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun openGithubFolderPath(path: String) {
+        _uiState.update {
+            it.copy(
+                githubFolderBrowser = it.githubFolderBrowser.copy(
+                    currentPath = path.trim().trim('/')
+                )
+            )
         }
     }
 

@@ -66,7 +66,7 @@ class SyncExecutor(
                     localFiles = localFiles,
                     remoteFiles = remoteMap,
                     baseline = baselineMap,
-                    deletePolicy = pair.resolvedDeletePolicy
+                    deletePolicy = com.example.data.db.DeletePolicy.TWO_WAY
                 )
 
                 var uploaded = 0
@@ -345,6 +345,13 @@ class SyncExecutor(
                 return@withLock SyncRunResult(true, summary = "GitHub tidak aktif untuk pasangan ini")
             }
 
+            if (pair.githubSubfolder.trim().trim('/').isBlank()) {
+                val msg = "Pilih 1 folder spesifik di repositori GitHub terlebih dahulu."
+                repository.updateGithubStatus(pairId, pair.lastGithubSyncAt, msg, msg)
+                repository.addLog(pairId, pair.name, "GITHUB", "ERROR", "", "ERROR", msg)
+                return@withLock SyncRunResult(false, summary = msg, error = msg)
+            }
+
             val pat = repository.getGithubPat(pair.githubAccountId)
             if (pat.isNullOrBlank()) {
                 val msg = "Token PAT GitHub untuk akun pasangan ini tidak ditemukan."
@@ -383,7 +390,7 @@ class SyncExecutor(
                     localFiles = localFiles,
                     remoteBlobs = remoteMap,
                     baseline = baselineMap,
-                    deletePolicy = pair.resolvedDeletePolicy
+                    deletePolicy = com.example.data.db.DeletePolicy.TWO_WAY
                 )
 
                 val cleanSub = pair.githubSubfolder.trim().trim('/')

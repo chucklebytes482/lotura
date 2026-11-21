@@ -2,8 +2,8 @@
 
 Pasangan teknis dari **`Panduan_Personality_Build_APK_(umum).md`**. Seluruh contoh memakai namespace contoh `com.contoh.aplikasi` (ganti dengan `com.aistudio.<kata_euskara>` saat memulai proyek) dan mematuhi aturan wajib:
 - Tema selalu otomatis mengikuti sistem (`isSystemInDarkTheme()`, tanpa pemilih tema).
-- Urutan prioritas Beranda wajib: **#1 Sinkronisasi**, **#2 Web Panduan (GitHub Pages)**.
-- Kartu status sinkronisasi **1 baris** (`Tersinkronisasi • 14 jam lalu`), tanpa sakelar on/off *Sinkronisasi Otomatis*, dengan pemilih jadwal **`5 menit`**, **`15 menit` (default)**, **`4 jam`**, **`24 jam`**, dan tanpa keterangan berlebih.
+- Urutan prioritas Beranda wajib: **#1 Status Akun**, **#2 Web Panduan (GitHub Pages)**, diikuti daftar folder dengan tombol sinkron per kartu.
+- Lembar status akun ringkas tanpa layanan latar belakang, tanpa pemilih jadwal sinkronisasi, tanpa tombol *Sinkron Semua* / *Sinkron Sekarang* global, dan tanpa keterangan berlebih.
 
 ---
 
@@ -129,7 +129,7 @@ fun AppTheme(
 
 ## 2. Tata Letak Utama Edge-to-Edge & Prioritas Beranda (`ui/MainScaffold.kt`)
 
-Urutan prioritas wajib di bagian paling atas Beranda: **#1 Sinkronisasi** diikuti **#2 Web Panduan (GitHub Pages)**.
+Urutan prioritas wajib di bagian paling atas Beranda: **#1 Status Akun** diikuti **#2 Web Panduan (GitHub Pages)**.
 
 ```kotlin
 // app/src/main/java/com/contoh/aplikasi/ui/MainScaffold.kt
@@ -327,23 +327,23 @@ fun StandardMenuCard(
 
 /**
  * Urutan prioritas wajib di bagian teratas Beranda:
- * #1 Sinkronisasi
+ * #1 Status Akun (tanpa jadwal & tanpa tombol sinkron global)
  * #2 Web Panduan (GitHub Pages)
  */
 fun LazyListScope.standardHomePriorityCards(
-    syncStatusText: String,
-    syncIcon: ImageVector,
+    accountStatusText: String,
+    accountIcon: ImageVector,
     guideIcon: ImageVector,
     openExternalIcon: ImageVector,
-    onOpenSyncSheet: () -> Unit,
+    onOpenAccountSheet: () -> Unit,
     onOpenWebGuide: () -> Unit
 ) {
-    item(key = "priority_1_sync") {
+    item(key = "priority_1_account") {
         StandardMenuCard(
-            icon = syncIcon,
-            title = "Sinkronisasi",
-            subtitle = syncStatusText,
-            onClick = onOpenSyncSheet,
+            icon = accountIcon,
+            title = "Google Drive",
+            subtitle = accountStatusText,
+            onClick = onOpenAccountSheet,
             testTag = "home_drive_status_card"
         )
     }
@@ -363,7 +363,7 @@ fun LazyListScope.standardHomePriorityCards(
 
 ---
 
-## 3. Modal Sinkronisasi Google Drive Terjadwal (`ui/screens/DriveSyncSheet.kt`)
+## 3. Modal Status Akun Google Drive Ringkas (`ui/screens/DriveSyncSheet.kt`)
 
 ```kotlin
 // app/src/main/java/com/contoh/aplikasi/ui/screens/DriveSyncSheet.kt
@@ -377,25 +377,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -406,30 +401,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.contoh.aplikasi.ui.theme.AmberPending
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-enum class SyncScheduleInterval(val minutes: Int, val label: String) {
-    FIVE_MINUTES(5, "5 menit"),
-    FIFTEEN_MINUTES(15, "15 menit"),
-    FOUR_HOURS(240, "4 jam"),
-    TWENTY_FOUR_HOURS(1440, "24 jam");
-
-    companion object {
-        val DEFAULT = FIFTEEN_MINUTES
-
-        fun fromMinutes(minutes: Int): SyncScheduleInterval =
-            entries.firstOrNull { it.minutes == minutes } ?: DEFAULT
-    }
-}
 
 @Composable
 fun DriveSyncUnauthenticatedSheetContent(
@@ -460,14 +438,14 @@ fun DriveSyncUnauthenticatedSheetContent(
             ) {
                 Icon(
                     imageVector = Icons.Default.CloudDone,
-                    contentDescription = "Sinkronisasi",
+                    contentDescription = "Google Drive",
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(28.dp)
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Sinkronisasi",
+                    text = "Google Drive",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -516,28 +494,9 @@ fun DriveSyncUnauthenticatedSheetContent(
 @Composable
 fun DriveSyncConnectedSheetContent(
     userEmail: String,
-    selectedIntervalMinutes: Int = SyncScheduleInterval.DEFAULT.minutes,
-    lastSyncedAtMillis: Long,
-    isSyncing: Boolean,
-    onSelectInterval: (Int) -> Unit,
     onDisconnect: () -> Unit,
-    onSyncNow: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val activeInterval = SyncScheduleInterval.fromMinutes(selectedIntervalMinutes)
-
-    val statusDotColor: Color = when {
-        isSyncing -> AmberPending
-        lastSyncedAtMillis > 0L -> MaterialTheme.colorScheme.secondary
-        else -> AmberPending
-    }
-
-    val statusHeadline = when {
-        isSyncing -> "Menyinkronkan..."
-        lastSyncedAtMillis > 0L -> "Tersinkronisasi • ${formatRelativeTime(lastSyncedAtMillis)}"
-        else -> "Belum disinkronkan"
-    }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -560,19 +519,19 @@ fun DriveSyncConnectedSheetContent(
             ) {
                 Icon(
                     imageVector = Icons.Default.CloudDone,
-                    contentDescription = "Sinkronisasi",
+                    contentDescription = "Google Drive Terhubung",
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(28.dp)
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Sinkronisasi",
+                    text = "Google Drive Terhubung",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = userEmail.ifBlank { "Akun Google Terhubung" },
+                    text = userEmail.ifBlank { "Akun Google Utama" },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -581,7 +540,6 @@ fun DriveSyncConnectedSheetContent(
             }
         }
 
-        // Kartu Status Ringkas (hanya 1 baris status)
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -603,110 +561,34 @@ fun DriveSyncConnectedSheetContent(
                     modifier = Modifier
                         .size(11.dp)
                         .clip(CircleShape)
-                        .background(statusDotColor)
+                        .background(MaterialTheme.colorScheme.secondary)
                 )
                 Text(
-                    text = statusHeadline,
+                    text = "Akun aktif",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
 
-        // Pemilih Jadwal Sinkronisasi (Default: 15 menit, tanpa keterangan berlebih)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = "Jadwal Sinkronisasi",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SyncScheduleInterval.entries.forEach { option ->
-                    val isSelected = activeInterval == option
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelectInterval(option.minutes) },
-                        label = {
-                            Text(
-                                text = option.label,
-                                maxLines = 1,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("sync_interval_${option.minutes}")
-                    )
-                }
-            }
-        }
-
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        OutlinedButton(
+            onClick = onDisconnect,
+            shape = RoundedCornerShape(28.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+                .testTag("drive_disconnect_button")
         ) {
-            OutlinedButton(
-                onClick = onDisconnect,
-                shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 54.dp)
-                    .testTag("drive_disconnect_button")
-            ) {
-                Text(
-                    text = "Putuskan",
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-            }
-
-            Button(
-                onClick = onSyncNow,
-                enabled = !isSyncing,
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-                modifier = Modifier
-                    .weight(1.1f)
-                    .heightIn(min = 54.dp)
-                    .testTag("drive_sync_now_button")
-            ) {
-                if (isSyncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = if (isSyncing) "Menyinkron..." else "Sinkron Sekarang",
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = 18.sp
-                )
-            }
+            Text(
+                text = "Putuskan Akun",
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
         }
     }
 }
@@ -1202,7 +1084,6 @@ import androidx.compose.ui.test.performClick
 import com.contoh.aplikasi.data.DriveSyncClient
 import com.contoh.aplikasi.data.SyncRecord
 import com.contoh.aplikasi.ui.screens.DriveSyncConnectedSheetContent
-import com.contoh.aplikasi.ui.screens.SyncScheduleInterval
 import com.contoh.aplikasi.ui.theme.AppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -1237,30 +1118,20 @@ class AppVerificationTest {
     }
 
     @Test
-    fun driveSyncConnectedSheet_rendersIntervalSelectorAndTriggersSync() {
-        var syncTriggered = false
-        var selectedMinutes = SyncScheduleInterval.DEFAULT.minutes
+    fun driveSyncConnectedSheet_rendersStatusAndDisconnectOnly() {
+        var disconnected = false
         composeRule.setContent {
             AppTheme {
                 DriveSyncConnectedSheetContent(
                     userEmail = "pengguna@contoh.com",
-                    selectedIntervalMinutes = selectedMinutes,
-                    lastSyncedAtMillis = System.currentTimeMillis(),
-                    isSyncing = false,
-                    onSelectInterval = { selectedMinutes = it },
-                    onDisconnect = {},
-                    onSyncNow = { syncTriggered = true }
+                    onDisconnect = { disconnected = true }
                 )
             }
         }
 
         composeRule.onNodeWithTag("drive_sync_status_card").assertIsDisplayed()
-        composeRule.onNodeWithTag("sync_interval_15").assertIsDisplayed()
-        composeRule.onNodeWithTag("sync_interval_240").performClick()
-        assertEquals(240, selectedMinutes)
-
-        composeRule.onNodeWithTag("drive_sync_now_button").performClick()
-        assertTrue(syncTriggered)
+        composeRule.onNodeWithTag("drive_disconnect_button").performClick()
+        assertTrue(disconnected)
     }
 }
 ```
