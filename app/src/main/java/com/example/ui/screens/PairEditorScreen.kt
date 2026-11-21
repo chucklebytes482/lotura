@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -82,12 +81,6 @@ fun PairEditorScreen(
 ) {
     BackHandler { onNavigateBack() }
 
-    val defaultBaseDir = remember {
-        runCatching {
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).absolutePath
-        }.getOrDefault("/storage/emulated/0/Documents")
-    }
-
     var sourceType by remember(existingPair) {
         mutableStateOf(existingPair?.sourceType ?: SyncSourceType.DRIVE)
     }
@@ -105,21 +98,6 @@ fun PairEditorScreen(
     var githubBranch by remember(existingPair) { mutableStateOf(existingPair?.githubBranch ?: "main") }
     var githubSubfolder by remember(existingPair) { mutableStateOf(existingPair?.githubSubfolder ?: "") }
 
-    // Local device base directory (folder name is auto-matched & auto-created from source)
-    var localBasePath by remember(existingPair) {
-        val initial = if (existingPair != null) {
-            val existingSourceFolder = if (existingPair.isGithubPair) {
-                PairPathHelper.sourceFolderNameForGithub(existingPair.githubSubfolder)
-            } else {
-                PairPathHelper.sourceFolderNameForDrive(existingPair.driveFolderName)
-            }
-            PairPathHelper.extractBaseDirForEditing(existingPair.localPath, existingSourceFolder)
-        } else {
-            defaultBaseDir
-        }
-        mutableStateOf(initial)
-    }
-
     val sourceFolderName = remember(sourceType, driveFolderName, githubSubfolder) {
         if (sourceType == SyncSourceType.DRIVE) {
             PairPathHelper.sourceFolderNameForDrive(driveFolderName)
@@ -136,8 +114,8 @@ fun PairEditorScreen(
         }
     }
 
-    val resolvedLocalPath = remember(localBasePath, sourceFolderName) {
-        PairPathHelper.resolveLocalTargetPath(localBasePath, sourceFolderName)
+    val resolvedLocalPath = remember(sourceFolderName) {
+        PairPathHelper.resolveDefaultLocalTargetPath(sourceFolderName)
     }
 
     val localFolderExists = remember(resolvedLocalPath) {
@@ -145,7 +123,6 @@ fun PairEditorScreen(
     }
 
     var validationError by remember { mutableStateOf<String?>(null) }
-    var showLocalPicker by remember { mutableStateOf(false) }
     var showDrivePicker by remember { mutableStateOf(false) }
     var showGithubRepoPicker by remember { mutableStateOf(false) }
     var showGithubFolderPicker by remember { mutableStateOf(false) }
@@ -164,8 +141,8 @@ fun PairEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Langkah 1: Pilih Sumber (Google Drive atau 1 Folder GitHub)
-            EditorSectionCard(title = "1. Pilih Sumber") {
+            // Pilih Sumber (Google Drive atau 1 Folder GitHub)
+            EditorSectionCard(title = "Pilih Sumber") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -385,21 +362,8 @@ fun PairEditorScreen(
                 }
             }
 
-            // Langkah 2: Pilih Jalur di Perangkat (nama folder disamakan & dibuat otomatis)
-            EditorSectionCard(title = "2. Jalur di Perangkat") {
-                OutlinedButton(
-                    onClick = { showLocalPicker = true },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("pair_browse_local_button")
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Pilih Jalur di Perangkat")
-                }
-
+            // Folder Perangkat Otomatis (/storage/emulated/0/Documents/<nama-folder>)
+            EditorSectionCard(title = "Folder Perangkat (Otomatis)") {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -410,19 +374,14 @@ fun PairEditorScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = if (sourceFolderName.isNotBlank()) "Folder Tujuan" else "Jalur Dasar",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = resolvedLocalPath.ifBlank { localBasePath },
+                            text = resolvedLocalPath,
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.testTag("pair_resolved_local_path")
                         )
                         if (sourceFolderName.isNotBlank()) {
                             Text(
-                                text = if (localFolderExists) "Folder sudah ada" else "Folder dibuat otomatis saat disimpan",
+                                text = if (localFolderExists) "Folder sudah ada" else "Dibuat otomatis saat disimpan",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (localFolderExists) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
                             )
@@ -456,8 +415,8 @@ fun PairEditorScreen(
                         !isDrive && githubSubfolder.trim().trim('/').isBlank() -> {
                             validationError = "Pilih 1 folder di dalam repositori GitHub."
                         }
-                        localBasePath.isBlank() || resolvedLocalPath.isBlank() -> {
-                            validationError = "Pilih jalur folder di perangkat terlebih dahulu."
+                        resolvedLocalPath.isBlank() -> {
+                            validationError = "Jalur folder perangkat tidak valid."
                         }
                         else -> {
                             validationError = null
@@ -503,17 +462,6 @@ fun PairEditorScreen(
 
             Spacer(Modifier.heightIn(min = 24.dp))
         }
-    }
-
-    if (showLocalPicker) {
-        LocalFolderPickerDialog(
-            initialPath = localBasePath,
-            onDismiss = { showLocalPicker = false },
-            onSelectPath = { chosen ->
-                localBasePath = chosen
-                showLocalPicker = false
-            }
-        )
     }
 
     if (showDrivePicker) {
