@@ -175,6 +175,38 @@ jobs:
             fi
           fi
 
+      - name: Cache Robolectric Android SDK JAR
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7
+          key: robolectric-sdk-16-13921718-i7
+
+      - name: Pre-fetch Robolectric Android SDK JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_DIR="$HOME/.m2/repository/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7"
+          SDK_JAR="$SDK_DIR/android-all-instrumented-16-robolectric-13921718-i7.jar"
+          if [ -s "$SDK_JAR" ]; then
+            echo "Robolectric SDK JAR tersedia di cache: $SDK_JAR"
+            exit 0
+          fi
+          mkdir -p "$SDK_DIR"
+          TMP_JAR="${SDK_JAR}.tmp"
+          rm -f "$TMP_JAR"
+          PRIMARY_URL="https://maven-central.storage-download.googleapis.com/maven2/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7/android-all-instrumented-16-robolectric-13921718-i7.jar"
+          FALLBACK_URL="https://repo.maven.apache.org/maven2/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7/android-all-instrumented-16-robolectric-13921718-i7.jar"
+          if curl --fail --location --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors -o "$TMP_JAR" "$PRIMARY_URL"; then
+            mv "$TMP_JAR" "$SDK_JAR"
+          elif curl --fail --location --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors -o "$TMP_JAR" "$FALLBACK_URL"; then
+            mv "$TMP_JAR" "$SDK_JAR"
+          else
+            rm -f "$TMP_JAR"
+            echo "::error::Gagal mengunduh Robolectric SDK JAR dari mirror maupun Maven Central."
+            exit 1
+          fi
+          ls -lh "$SDK_JAR"
+
       - name: Run Unit & Robolectric Tests
         run: gradle :app:testDebugUnitTest --no-daemon --no-build-cache --stacktrace
 
