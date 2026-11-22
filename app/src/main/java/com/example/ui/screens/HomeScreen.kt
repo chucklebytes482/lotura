@@ -10,9 +10,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,9 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.OpenInNew
@@ -56,12 +55,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.db.SyncPairEntity
 import com.example.data.secure.AppPrefs
+import com.example.ui.components.BrandIcons
 import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.SelectionActionBar
 import com.example.ui.components.StatusPill
 import com.example.ui.components.formatRelativeTime
 import com.example.ui.theme.AmberPending
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.providerBrandColors
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -112,7 +113,8 @@ fun HomeScreen(
         LazyColumn(
             modifier = Modifier
                 .widthIn(max = 640.dp)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .testTag("home_pair_list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -201,6 +203,7 @@ private fun AccountQuickStatusCard(
     isOnline: Boolean,
     onClick: () -> Unit
 ) {
+    val driveBrand = providerBrandColors(isGithub = false)
     val dotColor = when {
         !appPrefs.driveConnected -> AmberPending
         !isOnline -> MaterialTheme.colorScheme.error
@@ -232,13 +235,13 @@ private fun AccountQuickStatusCard(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(driveBrand.container),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (appPrefs.driveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                    imageVector = BrandIcons.GoogleDrive,
                     contentDescription = "Status Google Drive",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (appPrefs.driveConnected) driveBrand.accent else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -263,7 +266,7 @@ private fun AccountQuickStatusCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Buka status akun Google Drive",
-                tint = MaterialTheme.colorScheme.primary
+                tint = driveBrand.accent
             )
         }
     }
@@ -372,167 +375,206 @@ private fun SyncPairCard(
     onLongClick: () -> Unit
 ) {
     val isGithub = pair.isGithubPair
-    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    val sourceAccent = if (isGithub) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    val brand = providerBrandColors(isGithub = isGithub)
+    val cardShape = RoundedCornerShape(18.dp)
+    val borderColor = if (isSelected) brand.accent else brand.border
+    val cardColor = if (isSelected) brand.container.copy(alpha = 0.45f) else brand.cardSurface
 
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+        shape = cardShape,
+        color = cardColor,
         modifier = Modifier
             .fillMaxWidth()
-            .border(if (isSelected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
+            .border(if (isSelected) 2.dp else 1.dp, borderColor, cardShape)
+            .clip(cardShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("pair_card_${pair.id}")
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // Garis aksen sisi kiri yang tegas untuk membedakan Drive (Biru-Cyan) vs GitHub (Ungu-Violet)
+            Box(
+                modifier = Modifier
+                    .width(5.dp)
+                    .fillMaxHeight()
+                    .background(brand.accent)
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Terpilih",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Icon(
-                            imageVector = if (isGithub) Icons.Default.Code else Icons.Default.CloudDone,
-                            contentDescription = if (isGithub) "GitHub" else "Google Drive",
-                            tint = sourceAccent
-                        )
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(brand.container)
+                            .border(1.dp, brand.accent.copy(alpha = 0.45f), RoundedCornerShape(13.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Terpilih",
+                                tint = brand.accent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isGithub) BrandIcons.GitHub else BrandIcons.GoogleDrive,
+                                contentDescription = if (isGithub) "GitHub" else "Google Drive",
+                                tint = brand.accent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = pair.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (isGithub) {
-                        val ghLabel = buildString {
-                            append("${pair.githubOwner}/${pair.githubRepo}")
-                            if (pair.githubSubfolder.isNotBlank()) {
-                                append(" / ${pair.githubSubfolder}")
+
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = pair.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = brand.container,
+                                modifier = Modifier
+                                    .border(1.dp, brand.accent.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                                    .testTag("pair_provider_badge_${pair.id}")
+                            ) {
+                                Text(
+                                    text = if (isGithub) "GitHub" else "Google Drive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = brand.onContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            if (isGithub) {
+                                val ghLabel = buildString {
+                                    append("${pair.githubOwner}/${pair.githubRepo}")
+                                    if (pair.githubSubfolder.isNotBlank()) {
+                                        append(" / ${pair.githubSubfolder}")
+                                    }
+                                }
+                                Text(
+                                    text = ghLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                    color = brand.accent,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
                             }
                         }
-                        Text(
-                            text = ghLabel,
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                            color = MaterialTheme.colorScheme.secondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    } else {
-                        Text(
-                            text = "Google Drive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
-                }
 
-                FilledTonalIconButton(
-                    onClick = onSyncClick,
-                    enabled = !isSyncing && !selectionMode,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("pair_sync_button_${pair.id}")
-                ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "Sinkronkan ${pair.name}"
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = isSyncing) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                            RoundedCornerShape(12.dp)
-                        )
-                        .testTag("pair_syncing_notice_${pair.id}")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    FilledTonalIconButton(
+                        onClick = onSyncClick,
+                        enabled = !isSyncing && !selectionMode,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = brand.container,
+                            contentColor = brand.accent
+                        ),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .border(1.dp, brand.accent.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                            .testTag("pair_sync_button_${pair.id}")
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Tunggu hingga selesai agar sinkronisasi berhasil",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = brand.accent
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sinkronkan ${pair.name}"
+                            )
+                        }
                     }
                 }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isSyncing) {
-                        "Sedang menyinkronkan..."
-                    } else {
-                        pair.lastError?.take(48) ?: pair.lastStatus
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = when {
-                        isSyncing -> MaterialTheme.colorScheme.primary
-                        !pair.lastError.isNullOrBlank() -> MaterialTheme.colorScheme.error
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                val latestTime = maxOf(pair.lastDriveSyncAt, pair.lastGithubSyncAt)
-                Text(
-                    text = formatRelativeTime(latestTime),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                AnimatedVisibility(visible = isSyncing) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = brand.container.copy(alpha = 0.72f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                1.dp,
+                                brand.accent.copy(alpha = 0.45f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .testTag("pair_syncing_notice_${pair.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = brand.accent
+                            )
+                            Text(
+                                text = "Tunggu hingga selesai agar sinkronisasi berhasil",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = brand.onContainer
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isSyncing) {
+                            "Sedang menyinkronkan..."
+                        } else {
+                            pair.lastError?.take(48) ?: pair.lastStatus
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when {
+                            isSyncing -> brand.accent
+                            !pair.lastError.isNullOrBlank() -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    val latestTime = maxOf(pair.lastDriveSyncAt, pair.lastGithubSyncAt)
+                    Text(
+                        text = formatRelativeTime(latestTime),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

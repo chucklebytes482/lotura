@@ -23,12 +23,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -59,12 +58,15 @@ import com.example.data.db.SyncSourceType
 import com.example.ui.DriveBrowserUiState
 import com.example.ui.GithubBrowserUiState
 import com.example.ui.GithubFolderBrowserUiState
+import com.example.ui.components.BrandIcons
+import com.example.ui.theme.BrandVisualColors
 import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.providerBrandColors
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PairEditorScreen(
-    existingPair: SyncPairEntity?,
+    existingPairs: List<SyncPairEntity>,
     githubAccounts: List<GithubAccountEntity>,
     driveBrowser: DriveBrowserUiState,
     githubBrowser: GithubBrowserUiState,
@@ -80,29 +82,46 @@ fun PairEditorScreen(
 ) {
     BackHandler { onNavigateBack() }
 
-    var sourceType by remember(existingPair) {
-        mutableStateOf(existingPair?.sourceType ?: SyncSourceType.DRIVE)
-    }
+    var sourceType by remember { mutableStateOf(SyncSourceType.DRIVE) }
 
     // Drive source state
-    var driveFolderId by remember(existingPair) { mutableStateOf(existingPair?.driveFolderId ?: "") }
-    var driveFolderName by remember(existingPair) { mutableStateOf(existingPair?.driveFolderName ?: "") }
+    var driveFolderId by remember { mutableStateOf("") }
+    var driveFolderName by remember { mutableStateOf("") }
 
     // GitHub source state
-    var githubAccountId by remember(existingPair, githubAccounts) {
-        mutableStateOf(existingPair?.githubAccountId ?: githubAccounts.firstOrNull()?.id)
+    var githubAccountId by remember(githubAccounts) {
+        mutableStateOf(githubAccounts.firstOrNull()?.id)
     }
-    var githubOwner by remember(existingPair) { mutableStateOf(existingPair?.githubOwner ?: "") }
-    var githubRepo by remember(existingPair) { mutableStateOf(existingPair?.githubRepo ?: "") }
-    var githubBranch by remember(existingPair) { mutableStateOf(existingPair?.githubBranch ?: "main") }
-    var githubSubfolder by remember(existingPair) { mutableStateOf(existingPair?.githubSubfolder ?: "") }
+    var githubOwner by remember { mutableStateOf("") }
+    var githubRepo by remember { mutableStateOf("") }
+    var githubBranch by remember { mutableStateOf("main") }
+    var githubSubfolder by remember { mutableStateOf("") }
 
-    val sourceFolderName = remember(sourceType, driveFolderName, githubSubfolder) {
-        if (sourceType == SyncSourceType.DRIVE) {
-            PairPathHelper.sourceFolderNameForDrive(driveFolderName)
-        } else {
-            PairPathHelper.sourceFolderNameForGithub(githubSubfolder)
-        }
+    val driveBrand = providerBrandColors(isGithub = false)
+    val githubBrand = providerBrandColors(isGithub = true)
+    val activeBrand = if (sourceType == SyncSourceType.GITHUB) githubBrand else driveBrand
+
+    val pairedDriveFolderIds = remember(existingPairs) {
+        existingPairs
+            .filter { !it.isGithubPair && it.driveFolderId.isNotBlank() }
+            .map { it.driveFolderId }
+            .toSet()
+    }
+
+    val pairedGithubPathsForRepo = remember(existingPairs, githubOwner, githubRepo, githubBranch) {
+        val normOwner = githubOwner.trim()
+        val normRepo = githubRepo.trim()
+        val normBranch = githubBranch.trim().ifBlank { "main" }
+        existingPairs
+            .filter {
+                it.isGithubPair &&
+                    it.githubOwner.equals(normOwner, ignoreCase = true) &&
+                    it.githubRepo.equals(normRepo, ignoreCase = true) &&
+                    it.githubBranch.trim().ifBlank { "main" }.equals(normBranch, ignoreCase = true)
+            }
+            .map { PairPathHelper.normalizeGithubFolderPath(it.githubSubfolder) }
+            .filter { it.isNotBlank() }
+            .toSet()
     }
 
     val autoPairName = remember(sourceType, driveFolderName, githubRepo, githubSubfolder) {
@@ -113,8 +132,12 @@ fun PairEditorScreen(
         }
     }
 
-    val resolvedLocalPath = remember(sourceFolderName) {
-        PairPathHelper.resolveDefaultLocalTargetPath(sourceFolderName)
+    val resolvedLocalPath = remember(sourceType, driveFolderName, githubRepo, githubSubfolder) {
+        if (sourceType == SyncSourceType.DRIVE) {
+            PairPathHelper.resolveDefaultLocalPathForDrive(driveFolderName)
+        } else {
+            PairPathHelper.resolveDefaultLocalPathForGithub(githubRepo, githubSubfolder)
+        }
     }
 
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -136,15 +159,15 @@ fun PairEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Pilih Sumber (Google Drive atau 1 Folder GitHub)
-            EditorSectionCard(title = "Pilih Sumber") {
+            EditorSectionCard(title = "Pilih Sumber", accent = activeBrand) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     SourceTypeChoiceCard(
                         title = "Google Drive",
-                        icon = Icons.Default.CloudQueue,
+                        icon = BrandIcons.GoogleDrive,
+                        brand = driveBrand,
                         selected = sourceType == SyncSourceType.DRIVE,
                         onClick = {
                             sourceType = SyncSourceType.DRIVE
@@ -155,7 +178,8 @@ fun PairEditorScreen(
                     )
                     SourceTypeChoiceCard(
                         title = "GitHub",
-                        icon = Icons.Default.Code,
+                        icon = BrandIcons.GitHub,
+                        brand = githubBrand,
                         selected = sourceType == SyncSourceType.GITHUB,
                         onClick = {
                             sourceType = SyncSourceType.GITHUB
@@ -169,19 +193,30 @@ fun PairEditorScreen(
                 if (sourceType == SyncSourceType.DRIVE) {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                        modifier = Modifier.fillMaxWidth()
+                        color = driveBrand.cardSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, driveBrand.border, RoundedCornerShape(14.dp))
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudQueue,
-                                contentDescription = "Folder Google Drive",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(driveBrand.container),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = BrandIcons.GoogleDrive,
+                                    contentDescription = "Folder Google Drive",
+                                    tint = driveBrand.accent,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = driveFolderName.ifBlank { "Folder Drive belum dipilih" },
@@ -194,7 +229,7 @@ fun PairEditorScreen(
                                     Text(
                                         text = driveFolderId,
                                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = driveBrand.accent,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -208,13 +243,15 @@ fun PairEditorScreen(
                             onOpenDriveFolder("root", "Drive Saya")
                             showDrivePicker = true
                         },
+                        border = BorderStroke(1.dp, driveBrand.accent),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = driveBrand.accent),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
                             .testTag("pair_pick_drive_folder_button")
                     ) {
-                        Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(BrandIcons.GoogleDrive, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (driveFolderId.isBlank()) "Pilih Folder Google Drive" else "Ganti Folder Google Drive")
                     }
@@ -260,13 +297,15 @@ fun PairEditorScreen(
                                     onLoadGithubRepos(githubAccountId!!)
                                     showGithubRepoPicker = true
                                 },
+                                border = BorderStroke(1.dp, githubBrand.accent),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = githubBrand.accent),
                                 shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 48.dp)
                                     .testTag("pair_pick_github_repo_button")
                             ) {
-                                Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(BrandIcons.GitHub, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     text = if (githubRepo.isBlank()) {
@@ -283,19 +322,30 @@ fun PairEditorScreen(
                         if (githubAccountId != null && githubOwner.isNotBlank() && githubRepo.isNotBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                modifier = Modifier.fillMaxWidth()
+                                color = githubBrand.cardSurface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, githubBrand.border, RoundedCornerShape(14.dp))
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = "Folder GitHub",
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(githubBrand.container),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = "Folder GitHub",
+                                            tint = githubBrand.accent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = githubSubfolder.ifBlank { "Folder repo belum dipilih" },
@@ -307,7 +357,7 @@ fun PairEditorScreen(
                                         Text(
                                             text = "$githubOwner/$githubRepo",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = githubBrand.accent,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -320,6 +370,8 @@ fun PairEditorScreen(
                                     onLoadGithubFolders(githubAccountId!!, githubOwner, githubRepo, githubBranch)
                                     showGithubFolderPicker = true
                                 },
+                                border = BorderStroke(1.dp, githubBrand.accent),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = githubBrand.accent),
                                 shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -333,7 +385,6 @@ fun PairEditorScreen(
                         }
                     }
                 }
-
             }
 
             if (!validationError.isNullOrBlank()) {
@@ -348,9 +399,13 @@ fun PairEditorScreen(
             Button(
                 onClick = {
                     val isDrive = sourceType == SyncSourceType.DRIVE
+                    val cleanSubfolder = PairPathHelper.normalizeGithubFolderPath(githubSubfolder)
                     when {
                         isDrive && (driveFolderId.isBlank() || driveFolderName.isBlank()) -> {
                             validationError = "Pilih folder Google Drive terlebih dahulu."
+                        }
+                        isDrive && driveFolderId in pairedDriveFolderIds -> {
+                            validationError = "Folder Google Drive ini sudah dipasangkan."
                         }
                         !isDrive && githubAccountId == null -> {
                             validationError = "Pilih akun GitHub terlebih dahulu."
@@ -358,22 +413,18 @@ fun PairEditorScreen(
                         !isDrive && (githubOwner.isBlank() || githubRepo.isBlank()) -> {
                             validationError = "Pilih repositori GitHub terlebih dahulu."
                         }
-                        !isDrive && githubSubfolder.trim().trim('/').isBlank() -> {
+                        !isDrive && cleanSubfolder.isBlank() -> {
                             validationError = "Pilih 1 folder di dalam repositori GitHub."
+                        }
+                        !isDrive && cleanSubfolder in pairedGithubPathsForRepo -> {
+                            validationError = "Folder GitHub ini sudah dipasangkan."
                         }
                         resolvedLocalPath.isBlank() -> {
                             validationError = "Jalur folder perangkat tidak valid."
                         }
                         else -> {
                             validationError = null
-                            val cleanSubfolder = githubSubfolder.trim().trim('/')
-                            val baseEntity = existingPair ?: SyncPairEntity(
-                                name = autoPairName,
-                                localPath = resolvedLocalPath,
-                                driveFolderId = if (isDrive) driveFolderId else "",
-                                driveFolderName = if (isDrive) driveFolderName else ""
-                            )
-                            val updated = baseEntity.copy(
+                            val created = SyncPairEntity(
                                 name = autoPairName,
                                 localPath = resolvedLocalPath,
                                 driveFolderId = if (isDrive) driveFolderId else "",
@@ -388,10 +439,14 @@ fun PairEditorScreen(
                                 githubSubfolder = if (!isDrive) cleanSubfolder else "",
                                 githubIntervalMinutes = 0
                             )
-                            onSavePair(updated)
+                            onSavePair(created)
                         }
                     }
                 },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = activeBrand.accent,
+                    contentColor = activeBrand.onAccent
+                ),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -401,7 +456,7 @@ fun PairEditorScreen(
                 Icon(Icons.Default.Save, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (existingPair == null) "Simpan Pasangan Folder" else "Perbarui Pasangan Folder",
+                    text = "Simpan Pasangan Folder",
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -419,6 +474,7 @@ fun PairEditorScreen(
         ) {
             DriveFolderPickerSheet(
                 state = driveBrowser,
+                pairedDriveFolderIds = pairedDriveFolderIds,
                 onOpenFolder = onOpenDriveFolder,
                 onCreateFolder = onCreateDriveFolder,
                 onSelectCurrent = { id, folderName ->
@@ -459,6 +515,7 @@ fun PairEditorScreen(
         ) {
             GithubFolderPickerSheet(
                 state = githubFolderBrowser,
+                pairedGithubPaths = pairedGithubPathsForRepo,
                 onOpenPath = onOpenGithubFolderPath,
                 onSelectFolder = { chosenFolder ->
                     githubSubfolder = chosenFolder
@@ -473,6 +530,7 @@ fun PairEditorScreen(
 @Composable
 private fun EditorSectionCard(
     title: String,
+    accent: BrandVisualColors,
     content: @Composable () -> Unit
 ) {
     Surface(
@@ -480,7 +538,7 @@ private fun EditorSectionCard(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
+            .border(1.dp, accent.border, RoundedCornerShape(18.dp))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -489,7 +547,8 @@ private fun EditorSectionCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
+                color = accent.accent,
+                fontWeight = FontWeight.SemiBold
             )
             content()
         }
@@ -500,6 +559,7 @@ private fun EditorSectionCard(
 private fun SourceTypeChoiceCard(
     title: String,
     icon: ImageVector,
+    brand: BrandVisualColors,
     selected: Boolean,
     onClick: () -> Unit,
     testTag: String,
@@ -507,11 +567,10 @@ private fun SourceTypeChoiceCard(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        color = if (selected) brand.container else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
         border = BorderStroke(
-            width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) brand.accent else MaterialTheme.colorScheme.outline
         ),
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
@@ -521,7 +580,7 @@ private fun SourceTypeChoiceCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 52.dp)
+                .heightIn(min = 54.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -529,14 +588,15 @@ private fun SourceTypeChoiceCard(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
+                tint = if (selected) brand.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) brand.onContainer else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

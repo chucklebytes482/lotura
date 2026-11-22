@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lotura — Panduan Pengguna</title>
+  <style>
+    :root {
+      --bg: #0b1319;
+      --surface: #121c24;
+      --surface-alt: #182530;
+      --border: #2a3c4a;
+      --text: #f1f5f9;
+      --muted: #9fb0be;
+      --accent: #67d4e4;
+      --drive: #38bdf8;
+      --drive-bg: #0b3a54;
+      --drive-border: #1f5370;
+      --github: #c084fc;
+      --github-bg: #3a1c5e;
+      --github-border: #5b328a;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f7f9;
+        --surface: #ffffff;
+        --surface-alt: #edf3f7;
+        --border: #c8d6e0;
+        --text: #0f1b24;
+        --muted: #4b5e6b;
+        --accent: #006978;
+        --drive: #0284c7;
+        --drive-bg: #d6f0fe;
+        --drive-border: #7dd3fc;
+        --github: #7c3aed;
+        --github-bg: #ede9fe;
+        --github-border: #c4b5fd;
+        --ok: #15803d;
+        --warn: #b45309;
+      }
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      overflow-x: clip;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 20px 16px 56px;
+    }
+
+    header.hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 22px 20px;
+      margin-bottom: 18px;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 12px;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.65rem;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+      overflow-wrap: anywhere;
+    }
+
+    nav.toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 16px 0 22px;
+    }
+
+    nav.toc a {
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 13px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      min-width: 0;
+    }
+
+    nav.toc a:hover, nav.toc a:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+    }
+
+    section.card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
+      min-width: 0;
+    }
+
+    section.card h2 {
+      margin: 0 0 10px;
+      font-size: 1.18rem;
+      color: var(--accent);
+      overflow-wrap: anywhere;
+    }
+
+    section.card h3 {
+      margin: 14px 0 6px;
+      font-size: 1rem;
+      overflow-wrap: anywhere;
+    }
+
+    p, li {
+      font-size: 0.94rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    ul, ol {
+      padding-left: 20px;
+      margin: 8px 0 0;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .provider-card {
+      border-radius: 14px;
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .provider-card.drive {
+      background: var(--surface-alt);
+      border: 1px solid var(--drive-border);
+      border-left: 5px solid var(--drive);
+    }
+
+    .provider-card.github {
+      background: var(--surface-alt);
+      border: 1px solid var(--github-border);
+      border-left: 5px solid var(--github);
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 6px;
+    }
+
+    .pill.drive {
+      background: var(--drive-bg);
+      color: var(--drive);
+      border: 1px solid var(--drive-border);
+    }
+
+    .pill.github {
+      background: var(--github-bg);
+      color: var(--github);
+      border: 1px solid var(--github-border);
+    }
+
+    .code-box {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin: 10px 0;
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      line-height: 1.5;
+    }
+
+    .code-box code {
+      background: transparent;
+      padding: 0;
+      white-space: pre;
+      font-family: inherit;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: var(--surface-alt);
+      padding: 2px 6px;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 460px;
+      font-size: 0.88rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      background: var(--surface-alt);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .notice {
+      background: var(--surface-alt);
+      border-left: 4px solid var(--warn);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin-top: 28px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <span class="hero-badge">Panduan Resmi Lotura</span>
+      <h1>Sinkronisasi Folder Android ↔ Google Drive &amp; GitHub</h1>
+      <p class="lead">
+        Kelola dan sinkronkan folder catatan, dokumen Markdown, maupun repositori Anda secara 2 arah
+        langsung dari penyimpanan perangkat Android tanpa server perantara.
+      </p>
+    </header>
+
+    <nav class="toc" aria-label="Navigasi Panduan">
+      <a href="#identitas">Identitas Kartu</a>
+      <a href="#akun">Hubungkan Akun</a>
+      <a href="#pasangan">Tambah Pasangan</a>
+      <a href="#sinkron">Sinkronisasi</a>
+      <a href="#detail">Detail &amp; File</a>
+      <a href="#keamanan">Keamanan</a>
+    </nav>
+
+    <section id="identitas" class="card">
+      <h2>1. Pembeda Visual Google Drive vs GitHub</h2>
+      <p>
+        Setiap kartu pasangan di Beranda, layar Tambah Pasangan, dan layar Detail dirancang dengan warna
+        aksen serta ikon khusus agar langsung dikenali dalam sekejap:
+      </p>
+      <div class="provider-grid">
+        <div class="provider-card drive">
+          <span class="pill drive">Google Drive</span>
+          <p>
+            Aksen <strong>Biru-Cyan</strong> dengan ikon segitiga pita Drive. Cocok untuk folder catatan
+            harian atau arsip dokumen pribadi.
+          </p>
+          <div class="code-box"><code>/storage/emulated/0/Documents/&lt;FolderDrive&gt;</code></div>
+        </div>
+        <div class="provider-card github">
+          <span class="pill github">GitHub</span>
+          <p>
+            Aksen <strong>Ungu-Violet</strong> dengan ikon khas GitHub. Jalur perangkat menyertakan nama
+            repositori agar folder bernama sama antar repo tidak saling menimpa.
+          </p>
+          <div class="code-box"><code>/storage/emulated/0/Documents/&lt;NamaRepo&gt;/&lt;Folder&gt;</code></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="akun" class="card">
+      <h2>2. Persiapan Izin &amp; Akun</h2>
+      <ol>
+        <li>
+          <strong>Izin Akses Semua File:</strong> Ketuk tombol <em>Aktifkan</em> pada spanduk di Beranda agar
+          Lotura dapat membaca dan menyimpan berkas di dalam <code>Documents/</code>.
+        </li>
+        <li>
+          <strong>Akun Google Drive:</strong> Ketuk kartu <em>Google Drive</em> di Beranda atau buka tab
+          <strong>Akun</strong>, lalu masuk dengan akun Google Anda.
+        </li>
+        <li>
+          <strong>Akun GitHub (Fine-Grained PAT):</strong> Buka tab <strong>Akun</strong> → ketuk
+          <em>Tambah Akun GitHub</em>, lalu tempel <em>Fine-Grained Personal Access Token</em> dengan izin
+          <strong>Contents (Read and write)</strong> serta <strong>Metadata (Read-only)</strong>. Nama akun
+          terdeteksi otomatis dari profil GitHub Anda.
+        </li>
+      </ol>
+    </section>
+
+    <section id="pasangan" class="card">
+      <h2>3. Menambah Pasangan Folder &amp; Anti-Duplikat</h2>
+      <ol>
+        <li>Tekan tombol <strong>+</strong> di kanan bawah Beranda.</li>
+        <li>Pilih sumber <strong>Google Drive</strong> atau <strong>GitHub</strong>.</li>
+        <li>
+          Untuk Google Drive, pilih 1 folder tujuan (atau buat folder baru langsung dari pemilih). Untuk
+          GitHub, pilih akun, pilih repositori, lalu pilih <strong>1 folder</strong> di dalam repositori tersebut.
+        </li>
+        <li>
+          Folder yang sudah pernah dipasangkan otomatis ditandai lencana <strong>Terpasang</strong> dan
+          tidak dapat dipilih ulang (Anda tetap bisa membuka ke dalamnya jika ingin memasangkan subfolder lain
+          yang belum terpasang).
+        </li>
+        <li>Ketuk <strong>Simpan Pasangan Folder</strong>. Folder lokal di <code>Documents/</code> dibuat otomatis.</li>
+      </ol>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Contoh Sumber</th>
+              <th>Folder Perangkat Otomatis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Google Drive: <code>Catatan Kerja</code></td>
+              <td><code>/storage/emulated/0/Documents/Catatan Kerja</code></td>
+            </tr>
+            <tr>
+              <td>GitHub: <code>chucklebytes482/Petapikir@main / panduan</code></td>
+              <td><code>/storage/emulated/0/Documents/Petapikir/panduan</code></td>
+            </tr>
+            <tr>
+              <td>GitHub: <code>chucklebytes482/Petapikir@main / docs/sub</code></td>
+              <td><code>/storage/emulated/0/Documents/Petapikir/docs/sub</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="sinkron" class="card">
+      <h2>4. Sinkronisasi 2 Arah Manual per Folder</h2>
+      <p>
+        Lotura tidak menjalankan jadwal latar belakang tersembunyi. Anda memegang kendali penuh kapan
+        setiap folder disinkronkan:
+      </p>
+      <ul>
+        <li>Ketuk tombol <strong>Sinkron</strong> di sisi kanan kartu pasangan pada Beranda.</li>
+        <li>
+          Saat sinkronisasi berlangsung, banner keterangan <em>"Tunggu hingga selesai agar sinkronisasi
+          berhasil"</em> tampil pada kartu pasangan hingga proses tuntas.
+        </li>
+        <li>
+          Perubahan tambah, ubah, dan hapus di perangkat maupun di cloud/GitHub akan diselaraskan secara
+          2 arah. Jika terjadi konflik suntingan bersamaan, versi konflik diamankan agar tidak hilang.
+        </li>
+      </ul>
+      <div class="notice">
+        <strong>Tips:</strong> Biarkan Lotura tetap terbuka saat menyinkronkan folder berukuran besar agar
+        seluruh berkas selesai terunggah dan terunduh dengan utuh.
+      </div>
+    </section>
+
+    <section id="detail" class="card">
+      <h2>5. Layar Detail Terpadu &amp; Penjelajah File Langsung</h2>
+      <p>
+        Mengetuk kartu pasangan di Beranda langsung membuka layar <strong>Detail</strong> yang menggabungkan
+        ringkasan pasangan dan penjelajah berkas dalam satu halaman:
+      </p>
+      <ul>
+        <li>
+          <strong>Ringkasan di Bagian Atas:</strong> Menampilkan identitas penyedia, sumber Google Drive atau
+          GitHub, lokasi lengkap <em>Folder Perangkat</em>, jumlah berkas, waktu sinkron terakhir, serta tombol
+          <strong>Hapus Pasangan</strong>.
+        </li>
+        <li>
+          <strong>Penjelajah File Langsung:</strong> Ketuk folder untuk masuk ke subfolder, ketuk berkas untuk
+          langsung membukanya di aplikasi editor pilihan Anda (seperti Pilcrow MD atau Google Docs).
+        </li>
+        <li>
+          <strong>Aksi Cepat &amp; Pilih Banyak:</strong> Gunakan tombol <em>Catatan .md</em> dan
+          <em>Folder Baru</em> untuk membuat item baru, bilah pencarian untuk menyaring nama berkas, atau
+          <strong>tekan tahan</strong> berkas/folder untuk memindah maupun menghapus banyak item sekaligus.
+        </li>
+        <li>
+          <strong>Riwayat Log:</strong> Seluruh riwayat aktivitas sinkronisasi dan penyaringan galat/konflik
+          tersedia di tab <strong>Log</strong> pada bilah navigasi bawah.
+        </li>
+      </ul>
+    </section>
+
+    <section id="keamanan" class="card">
+      <h2>6. Privasi &amp; Keamanan Kredensial</h2>
+      <ul>
+        <li>
+          Seluruh komunikasi berjalan langsung dari ponsel Anda ke API resmi Google Drive dan GitHub melalui
+          HTTPS tanpa server perantara.
+        </li>
+        <li>
+          Token akses Google Drive dan Fine-Grained PAT GitHub disimpan secara terenkripsi menggunakan
+          <strong>Android Keystore (AES-256-GCM)</strong> di perangkat Anda sendiri.
+        </li>
+        <li>
+          Menghapus pasangan dari Lotura hanya menghapus tautan sinkronisasi dari daftar aplikasi dan tidak
+          menghapus berkas asli Anda di perangkat maupun di cloud.
+        </li>
+      </ul>
+    </section>
+
+    <footer>
+      Lotura • Aplikasi Sinkronisasi Folder Android (Google Drive &amp; GitHub)
+    </footer>
+  </main>
+</body>
+</html>
