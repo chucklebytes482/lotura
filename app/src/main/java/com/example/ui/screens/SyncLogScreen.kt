@@ -33,6 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.db.SyncLogEntity
+import com.example.ui.components.StatusPill
+import com.example.ui.components.formatRelativeTime
+import com.example.ui.theme.AmberPending
+import com.example.ui.theme.JetBrainsMonoFamily
 
 @Composable
 fun SyncLogScreen(
@@ -125,6 +129,64 @@ fun SyncLogScreen(
                     LogEntryRow(log = log)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun LogEntryRow(log: SyncLogEntity, modifier: Modifier = Modifier) {
+    val badgeColor = when (log.status) {
+        "OK" -> MaterialTheme.colorScheme.secondary
+        "CONFLICT" -> AmberPending
+        "ERROR" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f), RoundedCornerShape(14.dp))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatusPill(label = "${log.target} • ${log.action}", dotColor = badgeColor)
+                    Text(
+                        text = log.pairName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = formatRelativeTime(log.timestampMillis),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (log.relativePath.isNotBlank()) {
+                Text(
+                    text = log.relativePath,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                text = log.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

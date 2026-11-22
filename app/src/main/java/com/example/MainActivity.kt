@@ -65,7 +65,6 @@ import com.example.ui.components.StoragePermissionHelper
 import com.example.ui.screens.AccountsScreen
 import com.example.ui.screens.DriveSyncConnectedSheetContent
 import com.example.ui.screens.DriveSyncUnauthenticatedSheetContent
-import com.example.ui.screens.FileExplorerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.PairDetailScreen
 import com.example.ui.screens.PairEditorScreen
@@ -77,13 +76,9 @@ object Routes {
     const val ACCOUNTS = "accounts"
     const val LOGS = "logs"
     const val PAIR_CREATE = "pair_editor"
-    const val PAIR_EDIT = "pair_editor/{pairId}"
     const val PAIR_DETAIL = "pair_detail/{pairId}"
-    const val FILE_EXPLORER = "file_explorer/{pairId}"
 
-    fun editPair(pairId: Long) = "pair_editor/$pairId"
     fun pairDetail(pairId: Long) = "pair_detail/$pairId"
-    fun fileExplorer(pairId: Long) = "file_explorer/$pairId"
 }
 
 class MainActivity : ComponentActivity() {
@@ -170,9 +165,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         currentRoute == Routes.ACCOUNTS -> "Akun"
         currentRoute == Routes.LOGS -> "Log"
         currentRoute == Routes.PAIR_CREATE -> "Tambah Pasangan"
-        currentRoute.startsWith("pair_editor/") -> "Edit Pasangan"
         currentRoute.startsWith("pair_detail/") -> "Detail"
-        currentRoute.startsWith("file_explorer/") -> "Penjelajah File"
         else -> "Lotura"
     }
 
@@ -342,35 +335,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
 
             composable(Routes.PAIR_CREATE) {
                 PairEditorScreen(
-                    existingPair = null,
-                    githubAccounts = githubAccounts,
-                    driveBrowser = uiState.driveBrowser,
-                    githubBrowser = uiState.githubBrowser,
-                    githubFolderBrowser = uiState.githubFolderBrowser,
-                    onOpenDriveFolder = { id, name -> viewModel.openDriveFolder(id, name) },
-                    onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
-                    onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
-                    onLoadGithubFolders = { accId, owner, repo, branch ->
-                        viewModel.loadGithubFolders(accId, owner, repo, branch)
-                    },
-                    onOpenGithubFolderPath = { path -> viewModel.openGithubFolderPath(path) },
-                    onSavePair = { pair ->
-                        viewModel.savePair(pair) {
-                            navController.popBackStack()
-                        }
-                    },
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(
-                route = Routes.PAIR_EDIT,
-                arguments = listOf(navArgument("pairId") { type = NavType.LongType })
-            ) { entry ->
-                val pairId = entry.arguments?.getLong("pairId") ?: 0L
-                val existing by viewModel.observePair(pairId).collectAsStateWithLifecycle(initialValue = null)
-                PairEditorScreen(
-                    existingPair = existing,
+                    existingPairs = pairs,
                     githubAccounts = githubAccounts,
                     driveBrowser = uiState.driveBrowser,
                     githubBrowser = uiState.githubBrowser,
@@ -398,30 +363,14 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                 val pairId = entry.arguments?.getLong("pairId") ?: 0L
                 val pair by viewModel.observePair(pairId).collectAsStateWithLifecycle(initialValue = null)
                 val trackedFiles by viewModel.observeFileStates(pairId).collectAsStateWithLifecycle(initialValue = emptyList())
-                val pairLogs by viewModel.observeLogsForPair(pairId).collectAsStateWithLifecycle(initialValue = emptyList())
                 PairDetailScreen(
                     pair = pair,
                     trackedFiles = trackedFiles,
-                    logs = pairLogs,
-                    onOpenExplorer = { navController.navigate(Routes.fileExplorer(pairId)) },
-                    onEditPair = { navController.navigate(Routes.editPair(pairId)) },
                     onDeletePair = { target ->
                         viewModel.deletePair(target) {
                             navController.popBackStack()
                         }
                     },
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(
-                route = Routes.FILE_EXPLORER,
-                arguments = listOf(navArgument("pairId") { type = NavType.LongType })
-            ) { entry ->
-                val pairId = entry.arguments?.getLong("pairId") ?: 0L
-                val pair by viewModel.observePair(pairId).collectAsStateWithLifecycle(initialValue = null)
-                FileExplorerScreen(
-                    pair = pair,
                     onShowMessage = { viewModel.showMessage(it) },
                     onNavigateBack = { navController.popBackStack() }
                 )

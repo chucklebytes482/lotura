@@ -48,4 +48,34 @@ class PairPathHelperTest {
             PairPathHelper.resolveDefaultLocalTargetPath("")
         )
     }
+
+    @Test
+    fun resolveDefaultLocalPathForDrive_usesDriveFolderName() {
+        assertEquals(
+            "/storage/emulated/0/Documents/Catatan Kerja",
+            PairPathHelper.resolveDefaultLocalPathForDrive("Catatan Kerja")
+        )
+    }
+
+    @Test
+    fun resolveDefaultLocalPathForGithub_nestsRepoAndSubfolderSegments() {
+        assertEquals(
+            "/storage/emulated/0/Documents/Petapikir/panduan",
+            PairPathHelper.resolveDefaultLocalPathForGithub("Petapikir", "panduan")
+        )
+        assertEquals(
+            "/storage/emulated/0/Documents/Petapikir/docs/guides",
+            PairPathHelper.resolveDefaultLocalPathForGithub("Petapikir", "/docs/guides/")
+        )
+        assertEquals(
+            "/storage/emulated/0/Documents/Repo_A/sub_1/folder_2",
+            PairPathHelper.resolveDefaultLocalPathForGithub("Repo:A", "sub*1/folder?2")
+        )
+    }
+
+    @Test
+    fun normalizeGithubFolderPath_trimsSlashesAndSpaces() {
+        assertEquals("docs/guides", PairPathHelper.normalizeGithubFolderPath(" /docs//guides/ "))
+        assertEquals("", PairPathHelper.normalizeGithubFolderPath(" / "))
+    }
 }

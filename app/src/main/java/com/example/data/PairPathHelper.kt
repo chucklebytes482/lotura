@@ -14,12 +14,21 @@ object PairPathHelper {
             .trim('.', ' ')
     }
 
+    fun normalizeGithubFolderPath(raw: String): String {
+        return raw.trim()
+            .replace('\\', '/')
+            .split('/')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
+    }
+
     fun sourceFolderNameForDrive(driveFolderName: String): String {
         return sanitizeFolderName(driveFolderName)
     }
 
     fun sourceFolderNameForGithub(githubSubfolder: String): String {
-        val cleanPath = githubSubfolder.trim().trim('/')
+        val cleanPath = normalizeGithubFolderPath(githubSubfolder)
         if (cleanPath.isEmpty()) return ""
         val leaf = cleanPath.substringAfterLast('/')
         return sanitizeFolderName(leaf)
@@ -31,7 +40,7 @@ object PairPathHelper {
 
     fun pairNameForGithub(repoName: String, githubSubfolder: String): String {
         val cleanRepo = repoName.trim()
-        val cleanSub = githubSubfolder.trim().trim('/')
+        val cleanSub = normalizeGithubFolderPath(githubSubfolder)
         return when {
             cleanRepo.isNotEmpty() && cleanSub.isNotEmpty() -> "$cleanRepo/$cleanSub"
             cleanSub.isNotEmpty() -> cleanSub
@@ -41,6 +50,32 @@ object PairPathHelper {
 
     fun resolveDefaultLocalTargetPath(sourceFolderName: String): String {
         return resolveLocalTargetPath(DEFAULT_LOCAL_BASE_DIR, sourceFolderName)
+    }
+
+    fun resolveDefaultLocalPathForDrive(driveFolderName: String): String {
+        val cleanFolder = sourceFolderNameForDrive(driveFolderName)
+        return resolveLocalTargetPath(DEFAULT_LOCAL_BASE_DIR, cleanFolder)
+    }
+
+    /**
+     * Resolves a nested device directory for a GitHub pair so repositories with identically named
+     * folders never collide: `/storage/emulated/0/Documents/<RepoName>/<SubfolderPath>`.
+     */
+    fun resolveDefaultLocalPathForGithub(repoName: String, githubSubfolder: String): String {
+        val cleanRepo = sanitizeFolderName(repoName)
+        val folderSegments = normalizeGithubFolderPath(githubSubfolder)
+            .split('/')
+            .map { sanitizeFolderName(it) }
+            .filter { it.isNotEmpty() }
+
+        var current = File(DEFAULT_LOCAL_BASE_DIR)
+        if (cleanRepo.isNotEmpty()) {
+            current = File(current, cleanRepo)
+        }
+        folderSegments.forEach { segment ->
+            current = File(current, segment)
+        }
+        return current.path
     }
 
     /**
