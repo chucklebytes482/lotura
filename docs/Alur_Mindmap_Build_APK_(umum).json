@@ -1,35 +1,30 @@
 {
   "title": "Alur Pembuatan & Build APK Android (Umum)",
   "layoutMode": "top-down",
-  "nodeCount": 27,
+  "nodeCount": 21,
   "outline": [
     "Alur Pembuatan & Build APK Android (Umum)",
-    "  - 1. Konsep, Identitas & Format Data",
-    "    - Gunakan 1 kata Euskara 3 suku kata tanpa diakritik (com.aistudio.<kata>) & ikon adaptif kustom",
-    "    - Gunakan Kotlin + Jetpack Compose + Material 3 dengan tema otomatis mengikuti sistem (tanpa pemilih tema)",
-    "    - Rancang skema data seragam (JSON / DataStore / Room) lengkap dengan updatedAtMillis",
-    "    - Wajib urutan prioritas utama: #1 Status Akun dan #2 Web Panduan (GitHub Pages)",
-    "  - 2. Penyimpanan & Sinkronisasi (Cloud atau Lokal)",
-    "    - Sediakan Google Sign-In via Credential Manager & OAuth scope minimal (mis. drive.file)",
-    "    - Daftarkan SHA-1 & SHA-256 (debug dan release) ke Firebase / Google Cloud Console",
-    "    - Gunakan sinkronisasi 2 arah manual per folder di kartu Beranda (tanpa jadwal & tanpa layanan latar belakang)",
-    "    - Izinkan mode pakai langsung tanpa wajib login serta dukungan DataStore/Room lokal",
-    "    - Otomatiskan setup teknis (OAuth, Firebase, SHA-1 debug) oleh AI; beri deep link Google Cloud ramah HP",
-    "  - 3. Kurasi Fitur, UI Ringkas & Target Ukuran < 10 MB",
-    "    - Pangkas fitur opsional (pemilih tema, layanan latar belakang, jadwal, kebijakan hapus), aset berat, & dependensi tak terpakai",
-    "    - Hapus keterangan berlebih di dalam aplikasi; pindahkan seluruh penjelasan rinci hanya ke GitHub Pages",
-    "    - Cukup pilih Sumber; nama pasangan & folder default perangkat (/Documents/<nama>) dibuat otomatis",
-    "    - Sediakan bilah pencarian cepat di bagian atas layar untuk lompat langsung ke item",
-    "  - 4. Pengujian, Kompresi R8 & Verifikasi Build",
-    "    - Jalankan Unit Test & Robolectric UI Test untuk logika inti, serialisasi JSON, dan layar Compose",
-    "    - Aktifkan R8 (isMinifyEnabled), resource shrinking (isShrinkResources), & ABI arm64-v8a (< 10 MB)",
-    "    - Simpan aturan ProGuard model data agar field JSON/cloud tetap aman saat minifikasi",
-    "    - Bangun APK rilis lalu verifikasi tanda tangan apksigner dan SHA-256 checksum",
-    "  - 5. Otomasi GitHub Release, Keamanan & Iterasi",
-    "    - Simpan keystore, password, & google-services.json hanya di GitHub Secrets (bukan di repo)",
-    "    - Jalankan GitHub Actions untuk mengunggah APK, CHECKSUMS, & CERT_FINGERPRINT ke GitHub Releases",
-    "    - Pusat seluruh panduan & keterangan rinci hanya di GitHub Pages (tanpa folder APK di repo)",
-    "    - Evaluasi UX dari penggunaan nyata & pertahankan arsitektur ringan pada setiap pembaruan"
+    "  - 1. Identitas & Skema Data",
+    "    - 1 kata Euskara 3 suku kata (com.aistudio.<kata>) & ikon adaptif kustom",
+    "    - Kotlin + Jetpack Compose + Material 3 dengan tema otomatis sistem",
+    "    - Skema data JSON seragam (id, updatedAtMillis, deleted)",
+    "    - Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (GitHub Pages)",
+    "  - 2. Sinkronisasi Otomatis Perangkat",
+    "    - Langsung timpa berkas perangkat saat ada perubahan/hapus folder di aplikasi + sinkron otomatis saat aplikasi dibuka",
+    "    - 1 berkas tunggal di /storage/emulated/0/Documents/<NamaApp>/ dengan pengaman anti-timpa file kosong & entri terbanyak",
+    "    - 100% luring: tanpa izin INTERNET, tanpa akun/login cloud, tanpa layanan latar belakang",
+    "  - 3. UI Ringkas & Target Ukuran < 10 MB",
+    "    - Hapus fitur opsional, pemilih tema, dan dependensi berat tak terpakai (Firebase/Auth/OkHttp)",
+    "    - Seluruh keterangan rinci hanya di GitHub Pages (docs/index.html, wajib ramah HP tanpa teks/kode keluar jalur)",
+    "    - Sediakan bilah pencarian cepat & mode pilih dengan BackHandler",
+    "  - 4. Pengujian & Build R8",
+    "    - Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first",
+    "    - Aktifkan R8, shrinkResources, & ABI arm64-v8a (< 10 MB)",
+    "    - Verifikasi tanda tangan apksigner dan SHA-256 checksum",
+    "  - 5. Rilis & Keamanan Secret",
+    "    - Sediakan kontainer .hc dalam 1 file HTML di root (<slug_app>_secrets_download.html, hapus setelah diunduh)",
+    "    - Publikasi APK via GitHub Actions ke GitHub Releases (tanpa APK di repo)",
+    "    - Zona folder bersih: panduan/ (dokumen), docs/ (khusus GitHub Pages), hapus file HTML secret setelah unduh"
   ],
   "tree": {
     "id": "a1b2c3d4-0000-4000-8000-000000000001",
@@ -38,142 +33,116 @@
     "children": [
       {
         "id": "a1b2c3d4-1000-4000-8000-000000000001",
-        "title": "1. Konsep, Identitas & Format Data",
+        "title": "1. Identitas & Skema Data",
         "color": "teal",
         "children": [
           {
             "id": "a1b2c3d4-1100-4000-8000-000000000001",
-            "title": "Gunakan 1 kata Euskara 3 suku kata tanpa diakritik (com.aistudio.<kata>) & ikon adaptif kustom",
+            "title": "1 kata Euskara 3 suku kata (com.aistudio.<kata>) & ikon adaptif kustom",
             "color": "teal"
           },
           {
             "id": "a1b2c3d4-1200-4000-8000-000000000001",
-            "title": "Gunakan Kotlin + Jetpack Compose + Material 3 dengan tema otomatis mengikuti sistem (tanpa pemilih tema)",
+            "title": "Kotlin + Jetpack Compose + Material 3 dengan tema otomatis sistem",
             "color": "teal"
           },
           {
             "id": "a1b2c3d4-1300-4000-8000-000000000001",
-            "title": "Rancang skema data seragam (JSON / DataStore / Room) lengkap dengan updatedAtMillis",
+            "title": "Skema data JSON seragam (id, updatedAtMillis, deleted)",
             "color": "teal"
           },
           {
             "id": "a1b2c3d4-1400-4000-8000-000000000001",
-            "title": "Wajib urutan prioritas utama: #1 Status Akun dan #2 Web Panduan (GitHub Pages)",
+            "title": "Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (GitHub Pages)",
             "color": "teal"
           }
         ]
       },
       {
         "id": "a1b2c3d4-2000-4000-8000-000000000001",
-        "title": "2. Penyimpanan & Sinkronisasi (Cloud atau Lokal)",
+        "title": "2. Sinkronisasi Otomatis Perangkat",
         "color": "cobalt",
         "children": [
           {
             "id": "a1b2c3d4-2100-4000-8000-000000000001",
-            "title": "Sediakan Google Sign-In via Credential Manager & OAuth scope minimal (mis. drive.file)",
+            "title": "Langsung timpa berkas perangkat saat ada perubahan/hapus folder di aplikasi + sinkron otomatis saat aplikasi dibuka",
             "color": "cobalt"
           },
           {
             "id": "a1b2c3d4-2200-4000-8000-000000000001",
-            "title": "Daftarkan SHA-1 & SHA-256 (debug dan release) ke Firebase / Google Cloud Console",
-            "link": "https://console.cloud.google.com/auth/clients/",
+            "title": "1 berkas tunggal di /storage/emulated/0/Documents/<NamaApp>/ dengan pengaman anti-timpa file kosong & entri terbanyak",
             "color": "cobalt"
           },
           {
             "id": "a1b2c3d4-2300-4000-8000-000000000001",
-            "title": "Gunakan sinkronisasi 2 arah manual per folder di kartu Beranda (tanpa jadwal & tanpa layanan latar belakang)",
-            "color": "cobalt"
-          },
-          {
-            "id": "a1b2c3d4-2400-4000-8000-000000000001",
-            "title": "Izinkan mode pakai langsung tanpa wajib login serta dukungan DataStore/Room lokal",
-            "color": "cobalt"
-          },
-          {
-            "id": "a1b2c3d4-2500-4000-8000-000000000001",
-            "title": "Otomatiskan setup teknis (OAuth, Firebase, SHA-1 debug) oleh AI; beri deep link Google Cloud ramah HP",
+            "title": "100% luring: tanpa izin INTERNET, tanpa akun/login cloud, tanpa layanan latar belakang",
             "color": "cobalt"
           }
         ]
       },
       {
         "id": "a1b2c3d4-3000-4000-8000-000000000001",
-        "title": "3. Kurasi Fitur, UI Ringkas & Target Ukuran < 10 MB",
+        "title": "3. UI Ringkas & Target Ukuran < 10 MB",
         "color": "sage",
         "children": [
           {
             "id": "a1b2c3d4-3100-4000-8000-000000000001",
-            "title": "Pangkas fitur opsional (pemilih tema, layanan latar belakang, jadwal, kebijakan hapus), aset berat, & dependensi tak terpakai",
+            "title": "Hapus fitur opsional, pemilih tema, dan dependensi berat tak terpakai (Firebase/Auth/OkHttp)",
             "color": "sage"
           },
           {
             "id": "a1b2c3d4-3200-4000-8000-000000000001",
-            "title": "Hapus keterangan berlebih di dalam aplikasi; pindahkan seluruh penjelasan rinci hanya ke GitHub Pages",
+            "title": "Seluruh keterangan rinci hanya di GitHub Pages (docs/index.html, wajib ramah HP tanpa teks/kode keluar jalur)",
             "color": "sage"
           },
           {
             "id": "a1b2c3d4-3300-4000-8000-000000000001",
-            "title": "Cukup pilih Sumber; nama pasangan & folder default perangkat (/Documents/<nama>) dibuat otomatis",
-            "color": "sage"
-          },
-          {
-            "id": "a1b2c3d4-3400-4000-8000-000000000001",
-            "title": "Sediakan bilah pencarian cepat di bagian atas layar untuk lompat langsung ke item",
+            "title": "Sediakan bilah pencarian cepat & mode pilih dengan BackHandler",
             "color": "sage"
           }
         ]
       },
       {
         "id": "a1b2c3d4-4000-4000-8000-000000000001",
-        "title": "4. Pengujian, Kompresi R8 & Verifikasi Build",
+        "title": "4. Pengujian & Build R8",
         "color": "coral",
         "children": [
           {
             "id": "a1b2c3d4-4100-4000-8000-000000000001",
-            "title": "Jalankan Unit Test & Robolectric UI Test untuk logika inti, serialisasi JSON, dan layar Compose",
+            "title": "Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first",
             "color": "coral"
           },
           {
             "id": "a1b2c3d4-4200-4000-8000-000000000001",
-            "title": "Aktifkan R8 (isMinifyEnabled), resource shrinking (isShrinkResources), & ABI arm64-v8a (< 10 MB)",
+            "title": "Aktifkan R8, shrinkResources, & ABI arm64-v8a (< 10 MB)",
             "color": "coral"
           },
           {
             "id": "a1b2c3d4-4300-4000-8000-000000000001",
-            "title": "Simpan aturan ProGuard model data agar field JSON/cloud tetap aman saat minifikasi",
-            "color": "coral"
-          },
-          {
-            "id": "a1b2c3d4-4400-4000-8000-000000000001",
-            "title": "Bangun APK rilis lalu verifikasi tanda tangan apksigner dan SHA-256 checksum",
+            "title": "Verifikasi tanda tangan apksigner dan SHA-256 checksum",
             "color": "coral"
           }
         ]
       },
       {
         "id": "a1b2c3d4-5000-4000-8000-000000000001",
-        "title": "5. Otomasi GitHub Release, Keamanan & Iterasi",
+        "title": "5. Rilis & Keamanan Secret",
         "color": "plum",
         "children": [
           {
             "id": "a1b2c3d4-5100-4000-8000-000000000001",
-            "title": "Simpan keystore, password, & google-services.json hanya di GitHub Secrets (bukan di repo)",
+            "title": "Sediakan kontainer .hc dalam 1 file HTML di root (<slug_app>_secrets_download.html, hapus setelah diunduh)",
             "color": "plum"
           },
           {
             "id": "a1b2c3d4-5200-4000-8000-000000000001",
-            "title": "Jalankan GitHub Actions untuk mengunggah APK, CHECKSUMS, & CERT_FINGERPRINT ke GitHub Releases",
+            "title": "Publikasi APK via GitHub Actions ke GitHub Releases (tanpa APK di repo)",
             "color": "plum"
           },
           {
             "id": "a1b2c3d4-5300-4000-8000-000000000001",
-            "title": "Pusat seluruh panduan & keterangan rinci hanya di GitHub Pages (tanpa folder APK di repo)",
+            "title": "Zona folder bersih: panduan/ (dokumen), docs/ (khusus GitHub Pages), hapus file HTML secret setelah unduh",
             "link": "https://docs.github.com/en/pages",
-            "color": "plum"
-          },
-          {
-            "id": "a1b2c3d4-5400-4000-8000-000000000001",
-            "title": "Evaluasi UX dari penggunaan nyata & pertahankan arsitektur ringan pada setiap pembaruan",
             "color": "plum"
           }
         ]
