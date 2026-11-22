@@ -101,7 +101,7 @@ android {
         System.getenv("HOME")?.let {
           "$it/.m2/repository/org/robolectric/android-all-instrumented/16-robolectric-13921718-i7/android-all-instrumented-16-robolectric-13921718-i7.jar"
         }
-      ).map { File(it) }.firstOrNull { it.exists() }
+      ).map { File(it) }.firstOrNull { it.exists() && it.length() > 0L }
 
       if (robolectricJar != null) {
         test.systemProperty("robolectric.offline", "true")
@@ -131,7 +131,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
-val robolectricSdk by configurations.creating {
+val robolectricSdk = configurations.create("robolectricSdk") {
   isTransitive = false
 }
 
