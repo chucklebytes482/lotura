@@ -6,13 +6,10 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -21,12 +18,12 @@ import javax.crypto.spec.GCMParameterSpec
 
 private val Context.syncPrefsDataStore: DataStore<Preferences> by preferencesDataStore(name = "sync_bebas_prefs")
 
-data class AppPrefs(
-    val googleEmail: String = "",
-    val googleDisplayName: String = "",
-    val driveConnected: Boolean = false
-)
-
+/**
+ * Penyimpanan token terenkripsi.
+ *  - Token Drive: satu entri per email akun (`drive_token_<email>`).
+ *  - PAT GitHub: satu entri per id akun (`gh_pat_enc_<id>`).
+ * Kunci lama dari model satu-akun dihapus lewat [clearLegacyDriveKeys].
+ */
 class SecureTokenStore(private val context: Context) {
 
     companion object {
@@ -35,53 +32,39 @@ class SecureTokenStore(private val context: Context) {
         private const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
 
-        private val KEY_GOOGLE_EMAIL = stringPreferencesKey("google_email")
-        private val KEY_GOOGLE_NAME = stringPreferencesKey("google_name")
-        private val KEY_DRIVE_CONNECTED = booleanPreferencesKey("drive_connected")
-        private val KEY_DRIVE_ACCESS_TOKEN_ENC = stringPreferencesKey("drive_access_token_enc")
+        private val LEGACY_KEYS = listOf(
+            "google_email",
+            "google_name",
+            "drive_connected",
+            "drive_access_token_enc"
+        )
 
+        private fun driveTokenKey(email: String) = stringPreferencesKey("drive_token_${email.lowercase()}")
         private fun githubPatKey(accountId: Long) = stringPreferencesKey("gh_pat_enc_$accountId")
     }
 
-    val appPrefs: Flow<AppPrefs> = context.syncPrefsDataStore.data.map { prefs ->
-        AppPrefs(
-            googleEmail = prefs[KEY_GOOGLE_EMAIL].orEmpty(),
-            googleDisplayName = prefs[KEY_GOOGLE_NAME].orEmpty(),
-            driveConnected = prefs[KEY_DRIVE_CONNECTED] ?: false
-        )
-    }
-
-    suspend fun getAppPrefsSnapshot(): AppPrefs = appPrefs.first()
-
-    suspend fun saveGoogleAccount(email: String, displayName: String, accessToken: String?) {
+    suspend fun saveDriveToken(email: String, accessToken: String) {
+        val encrypted = encryptString(accessToken)
         context.syncPrefsDataStore.edit { prefs ->
-            prefs[KEY_GOOGLE_EMAIL] = email
-            prefs[KEY_GOOGLE_NAME] = displayName
-            prefs[KEY_DRIVE_CONNECTED] = true
-            if (!accessToken.isNullOrBlank()) {
-                prefs[KEY_DRIVE_ACCESS_TOKEN_ENC] = encryptString(accessToken)
-            }
+            prefs[driveTokenKey(email)] = encrypted
         }
     }
 
-    suspend fun saveDriveAccessToken(accessToken: String) {
-        context.syncPrefsDataStore.edit { prefs ->
-            prefs[KEY_DRIVE_ACCESS_TOKEN_ENC] = encryptString(accessToken)
-            prefs[KEY_DRIVE_CONNECTED] = true
-        }
-    }
-
-    suspend fun getDriveAccessToken(): String? {
-        val enc = context.syncPrefsDataStore.data.first()[KEY_DRIVE_ACCESS_TOKEN_ENC] ?: return null
+    suspend fun getDriveToken(email: String): String? {
+        val enc = context.syncPrefsDataStore.data.first()[driveTokenKey(email)] ?: return null
         return decryptString(enc)
     }
 
-    suspend fun clearGoogleAccount() {
+    suspend fun deleteDriveToken(email: String) {
         context.syncPrefsDataStore.edit { prefs ->
-            prefs.remove(KEY_GOOGLE_EMAIL)
-            prefs.remove(KEY_GOOGLE_NAME)
-            prefs[KEY_DRIVE_CONNECTED] = false
-            prefs.remove(KEY_DRIVE_ACCESS_TOKEN_ENC)
+            prefs.remove(driveTokenKey(email))
+        }
+    }
+
+    /** Menghapus sisa token dan kunci dari model satu-akun Drive. Aman dipanggil berulang. */
+    suspend fun clearLegacyDriveKeys() {
+        context.syncPrefsDataStore.edit { prefs ->
+            LEGACY_KEYS.forEach { name -> prefs.remove(stringPreferencesKey(name)) }
         }
     }
 

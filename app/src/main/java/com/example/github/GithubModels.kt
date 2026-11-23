@@ -11,7 +11,8 @@ data class GithubRepoSummary(
     val name: String,
     val fullName: String,
     val defaultBranch: String,
-    val isPrivate: Boolean
+    val isPrivate: Boolean,
+    val archived: Boolean = false
 )
 
 data class GithubTreeBlob(

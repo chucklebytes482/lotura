@@ -7,18 +7,18 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [
-        SyncPairEntity::class,
-        FileStateEntity::class,
+        DriveAccountEntity::class,
         GithubAccountEntity::class,
+        GithubRepoEntity::class,
         SyncLogEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SyncDatabase : RoomDatabase() {
-    abstract fun syncPairDao(): SyncPairDao
-    abstract fun fileStateDao(): FileStateDao
+    abstract fun driveAccountDao(): DriveAccountDao
     abstract fun githubAccountDao(): GithubAccountDao
+    abstract fun githubRepoDao(): GithubRepoDao
     abstract fun syncLogDao(): SyncLogDao
 
     companion object {
