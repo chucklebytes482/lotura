@@ -712,11 +712,14 @@
           if (data.published_at) {
             var dt = new Date(data.published_at);
             if (!isNaN(dt.getTime())) {
-              parts.push("Diperbarui " + dt.toLocaleDateString("id-ID", {
+              var pad2 = function (n) { return n < 10 ? "0" + n : String(n); };
+              var dateStr = dt.toLocaleDateString("id-ID", {
                 day: "numeric",
                 month: "short",
                 year: "numeric"
-              }));
+              });
+              var timeStr = pad2(dt.getHours()) + ":" + pad2(dt.getMinutes());
+              parts.push("Diperbarui " + dateStr + ", " + timeStr);
             }
           }
           metaEl.textContent = parts.join(" • ");
