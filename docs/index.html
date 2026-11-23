@@ -446,7 +446,8 @@
       <a href="#akun">2. Sambungkan akun</a>
       <a href="#pilih">3. Melihat folder</a>
       <a href="#salin">4. Unduh dan unggah</a>
-      <a href="#hapus">5. Putuskan akun</a>
+      <a href="#jelajah">5. Jelajahi dan edit file</a>
+      <a href="#hapus">6. Putuskan akun</a>
     </nav>
 
     <section id="persiapan" class="card">
@@ -490,7 +491,7 @@
           Ikon di kartu menunjukkan hasil terakhir: centang berarti berhasil, tanda seru berarti sebagian berhasil,
           dan silang berarti gagal.
         </li>
-        <li>Ketuk kartu untuk melihat detailnya: jumlah file, ukuran, dan kapan terakhir disalin.</li>
+        <li>Ketuk kartu untuk membuka detailnya. Di sana ada status sync terakhir dan, untuk repo GitHub, tombol <em>Jelajahi file</em>.</li>
         <li>Untuk memperbarui daftar, ketuk ikon <em>muat ulang</em> di bagian akun.</li>
         <li>
           Dokumen Google (Docs, Sheets, Slides) selalu disalin ulang, karena ukurannya tidak bisa dicek.
@@ -515,8 +516,23 @@
       </ul>
     </section>
 
+    <section id="jelajah" class="card">
+      <h2>5. Jelajahi dan edit file</h2>
+      <ul>
+        <li>Di layar detail repo GitHub, ketuk <em>Jelajahi file</em>. Isi repo tampil sebagai daftar: folder dulu, lalu file.</li>
+        <li>Ketuk folder untuk masuk. Tombol kembali naik satu folder, dan kembali ke detail saat sudah di folder paling atas.</li>
+        <li>Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan otomatis ke HP.</li>
+        <li>Dari daftar file, Anda bisa membuat file atau folder baru, mengganti nama, dan menghapus. Menghapus folder ikut menghapus isinya.</li>
+        <li>Perubahan di repo otomatis di-push ke branch <code>main</code> di GitHub, dikumpulkan sekitar 3 detik lalu dikirim sebagai satu commit. Tidak ada tombol simpan.</li>
+        <li>GitHub dicek tiap 60 detik. Perubahan dari GitHub tidak ditarik otomatis; gunakan ikon download di Beranda.</li>
+        <li>Jika file yang sama berubah di HP dan di GitHub, Lotura melaporkan konflik dan tidak menimpa salah satunya.</li>
+        <li>File di atas 45 MB dilewati. Berkas biner (gambar, APK, dan sejenisnya) serta berkas di atas 2 MB tidak bisa dibuka di editor.</li>
+        <li>Auto-sync hanya berjalan selama aplikasi terbuka atau aktif di latar belakang. Folder Google Drive tidak ikut.</li>
+      </ul>
+    </section>
+
     <section id="hapus" class="card">
-      <h2>5. Putuskan akun</h2>
+      <h2>6. Putuskan akun</h2>
       <ul>
         <li>Ketuk ikon hapus di bagian akun untuk memutuskan akun dari Lotura.</li>
         <li>Memutuskan akun tidak menghapus file Anda, baik di HP maupun di Google Drive atau GitHub.</li>
