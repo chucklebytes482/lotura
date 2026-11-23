@@ -164,7 +164,7 @@ fun LogEntryRow(log: SyncLogEntity, modifier: Modifier = Modifier) {
                 ) {
                     StatusPill(label = "${log.target} • ${log.action}", dotColor = badgeColor)
                     Text(
-                        text = log.pairName,
+                        text = log.sourceLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
