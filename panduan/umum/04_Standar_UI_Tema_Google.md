@@ -109,8 +109,9 @@ Judul tidak memakai bold penuh. Pakai `Normal` atau `Medium`.
 
 - **Tombol utama:** satu per layar, `Button` dengan warna primary.
 - **Tombol sekunder:** `OutlinedButton`. Tombol hapus memakai warna `error` sebagai teks.
-- **Status:** chip kecil dengan ikon dan teks. Jangan hanya mengandalkan warna.
-- **Log dan nilai teknis:** `labelSmall` (Roboto Mono) di dalam `SelectionContainer` agar bisa disalin.
+- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ditaruh di layar detail.
+- **Aksi berulang di daftar:** pakai ikon (misalnya download, unggah, muat ulang, hapus), bukan teks. Beri `contentDescription` agar tetap terbaca oleh pembaca layar.
+- **Nilai teknis (path, ID, angka hasil):** `labelSmall` (Roboto Mono) di dalam `SelectionContainer` agar bisa disalin.
 
 ---
 
