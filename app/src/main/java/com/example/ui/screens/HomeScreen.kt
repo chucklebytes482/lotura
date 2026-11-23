@@ -297,7 +297,9 @@ private fun AccountHeader(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                subtitle?.let {
+                    Text(it, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 path?.let {
                     Text(it, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
