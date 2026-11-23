@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.SyncBebasApp
+import com.example.data.LocalFileOps
 import com.example.data.LocalPathHelper
 import com.example.data.SyncSummary
 import com.example.data.SyncSummaryStore
@@ -19,6 +20,7 @@ import com.example.sync.OpResult
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -73,6 +76,25 @@ data class FolderStats(
     val error: String? = null
 )
 
+enum class SaveStatus { IDLE, SAVING, SAVED, ERROR }
+
+/** Editor teks untuk satu berkas. [initialText] dibaca sekali saat dibuka. */
+data class EditorState(
+    val file: File,
+    val initialText: String,
+    val status: SaveStatus = SaveStatus.IDLE,
+    val error: String? = null
+)
+
+/** Penjelajah file untuk satu repo GitHub. [root] adalah akar repo lokal, [dir] folder yang sedang dibuka. */
+data class BrowseState(
+    val title: String,
+    val root: File,
+    val dir: File,
+    val entries: List<LocalFileOps.Entry>,
+    val editor: EditorState? = null
+)
+
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as SyncBebasApp
@@ -82,6 +104,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = app.syncEngine
     private val summaryStore = SyncSummaryStore(application)
     private val ignoreRules = IgnoreRules(IgnoreRules.DEFAULT_PATTERNS)
+    private val autoSync = app.autoSync
 
     val driveAccounts: StateFlow<List<DriveAccountEntity>> = repository.driveAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -105,11 +128,19 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val _detailStats = MutableStateFlow(FolderStats())
     val detailStats: StateFlow<FolderStats> = _detailStats.asStateFlow()
 
+    private val _browse = MutableStateFlow<BrowseState?>(null)
+    /** Penjelajah file yang sedang dibuka, null jika tidak ada. */
+    val browse: StateFlow<BrowseState?> = _browse.asStateFlow()
+
     private var statsJob: Job? = null
     /** Hasil hitung Drive per summaryKey, berlaku selama sesi (dibuang setelah sync). */
     private val driveStatsCache = mutableMapOf<String, FolderStats>()
 
     init {
+        // Pesan dari auto-sync (konflik, gagal push, sukses push) tampil sebagai snackbar.
+        viewModelScope.launch {
+            autoSync.messages.collect { msg -> _uiState.update { it.copy(snackbarMessage = msg) } }
+        }
         // Setiap akun Drive yang belum dimuat (baru atau setelah restart) langsung dimuat 3 level.
         viewModelScope.launch {
             repository.driveAccounts.collect { accounts ->
@@ -498,12 +529,153 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val pat = repository.getGithubPat(repo.accountId)
             ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
         val root = File(repo.localPath)
-        return if (upload) {
-            engine.uploadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items)
-        } else {
-            engine.downloadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, items)
+        // Sha yang sama di perangkat dan GitHub dicatat sebagai base, supaya auto-sync tahu titik awalnya.
+        val shas = linkedMapOf<String, String>()
+        val result = autoSync.withRepoLock(repo.fullName) {
+            if (upload) {
+                engine.uploadGithub(
+                    pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items,
+                    onSynced = { path, sha -> shas[path] = sha }
+                )
+            } else {
+                engine.downloadGithub(
+                    pat, repo.owner, repo.name, repo.defaultBranch, root, items,
+                    onSynced = { path, sha -> shas[path] = sha }
+                )
+            }
+        }
+        autoSync.recordBases(repo.fullName, shas)
+        return result
+    }
+
+    // ---------- Penjelajah file & editor (repo GitHub) ----------
+
+    fun openFiles(repo: GithubRepoEntity) {
+        val root = File(repo.localPath)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { root.mkdirs() }
+            _browse.value = BrowseState(
+                title = repo.fullName,
+                root = root,
+                dir = root,
+                entries = withContext(Dispatchers.IO) { LocalFileOps.list(root) }
+            )
         }
     }
+
+    /** Menutup penjelajah sepenuhnya. Editor yang masih terbuka ikut ditutup; auto-save sudah dijalankan oleh layar. */
+    fun closeBrowse() {
+        _browse.value = null
+    }
+
+    fun browseTo(entry: LocalFileOps.Entry) {
+        if (!entry.isDir) return
+        _browse.update { it?.copy(dir = entry.file, editor = null) }
+        viewModelScope.launch { refreshBrowse() }
+    }
+
+    /** Tombol kembali: tutup editor dulu, lalu naik satu folder. Mengembalikan false jika sudah di akar. */
+    fun handleBrowseBack(): Boolean {
+        val current = _browse.value ?: return false
+        if (current.editor != null) {
+            closeEditor()
+            return true
+        }
+        if (current.dir.absolutePath == current.root.absolutePath) return false
+        val parent = current.dir.parentFile ?: return false
+        _browse.update { it?.copy(dir = parent) }
+        viewModelScope.launch { refreshBrowse() }
+        return true
+    }
+
+    fun openEditor(entry: LocalFileOps.Entry) {
+        if (!entry.file.isFile) return
+        viewModelScope.launch {
+            val editable = withContext(Dispatchers.IO) { LocalFileOps.isEditable(entry.file) }
+            if (!editable) {
+                showMessage("${entry.name} tidak bisa diedit: berkas biner atau lebih dari 2 MB.")
+                return@launch
+            }
+            val text = try {
+                withContext(Dispatchers.IO) { LocalFileOps.readText(entry.file) }
+            } catch (e: Exception) {
+                showMessage("Gagal membuka ${entry.name}: ${e.message ?: "tidak diketahui"}")
+                return@launch
+            }
+            _browse.update { it?.copy(editor = EditorState(entry.file, text)) }
+        }
+    }
+
+    fun closeEditor() {
+        _browse.update { it?.copy(editor = null) }
+    }
+
+    /**
+     * Simpan isi editor ke [file]. Dipanggil dengan debounce dari layar, dan saat editor ditutup.
+     * Tidak bergantung pada editor yang masih terbuka, supaya simpanan terakhir tidak hilang.
+     */
+    fun saveEditedFile(file: File, text: String) {
+        setEditorStatus(file, SaveStatus.SAVING, null)
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching { LocalFileOps.writeText(file, text) }.exceptionOrNull()
+            }
+            if (error == null) {
+                setEditorStatus(file, SaveStatus.SAVED, null)
+                autoSync.notifyChanged()
+            } else {
+                setEditorStatus(file, SaveStatus.ERROR, error.message ?: "Gagal menyimpan")
+            }
+        }
+    }
+
+    fun createEntry(name: String, isFolder: Boolean) {
+        val dir = _browse.value?.dir ?: return
+        runFileOp(success = null) {
+            if (isFolder) LocalFileOps.createFolder(dir, name) else LocalFileOps.createFile(dir, name)
+        }
+    }
+
+    fun renameEntry(entry: LocalFileOps.Entry, newName: String) {
+        closeEditorIfInside(entry.file)
+        runFileOp(success = null) { LocalFileOps.rename(entry.file, newName) }
+    }
+
+    fun deleteEntry(entry: LocalFileOps.Entry) {
+        closeEditorIfInside(entry.file)
+        runFileOp(success = "${entry.name} dihapus.") { LocalFileOps.delete(entry.file) }
+    }
+
+    private fun closeEditorIfInside(file: File) {
+        val editor = _browse.value?.editor ?: return
+        val target = file.absolutePath
+        if (editor.file.absolutePath == target || editor.file.absolutePath.startsWith("$target/")) closeEditor()
+    }
+
+    private fun runFileOp(success: String?, block: () -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { block() } }
+            result.onFailure { showMessage(it.message ?: "Operasi gagal") }
+            result.onSuccess { success?.let { showMessage(it) } }
+            refreshBrowse()
+            autoSync.notifyChanged()
+        }
+    }
+
+    private suspend fun refreshBrowse() {
+        val dir = _browse.value?.dir ?: return
+        val entries = withContext(Dispatchers.IO) { LocalFileOps.list(dir) }
+        _browse.update { b -> if (b != null && b.dir.absolutePath == dir.absolutePath) b.copy(entries = entries) else b }
+    }
+
+    private fun setEditorStatus(file: File, status: SaveStatus, error: String?) {
+        _browse.update { b ->
+            val editor = b?.editor
+            if (b == null || editor == null || editor.file.absolutePath != file.absolutePath) b
+            else b.copy(editor = editor.copy(status = status, error = error))
+        }
+    }
+
 
     /** Membuang semua state (pohon, ringkasan, detail) untuk satu sumber. */
     private fun dropSource(sourceKey: String) {

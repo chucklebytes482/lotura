@@ -49,6 +49,7 @@ import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.ui.SyncViewModel
 import com.example.ui.components.StoragePermissionHelper
+import com.example.ui.screens.FileBrowserScreen
 import com.example.ui.screens.FolderDetailScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.SyncBebasTheme
@@ -56,6 +57,7 @@ import com.example.ui.theme.SyncBebasTheme
 object Routes {
     const val HOME = "home"
     const val DETAIL = "detail"
+    const val FILES = "files"
 }
 
 class MainActivity : ComponentActivity() {
@@ -86,6 +88,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val detailStats by viewModel.detailStats.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val browse by viewModel.browse.collectAsStateWithLifecycle()
 
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
 
@@ -149,14 +152,27 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     val isDetail = currentRoute == Routes.DETAIL
+    val isFiles = currentRoute == Routes.FILES
 
     fun goBackFromDetail() {
         viewModel.closeDetail()
         navController.popBackStack()
     }
+    fun goBackFromFiles() {
+        // Di dalam editor atau subfolder: naik satu level dulu. Di akar: tutup penjelajah.
+        if (!viewModel.handleBrowseBack()) {
+            viewModel.closeBrowse()
+            navController.popBackStack()
+        }
+    }
     BackHandler(enabled = isDetail) { goBackFromDetail() }
+    BackHandler(enabled = isFiles) { goBackFromFiles() }
 
-    val topBarTitle = if (isDetail) detail?.title ?: "Lotura" else "Lotura"
+    val topBarTitle = when {
+        isDetail -> detail?.title ?: "Lotura"
+        isFiles -> browse?.title ?: "Lotura"
+        else -> "Lotura"
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -172,9 +188,9 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     )
                 },
                 navigationIcon = {
-                    if (isDetail) {
+                    if (isDetail || isFiles) {
                         IconButton(
-                            onClick = { goBackFromDetail() },
+                            onClick = { if (isDetail) goBackFromDetail() else goBackFromFiles() },
                             modifier = Modifier.testTag("navigate_back_button")
                         ) {
                             Icon(
@@ -250,7 +266,33 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                         summary = summaries[current.summaryKey],
                         busy = uiState.busySources.contains(current.sourceKey),
                         onDownload = { viewModel.syncDetail(upload = false) },
-                        onUpload = { viewModel.syncDetail(upload = true) }
+                        onUpload = { viewModel.syncDetail(upload = true) },
+                        onOpenFiles = current.repo?.let { repo ->
+                            val open: () -> Unit = {
+                                viewModel.openFiles(repo)
+                                navController.navigate(Routes.FILES)
+                            }
+                            open
+                        }
+                    )
+                }
+            }
+
+            composable(Routes.FILES) {
+                val current = browse
+                if (current == null) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                } else {
+                    FileBrowserScreen(
+                        browse = current,
+                        onEntryClick = { entry ->
+                            if (entry.isDir) viewModel.browseTo(entry) else viewModel.openEditor(entry)
+                        },
+                        onSave = { file, text -> viewModel.saveEditedFile(file, text) },
+                        onCloseEditor = { viewModel.closeEditor() },
+                        onCreate = { name, isFolder -> viewModel.createEntry(name, isFolder) },
+                        onRename = { entry, newName -> viewModel.renameEntry(entry, newName) },
+                        onDelete = { entry -> viewModel.deleteEntry(entry) }
                     )
                 }
             }

@@ -7,6 +7,7 @@ import com.example.data.secure.SecureTokenStore
 import com.example.drive.DriveApiClient
 import com.example.drive.GoogleAuthManager
 import com.example.github.GithubApiClient
+import com.example.sync.GithubAutoSync
 import com.example.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,11 @@ class SyncBebasApp : Application() {
     lateinit var syncEngine: SyncEngine
         private set
 
+    lateinit var autoSync: GithubAutoSync
+        private set
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         database = SyncDatabase.getInstance(this)
@@ -45,8 +51,15 @@ class SyncBebasApp : Application() {
             github = githubApiClient,
             driveTokenProvider = { email -> resolveDriveToken(email) }
         )
+        autoSync = GithubAutoSync(
+            context = this,
+            repository = repository,
+            github = githubApiClient,
+            scope = appScope
+        )
+        autoSync.start()
         // Hapus sisa format akun Drive lama (satu akun global) sekali saat aplikasi diperbarui.
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        appScope.launch {
             repository.clearLegacyDriveKeys()
         }
     }

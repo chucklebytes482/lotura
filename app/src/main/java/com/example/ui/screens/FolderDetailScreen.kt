@@ -15,11 +15,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -43,7 +45,8 @@ fun FolderDetailScreen(
     summary: SyncSummary?,
     busy: Boolean,
     onDownload: () -> Unit,
-    onUpload: () -> Unit
+    onUpload: () -> Unit,
+    onOpenFiles: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -63,6 +66,14 @@ fun FolderDetailScreen(
             IconButton(onClick = onUpload, enabled = !busy) {
                 Icon(Icons.Rounded.CloudUpload, contentDescription = "Unggah")
             }
+        }
+
+        if (onOpenFiles != null) {
+            OutlinedButton(onClick = onOpenFiles, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                Text("Jelajahi file")
+            }
+            NoteText("Edit file teks di sini. Setiap perubahan langsung tersimpan ke perangkat dan di-push ke GitHub.")
         }
 
         HorizontalDivider()

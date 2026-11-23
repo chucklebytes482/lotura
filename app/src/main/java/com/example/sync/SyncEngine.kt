@@ -8,6 +8,7 @@ import com.example.github.GithubApiClient
 import com.example.github.GithubRemote
 import com.example.github.GithubTreeBlob
 import com.example.github.GithubTreeChange
+import com.example.data.LocalFileOps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -168,7 +169,8 @@ class SyncEngine(
         repo: String,
         branch: String,
         rootDir: File,
-        items: List<TreeItem>
+        items: List<TreeItem>,
+        onSynced: (path: String, sha: String) -> Unit = { _, _ -> }
     ): OpResult = withContext(Dispatchers.IO) {
         val (_, treeSha) = github.getBranchHeadCommit(pat, owner, repo, branch)
         val blobs = github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
@@ -182,11 +184,14 @@ class SyncEngine(
             val dest = File(rootDir, blob.repoPath)
             if (!SyncDecisions.shouldTransfer(sourceSize = blob.size, targetSize = dest.takeIf { it.isFile }?.length())) {
                 result += OpResult(skipped = 1)
+                // Ukuran sama: hanya dianggap sinkron kalau isinya memang identik.
+                if (dest.isFile && LocalFileOps.gitBlobSha(dest) == blob.sha) onSynced(blob.repoPath, blob.sha)
                 continue
             }
             try {
                 github.downloadBlobToFile(pat, owner, repo, blob.sha, dest)
                 result += OpResult(transferred = 1)
+                onSynced(blob.repoPath, blob.sha)
             } catch (e: Exception) {
                 result += OpResult(failed = 1)
             }
@@ -201,7 +206,8 @@ class SyncEngine(
         branch: String,
         rootDir: File,
         ignoreRules: IgnoreRules,
-        items: List<TreeItem>
+        items: List<TreeItem>,
+        onSynced: (path: String, sha: String) -> Unit = { _, _ -> }
     ): OpResult = withContext(Dispatchers.IO) {
         val (headCommit, treeSha) = github.getBranchHeadCommit(pat, owner, repo, branch)
         val remoteBlobs: Map<String, GithubTreeBlob> =
@@ -226,6 +232,7 @@ class SyncEngine(
             val remote = remoteBlobs[repoPath]
             if (!SyncDecisions.shouldTransfer(sourceSize = file.length(), targetSize = remote?.size)) {
                 result += OpResult(skipped = 1)
+                if (remote != null && LocalFileOps.gitBlobSha(file) == remote.sha) onSynced(repoPath, remote.sha)
                 continue
             }
             if (file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
@@ -253,6 +260,7 @@ class SyncEngine(
                     message = "Upload ${changes.size} file dari Lotura"
                 )
                 result += OpResult(transferred = changes.size)
+                changes.forEach { change -> change.blobSha?.let { onSynced(change.repoPath, it) } }
             } catch (e: Exception) {
                 result += OpResult(failed = changes.size)
             }
