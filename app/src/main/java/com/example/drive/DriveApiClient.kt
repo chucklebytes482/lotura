@@ -20,6 +20,7 @@ interface DriveRemote {
     suspend fun fetchUserInfo(accessToken: String): DriveUserInfo
     suspend fun listFolders(accessToken: String, parentId: String = "root"): List<DriveFolderItem>
     suspend fun createFolder(accessToken: String, parentId: String, name: String): DriveFolderItem
+    suspend fun listChildren(accessToken: String, folderId: String): List<DriveChild>
     suspend fun listFilesRecursive(accessToken: String, rootFolderId: String): List<DriveFileItem>
     suspend fun downloadFile(accessToken: String, fileId: String, destFile: File)
     suspend fun exportGoogleWorkspaceFile(
@@ -38,6 +39,16 @@ interface DriveRemote {
     ): DriveFileItem
     suspend fun trashFile(accessToken: String, fileId: String)
 }
+
+/** Satu entri isi folder Drive (folder atau file), untuk pohon di UI dan unduhan terpilih. */
+data class DriveChild(
+    val id: String,
+    val name: String,
+    val isFolder: Boolean,
+    val size: Long?,
+    val nativeMime: String?,
+    val modifiedTimeMillis: Long
+)
 
 class DriveApiClient(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -124,6 +135,70 @@ class DriveApiClient(
             name = obj.optString("name", name),
             modifiedTimeMillis = DriveJsonParser.parseRfc3339Millis(obj.optString("modifiedTime", ""))
         )
+    }
+
+    /**
+     * Isi satu folder (tidak rekursif). Dipakai untuk pohon di UI.
+     * Nama file memakai nama lokal (Google Docs diberi ekstensi ekspor), sama dengan [listFilesRecursive].
+     * Native Google Docs/Sheets/Slides tidak punya ukuran, jadi [DriveChild.size] = null.
+     */
+    override suspend fun listChildren(
+        accessToken: String,
+        folderId: String
+    ): List<DriveChild> = withContext(Dispatchers.IO) {
+        val query = "'$folderId' in parents and trashed = false"
+        val result = mutableListOf<DriveChild>()
+        var pageToken: String? = null
+        do {
+            val encodedQ = URLEncoder.encode(query, "UTF-8")
+            val tokenParam = if (pageToken != null) "&pageToken=${URLEncoder.encode(pageToken, "UTF-8")}" else ""
+            val req = Request.Builder()
+                .url("$FILES_URL?q=$encodedQ&orderBy=folder,name&pageSize=200&fields=${URLEncoder.encode(LIST_FIELDS, "UTF-8")}$tokenParam&supportsAllDrives=true&includeItemsFromAllDrives=true")
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val page = DriveJsonParser.parseFilePage(executeString(req))
+            for (entry in page.files) {
+                val effectiveMime = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
+                    entry.shortcutTargetMimeType ?: entry.mimeType
+                } else {
+                    entry.mimeType
+                }
+                val effectiveId = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
+                    entry.shortcutTargetId ?: entry.id
+                } else {
+                    entry.id
+                }
+                if (effectiveMime == DriveMimeTypes.FOLDER) {
+                    result.add(
+                        DriveChild(
+                            id = effectiveId,
+                            name = entry.name,
+                            isFolder = true,
+                            size = null,
+                            nativeMime = null,
+                            modifiedTimeMillis = entry.modifiedTimeMillis
+                        )
+                    )
+                    continue
+                }
+                val exportSpec = DriveMimeTypes.exportSpecFor(effectiveMime)
+                if (effectiveMime.startsWith("application/vnd.google-apps.") && exportSpec == null) continue
+                val isNative = exportSpec != null
+                result.add(
+                    DriveChild(
+                        id = effectiveId,
+                        name = DriveMimeTypes.localFileNameForDriveItem(entry.name, effectiveMime),
+                        isFolder = false,
+                        size = if (isNative) null else entry.size,
+                        nativeMime = if (isNative) effectiveMime else null,
+                        modifiedTimeMillis = entry.modifiedTimeMillis
+                    )
+                )
+            }
+            pageToken = page.nextPageToken
+        } while (pageToken != null)
+        result.sortedWith(compareByDescending<DriveChild> { it.isFolder }.thenBy { it.name.lowercase() })
     }
 
     override suspend fun listFilesRecursive(

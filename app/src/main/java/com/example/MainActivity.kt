@@ -14,29 +14,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FolderCopy
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.FolderCopy
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -61,19 +54,13 @@ import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.ui.SyncViewModel
 import com.example.ui.components.StoragePermissionHelper
-import com.example.ui.screens.AccountsScreen
-import com.example.ui.screens.DriveSyncConnectedSheetContent
-import com.example.ui.screens.DriveSyncUnauthenticatedSheetContent
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.PairEditorScreen
 import com.example.ui.screens.SyncLogScreen
 import com.example.ui.theme.SyncBebasTheme
 
 object Routes {
     const val HOME = "home"
-    const val ACCOUNTS = "accounts"
     const val LOGS = "logs"
-    const val PAIR_CREATE = "pair_editor"
 }
 
 class MainActivity : ComponentActivity() {
@@ -97,13 +84,12 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val pairs by viewModel.pairs.collectAsStateWithLifecycle()
+    val driveAccounts by viewModel.driveAccounts.collectAsStateWithLifecycle()
     val githubAccounts by viewModel.githubAccounts.collectAsStateWithLifecycle()
+    val repos by viewModel.repos.collectAsStateWithLifecycle()
     val recentLogs by viewModel.recentLogs.collectAsStateWithLifecycle()
-    val appPrefs by viewModel.appPrefs.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var showDriveSheet by remember { mutableStateOf(false) }
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
 
     DisposableEffect(lifecycleOwner) {
@@ -121,58 +107,43 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { activityResult ->
         GoogleAuthManager.extractAccessTokenFromResult(context, activityResult.data)
-            .onSuccess { token -> viewModel.onGoogleAccessTokenReceived(token) }
+            .onSuccess { token -> viewModel.onDriveAccessTokenReceived(token) }
             .onFailure { err ->
-                viewModel.onGoogleAuthError(
+                viewModel.onDriveAuthError(
                     err.localizedMessage ?: "Otorisasi Google Drive dibatalkan atau gagal."
                 )
             }
     }
 
-    val startGoogleDriveAuth: () -> Unit = {
+    val startDriveAuth: () -> Unit = {
         val activity = context.findActivity()
         if (activity == null) {
-            viewModel.onGoogleAuthError("Activity tidak tersedia untuk otorisasi Google.")
+            viewModel.onDriveAuthError("Activity tidak tersedia untuk otorisasi Google.")
         } else {
-            viewModel.onGoogleConnectingStarted()
+            viewModel.onDriveConnectingStarted()
             GoogleAuthManager.authorizeDriveInteractive(
                 activity = activity,
                 resolutionLauncher = driveAuthResolutionLauncher,
-                onAccessToken = { token -> viewModel.onGoogleAccessTokenReceived(token) },
-                onError = { err -> viewModel.onGoogleAuthError(err) }
+                onAccessToken = { token -> viewModel.onDriveAccessTokenReceived(token) },
+                onError = { err -> viewModel.onDriveAuthError(err) }
             )
         }
     }
 
-    val waitSyncMessage = "Tunggu hingga selesai agar sinkronisasi berhasil"
     LaunchedEffect(uiState.snackbarMessage) {
         val msg = uiState.snackbarMessage ?: return@LaunchedEffect
         snackbarHostState.currentSnackbarData?.dismiss()
-        val duration = if (msg == waitSyncMessage && uiState.syncingPairIds.isNotEmpty()) {
-            SnackbarDuration.Indefinite
-        } else {
-            SnackbarDuration.Short
-        }
-        snackbarHostState.showSnackbar(message = msg, duration = duration)
+        snackbarHostState.showSnackbar(message = msg)
         viewModel.consumeSnackbar()
-    }
-    LaunchedEffect(uiState.syncingPairIds) {
-        if (uiState.syncingPairIds.isEmpty() &&
-            snackbarHostState.currentSnackbarData?.visuals?.message == waitSyncMessage
-        ) {
-            snackbarHostState.currentSnackbarData?.dismiss()
-        }
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
-    val isTopLevel = currentRoute in setOf(Routes.HOME, Routes.ACCOUNTS, Routes.LOGS)
+    val isTopLevel = currentRoute in setOf(Routes.HOME, Routes.LOGS)
 
     val topBarTitle = when (currentRoute) {
         Routes.HOME -> "Lotura"
-        Routes.ACCOUNTS -> "Akun"
         Routes.LOGS -> "Log"
-        Routes.PAIR_CREATE -> "Tambah Pasangan"
         else -> "Lotura"
     }
 
@@ -232,24 +203,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                         modifier = Modifier.testTag("nav_home_tab")
                     )
                     NavigationBarItem(
-                        selected = currentRoute == Routes.ACCOUNTS,
-                        onClick = {
-                            navController.navigate(Routes.ACCOUNTS) {
-                                popUpTo(Routes.HOME) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.ACCOUNTS) Icons.Filled.AccountCircle else Icons.Outlined.AccountCircle,
-                                contentDescription = "Akun"
-                            )
-                        },
-                        label = { Text("Akun") },
-                        modifier = Modifier.testTag("nav_accounts_tab")
-                    )
-                    NavigationBarItem(
                         selected = currentRoute == Routes.LOGS,
                         onClick = {
                             navController.navigate(Routes.LOGS) {
@@ -269,18 +222,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     )
                 }
             }
-        },
-        floatingActionButton = {
-            if (currentRoute == Routes.HOME) {
-                FloatingActionButton(
-                    onClick = { navController.navigate(Routes.PAIR_CREATE) },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.testTag("add_pair_fab")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Tambah pasangan folder")
-                }
-            }
         }
     ) { innerPadding ->
         NavHost(
@@ -290,11 +231,20 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         ) {
             composable(Routes.HOME) {
                 HomeScreen(
-                    pairs = pairs,
-                    appPrefs = appPrefs,
-                    syncingPairIds = uiState.syncingPairIds,
-                    isOnline = uiState.isOnline,
+                    driveAccounts = driveAccounts,
+                    githubAccounts = githubAccounts,
+                    repos = repos,
+                    trees = uiState.trees,
+                    loading = uiState.loading,
+                    expanded = uiState.expanded,
+                    selected = uiState.selected,
+                    busySources = uiState.busySources,
+                    isConnectingDrive = uiState.isConnectingDrive,
+                    driveAuthError = uiState.driveAuthError,
+                    isAddingGithub = uiState.isAddingGithub,
+                    githubAccountError = uiState.githubAccountError,
                     hasStoragePermission = hasStoragePermission,
+                    isOnline = uiState.isOnline,
                     onRequestStoragePermission = {
                         runCatching {
                             context.startActivity(StoragePermissionHelper.buildAllFilesSettingsIntent(context))
@@ -302,7 +252,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                             viewModel.showMessage("Buka Pengaturan Android -> Akses Semua File untuk Lotura.")
                         }
                     },
-                    onOpenDriveSheet = { showDriveSheet = true },
                     onOpenWebGuide = {
                         val guideUrl = context.getString(R.string.web_guide_url)
                         runCatching {
@@ -311,25 +260,19 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                             viewModel.showMessage("Gagal membuka browser.")
                         }
                     },
-                    onDownloadPair = { id -> viewModel.downloadPair(id) },
-                    onUploadPair = { id -> viewModel.uploadPair(id) },
-                    onDeleteSelectedPairs = { selected -> selected.forEach { viewModel.deletePair(it) } },
-                    onAddPairClick = { navController.navigate(Routes.PAIR_CREATE) }
-                )
-            }
-
-            composable(Routes.ACCOUNTS) {
-                AccountsScreen(
-                    appPrefs = appPrefs,
-                    githubAccounts = githubAccounts,
-                    isConnectingGoogle = uiState.isConnectingGoogle,
-                    isAddingGithubAccount = uiState.isAddingGithubAccount,
-                    googleAuthError = uiState.googleAuthError,
-                    githubAccountError = uiState.githubAccountError,
-                    onConnectGoogle = startGoogleDriveAuth,
-                    onDisconnectGoogle = { viewModel.disconnectGoogleAccount() },
+                    onConnectDrive = startDriveAuth,
+                    onRemoveDrive = { email -> viewModel.removeDriveAccount(email) },
+                    onReloadDrive = { email -> viewModel.reloadDrive(email) },
                     onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
-                    onDeleteGithubAccount = { viewModel.deleteGithubAccount(it) }
+                    onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
+                    onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
+                    onToggleRepo = { repo -> viewModel.toggleRepoExpand(repo) },
+                    onReloadRepo = { repo -> viewModel.reloadRepo(repo) },
+                    onToggleFolder = { item -> viewModel.toggleFolder(item) },
+                    onToggleSelect = { item -> viewModel.toggleSelect(item) },
+                    onDownload = { viewModel.downloadSelected() },
+                    onUpload = { viewModel.uploadSelected() },
+                    onClearSelection = { viewModel.clearSelection() }
                 )
             }
 
@@ -337,54 +280,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                 SyncLogScreen(
                     logs = recentLogs,
                     onClearLogs = { viewModel.clearLogs() }
-                )
-            }
-
-            composable(Routes.PAIR_CREATE) {
-                PairEditorScreen(
-                    existingPairs = pairs,
-                    githubAccounts = githubAccounts,
-                    driveBrowser = uiState.driveBrowser,
-                    githubBrowser = uiState.githubBrowser,
-                    githubFolderBrowser = uiState.githubFolderBrowser,
-                    driveEmail = appPrefs.googleEmail,
-                    onLoadDriveRootFolders = { viewModel.loadDriveRootFolders() },
-                    onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
-                    onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
-                    onLoadGithubFolders = { accId, owner, repo, branch ->
-                        viewModel.loadGithubFolders(accId, owner, repo, branch)
-                    },
-                    onSavePair = { pair ->
-                        viewModel.savePair(pair) {
-                            navController.popBackStack()
-                        }
-                    },
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-        }
-    }
-
-    if (showDriveSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showDriveSheet = false },
-            sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surface
-        ) {
-            if (!appPrefs.driveConnected) {
-                DriveSyncUnauthenticatedSheetContent(
-                    isLoading = uiState.isConnectingGoogle,
-                    errorMessage = uiState.googleAuthError,
-                    onConnectGoogleClick = startGoogleDriveAuth
-                )
-            } else {
-                DriveSyncConnectedSheetContent(
-                    userEmail = appPrefs.googleEmail,
-                    onDisconnect = {
-                        viewModel.disconnectGoogleAccount()
-                        showDriveSheet = false
-                    }
                 )
             }
         }

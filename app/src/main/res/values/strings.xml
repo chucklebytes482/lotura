@@ -11,5 +11,5 @@
     <string name="permission_storage_title">Izin Akses File</string>
     <string name="permission_storage_desc">Aktifkan Akses Semua File.</string>
     <string name="permission_storage_cta">Aktifkan</string>
-    <string name="web_guide_url">https://chucklebytes482.github.io/lotura-site/</string>
+    <string name="web_guide_url">https://chucklebytes482.github.io/lotura/</string>
 </resources>

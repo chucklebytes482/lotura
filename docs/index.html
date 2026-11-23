@@ -418,16 +418,15 @@
   <main class="container">
     <header class="hero" id="unduh">
       <span class="hero-badge">Panduan &amp; Unduhan Resmi Lotura</span>
-      <h1>Sinkronisasi Folder Android ↔ Google Drive &amp; GitHub</h1>
+      <h1>Sinkronkan Google Drive &amp; GitHub ke Perangkat Android</h1>
       <p class="lead">
-        Kelola dan sinkronkan folder catatan, dokumen Markdown, maupun repositori Anda secara 2 arah
-        langsung dari penyimpanan perangkat Android tanpa server perantara.
+        Hubungkan akun, centang file yang Anda mau, lalu unduh atau unggah secara manual. Tanpa server perantara.
       </p>
       <div class="cta-group">
         <a
           class="btn btn-primary"
           id="apk-download-btn"
-          href="https://github.com/chucklebytes482/lotura-site/releases/latest/download/lotura-latest-arm64-v8a.apk"
+          href="https://github.com/chucklebytes482/lotura/releases/latest/download/lotura-latest-arm64-v8a.apk"
         >
           Unduh Aplikasi (APK)
         </a>
@@ -439,249 +438,143 @@
 
     <nav class="toc" aria-label="Navigasi Panduan">
       <a href="#unduh">Unduh APK</a>
-      <a href="#ikon">Arti Ikon</a>
-      <a href="#akun">Hubungkan Akun</a>
-      <a href="#pasangan">Tambah Pasangan</a>
-      <a href="#sinkron">Sinkronisasi</a>
-      <a href="#kelola">Lokasi &amp; Hapus</a>
+      <a href="#persiapan">1. Persiapan</a>
+      <a href="#akun">2. Hubungkan akun</a>
+      <a href="#pilih">3. Pilih file</a>
+      <a href="#transfer">4. Download &amp; Upload</a>
+      <a href="#hapus">5. Hapus akun</a>
       <a href="#keamanan">Keamanan</a>
     </nav>
 
-    <section id="ikon" class="card">
-      <h2>1. Arti Ikon &amp; Warna Kartu Pasangan</h2>
-      <p>
-        Kartu pasangan di Beranda Lotura dibuat ringkas tanpa keterangan teks berlebih. Warna, garis tepi kiri,
-        dan ikon besar langsung menunjukkan sumber beserta hasil sinkronisasi terakhir:
-      </p>
-
-      <h3>Pembeda Sumber (Google Drive vs GitHub)</h3>
-      <div class="provider-grid">
-        <div class="provider-card drive">
-          <div class="provider-head">
-            <span class="icon-box drive" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M8.5 3.5h7l6.5 11.25h-7L8.5 3.5zm-1.15 2l3.5 6.05-3.5 6.05H2l5.35-12.1zm1.35 10.25h13.3l-3.45 5.25H5.25l3.45-5.25z"/></svg>
-            </span>
-            <strong>Google Drive (Biru-Cyan)</strong>
-          </div>
-          <p>
-            Garis sisi kiri dan ikon pita segitiga berwarna <strong>Biru-Cyan</strong> menandakan folder yang
-            terhubung ke Google Drive Anda.
-          </p>
-          <div class="code-box"><code>Documents/Google Drive &lt;email&gt;/&lt;FolderRoot&gt;</code></div>
-        </div>
-
-        <div class="provider-card github">
-          <div class="provider-head">
-            <span class="icon-box github" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.72-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.38 9.38 0 0 1 12 6.84c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.49A10.27 10.27 0 0 0 22 12.25C22 6.59 17.52 2 12 2z"/></svg>
-            </span>
-            <strong>GitHub (Ungu-Violet)</strong>
-          </div>
-          <p>
-            Garis sisi kiri dan ikon khas GitHub berwarna <strong>Ungu-Violet</strong> menandakan folder dari
-            repositori GitHub Anda.
-          </p>
-          <div class="code-box"><code>Documents/GitHub &lt;username&gt;/&lt;NamaRepo&gt;/&lt;FolderRoot&gt;</code></div>
-        </div>
-      </div>
-
-      <h3>Legenda Ikon Baris Status &amp; Aksi</h3>
-      <p>
-        Angka di samping setiap ikon menunjukkan jumlah berkas pada sinkronisasi terakhir. Warna ikon akan
-        menyala tegas bila angkanya lebih dari <strong>0</strong>, dan redup bila <strong>0</strong>.
-      </p>
-      <div class="legend-grid">
-        <div class="legend-item">
-          <span class="legend-icon upload" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Unggah (Awan Panah Atas)</strong>
-            <span>Jumlah berkas dari perangkat Anda yang diunggah ke Google Drive atau GitHub.</span>
-          </div>
-        </div>
-
-        <div class="legend-item">
-          <span class="legend-icon download" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Unduh (Awan Panah Bawah)</strong>
-            <span>Jumlah berkas yang diunduh (termasuk dokumen yang diekspor) ke folder perangkat Anda.</span>
-          </div>
-        </div>
-
-
-
-        <div class="legend-item">
-          <span class="legend-icon sync" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Tombol Download &amp; Upload</strong>
-            <span>Setiap pasangan punya dua tombol. <strong>Download</strong> menimpa berkas lokal dengan berkas sumber yang namanya sama. <strong>Upload</strong> menimpa berkas sumber dengan berkas lokal yang namanya sama.</span>
-          </div>
-        </div>
-
-        <div class="legend-item">
-          <span class="legend-icon error" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Galat Sinkronisasi (Tanda Seru Merah)</strong>
-            <span>Muncul di samping waktu bila sinkronisasi terakhir gagal. Buka tab <strong>Log</strong> untuk rinciannya.</span>
-          </div>
-        </div>
-
-        <div class="legend-item">
-          <span class="legend-icon check" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Mode Pilih (Ikon Centang)</strong>
-            <span>Muncul saat kartu <strong>ditekan tahan</strong> untuk memilih satu atau beberapa pasangan yang ingin dihapus.</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="akun" class="card">
-      <h2>2. Persiapan Izin &amp; Akun</h2>
+    <section id="persiapan" class="card">
+      <h2>1. Persiapan</h2>
       <ol>
         <li>
-          <strong>Izin Akses Semua File:</strong> Ketuk tombol <em>Aktifkan</em> pada spanduk di Beranda agar
-          Lotura dapat membaca dan menyimpan berkas di dalam folder <code>Documents/</code> perangkat Anda.
+          <strong>Izin akses semua file:</strong> Beranda menampilkan tombol <em>Beri izin</em> jika belum aktif.
+          Lotura butuh izin ini untuk membaca dan menulis folder lokal.
         </li>
         <li>
-          <strong>Akun Google Drive:</strong> Ketuk kartu <em>Google Drive</em> di Beranda atau buka tab
-          <strong>Akun</strong>, lalu masuk dengan akun Google Anda.
-        </li>
-        <li>
-          <strong>Akun GitHub:</strong> Buka tab <strong>Akun</strong> → ketuk <em>Tambah Akun GitHub</em>, lalu
-          tempel token akses pribadi (<em>Fine-Grained Personal Access Token</em>) dengan izin baca &amp; tulis isi
-          repositori. Nama akun terdeteksi otomatis.
+          <strong>Koneksi internet:</strong> dibutuhkan saat memuat pohon file, mengunduh, dan mengunggah.
         </li>
       </ol>
-    </section>
-
-    <section id="pasangan" class="card">
-      <h2>3. Menambah Pasangan Folder (Folder Utama &amp; Anti-Duplikat)</h2>
-      <ol>
-        <li>Tekan tombol <strong>+</strong> di kanan bawah Beranda.</li>
-        <li>Pilih sumber <strong>Google Drive</strong> atau <strong>GitHub</strong>.</li>
-        <li>
-          Pilih <strong>1 folder utama</strong> (tingkat teratas) di Drive Saya atau di dalam repositori GitHub.
-          Anda tidak perlu memilih subfolder satu per satu karena <strong>seluruh subfolder di dalamnya otomatis
-          ikut disinkronkan</strong>.
-        </li>
-        <li>
-          Folder yang sudah pernah dipasangkan otomatis ditandai <strong>Terpasang</strong> dan dikunci agar tidak
-          terpilih dua kali.
-        </li>
-        <li>
-          Ketuk <strong>Simpan Pasangan Folder</strong>. Folder perangkat di dalam <code>Documents/</code> akan
-          dibuat otomatis mengikuti struktur sumbernya.
-        </li>
-      </ol>
-
+      <h3>Lokasi folder di perangkat</h3>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Contoh Sumber</th>
-              <th>Lokasi Folder di Perangkat</th>
+              <th>Sumber</th>
+              <th>Lokasi di perangkat</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Google Drive: <code>Catatan Kerja</code></td>
-              <td><code>/storage/emulated/0/Documents/Google Drive user@gmail.com/Catatan Kerja</code></td>
+              <td>Akun Google Drive</td>
+              <td><code>/storage/emulated/0/google drive &lt;email&gt;/</code></td>
             </tr>
             <tr>
-              <td>GitHub: <code>akun-anda/Catatan / panduan</code></td>
-              <td><code>/storage/emulated/0/Documents/GitHub akun-anda/Catatan/panduan</code></td>
-            </tr>
-            <tr>
-              <td>GitHub: <code>akun-anda/Catatan / arsip</code></td>
-              <td><code>/storage/emulated/0/Documents/GitHub akun-anda/Catatan/arsip</code></td>
+              <td>Repo GitHub</td>
+              <td><code>/storage/emulated/0/github &lt;username&gt;/&lt;repo&gt;/</code></td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <section id="sinkron" class="card">
-      <h2>4. Sinkronisasi 2 Arah Manual per Folder</h2>
-      <p>
-        Lotura tidak menjalankan sinkronisasi latar belakang secara diam-diam. Anda memegang kendali penuh kapan
-        setiap folder diselaraskan:
-      </p>
+    <section id="akun" class="card">
+      <h2>2. Hubungkan akun</h2>
+      <h3>Google Drive</h3>
+      <ol>
+        <li>Di Beranda, ketuk <em>Hubungkan akun Google Drive</em>.</li>
+        <li>Pilih akun Google dan berikan izin. Anda bisa menambah lebih dari satu akun.</li>
+        <li>Lotura memuat 3 level folder pertama. Folder yang lebih dalam dimuat saat dibuka.</li>
+      </ol>
+      <h3>GitHub</h3>
+      <ol>
+        <li>Di Beranda, ketuk <em>Tambah akun GitHub</em>.</li>
+        <li>
+          Tempel <em>fine-grained personal access token</em> dengan izin <strong>Contents: Read and write</strong>
+          ke repo yang ingin disinkronkan, lalu ketuk <em>Simpan</em>.
+        </li>
+        <li>
+          Semua repo di akun itu otomatis muncul, masing-masing sebagai folder sendiri. Repo yang diarsipkan
+          diberi label <em>Archived</em>.
+        </li>
+      </ol>
+    </section>
+
+    <section id="pilih" class="card">
+      <h2>3. Pilih file</h2>
+      <ul>
+        <li>Ketuk panah di sebelah akun atau repo untuk membuka pohonnya.</li>
+        <li>Centang file atau folder. Mencentang folder juga mencentang seluruh isinya.</li>
+        <li>
+          Dokumen Google (Docs, Sheets, Slides) ditandai <em>Dokumen Google · selalu ditransfer</em>. Ukurannya
+          tidak diketahui, jadi dokumen ini selalu ditransfer ulang.
+        </li>
+        <li>Ketuk ikon <em>muat ulang</em> untuk mengambil daftar terbaru dari Drive atau GitHub.</li>
+      </ul>
+    </section>
+
+    <section id="transfer" class="card">
+      <h2>4. Download &amp; Upload</h2>
       <ul>
         <li>
-          Setiap kartu pasangan di Beranda punya dua tombol di sisi kanan: <strong>Download</strong> (unduh) dan
-          <strong>Upload</strong> (unggah). Keduanya bekerja per pasangan, tanpa pengecekan waktu.
+          <strong>Download</strong> menyalin item yang dicentang dari Drive atau GitHub ke folder lokal.
         </li>
         <li>
-          <strong>Download</strong>: setiap berkas dari sumber (Google Drive atau folder GitHub terpilih) diunduh
-          dan <strong>menimpa</strong> berkas lokal dengan nama yang sama.
+          <strong>Upload</strong> mengirim item yang dicentang dari folder lokal ke Drive atau GitHub.
         </li>
         <li>
-          <strong>Upload</strong>: setiap berkas lokal <strong>menimpa</strong> berkas di sumber dengan nama yang
-          sama. Untuk GitHub, semua berkas dikirim dalam satu commit.
+          Perbandingan hanya memakai <strong>ukuran file</strong>. File dengan ukuran sama dilewati. Jika ukuran
+          berbeda, file ditransfer.
         </li>
         <li>
-          Saat berjalan, kedua tombol nonaktif dan muncul indikator putar. Angka di samping ikon
-          <strong>Unggah</strong> dan <strong>Unduh</strong> pada kartu menunjukkan hasil terakhir.
+          Hasil setiap operasi tercatat di tab <strong>Log</strong>.
+        </li>
+        <li>
+          <em>Batal</em> menghapus semua centang tanpa menjalankan apa pun.
         </li>
       </ul>
       <div class="notice">
-        <strong>Tips:</strong> Biarkan Lotura tetap terbuka saat menyinkronkan folder berukuran besar agar
-        seluruh berkas selesai terunggah dan terunduh dengan utuh.
+        <strong>Batasan upload:</strong> Upload hanya mengirim file yang sudah ada di pohon. File baru di folder
+        lokal harus berada di dalam folder yang sudah ada di pohon. Muat ulang pohon setelah menambah folder baru.
       </div>
     </section>
 
-    <section id="kelola" class="card">
-      <h2>5. Mengakses Berkas &amp; Menghapus Pasangan</h2>
+    <section id="hapus" class="card">
+      <h2>5. Hapus akun</h2>
       <ul>
         <li>
-          <strong>Membuka &amp; Mengedit Berkas:</strong> Buka langsung folder <code>Documents/Google Drive &lt;email&gt;/</code>
-          atau <code>Documents/GitHub &lt;username&gt;/&lt;NamaRepo&gt;/</code> melalui aplikasi manajer berkas ponsel maupun editor
-          pilihan Anda (seperti aplikasi catatan Markdown atau dokumen). Setelah selesai menyunting, buka Lotura dan
-          ketuk tombol <strong>Upload</strong> (atau <strong>Download</strong> untuk mengambil versi terbaru).
+          Ketuk ikon <em>hapus</em> di kanan header akun Drive untuk memutuskan akun tersebut dari Lotura.
         </li>
         <li>
-          <strong>Menghapus Pasangan Folder:</strong> <strong>Tekan tahan</strong> kartu pasangan di Beranda hingga
-          muncul tanda centang dan bilah pilihan di bagian atas, pilih kartu lain bila perlu, lalu ketuk ikon
-          <strong>Hapus</strong> di pojok kanan bilah pilihan.
+          Untuk GitHub, ketuk ikon <em>hapus</em> di header akun GitHub. Repo di akun itu ikut dihapus dari daftar.
         </li>
         <li>
-          <strong>Melihat Riwayat &amp; Galat:</strong> Buka tab <strong>Log</strong> pada bilah navigasi bawah
-          untuk melihat daftar berkas yang baru disinkronkan atau memeriksa rincian apabila muncul ikon tanda seru
-          merah.
+          Menghapus akun hanya memutus koneksi di Lotura. Berkas di perangkat maupun di Drive atau GitHub tidak ikut
+          terhapus.
         </li>
       </ul>
+      <div class="notice">
+        <strong>Setelah pembaruan aplikasi:</strong> akun Google Drive perlu disambungkan ulang. Akun GitHub perlu
+        ditambahkan ulang.
+      </div>
     </section>
 
     <section id="keamanan" class="card">
-      <h2>6. Privasi &amp; Keamanan</h2>
+      <h2>Privasi &amp; keamanan</h2>
       <ul>
         <li>
-          Seluruh sinkronisasi terhubung langsung dari ponsel Anda ke layanan Google Drive dan GitHub tanpa server
-          perantara.
+          Sinkronisasi berjalan langsung dari ponsel Anda ke Google Drive dan GitHub tanpa server perantara.
         </li>
         <li>
-          Kunci akses akun Google Drive dan GitHub Anda disimpan secara terenkripsi di dalam keamanan perangkat Anda
-          sendiri.
-        </li>
-        <li>
-          Menghapus pasangan dari Lotura hanya memutuskan tautan sinkronisasi dari daftar aplikasi dan tidak
-          menghapus berkas asli Anda di perangkat maupun di cloud.
+          Token akses Google Drive dan token GitHub disimpan terenkripsi di perangkat Anda.
         </li>
       </ul>
     </section>
 
     <footer>
-      Lotura • Aplikasi Sinkronisasi Folder Android
+      Lotura • Sinkronisasi Android ↔ Google Drive &amp; GitHub
     </footer>
   </main>
   <script>
@@ -689,7 +582,7 @@
       var metaEl = document.getElementById("release-meta");
       var btnEl = document.getElementById("apk-download-btn");
       if (!metaEl || !window.fetch) return;
-      fetch("https://api.github.com/repos/chucklebytes482/lotura-site/releases/latest", {
+      fetch("https://api.github.com/repos/chucklebytes482/lotura/releases/latest", {
         headers: { "Accept": "application/vnd.github+json" }
       })
         .then(function (res) { return res.ok ? res.json() : null; })
