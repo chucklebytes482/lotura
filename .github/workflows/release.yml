@@ -306,16 +306,11 @@ jobs:
           target_commitish: main
           name: ${{ env.APP_DISPLAY_NAME }} ${{ env.VERSION_TAG }}
           body: |
-            Rilis resmi **${{ env.APP_DISPLAY_NAME }} ${{ env.VERSION_TAG }}** (Android `arm64-v8a`, R8 minified & signed).
+            Rilis terbaru **${{ env.APP_DISPLAY_NAME }} ${{ env.VERSION_TAG }}**.
 
-            - **Unduhan Langsung Terbaru:** `lotura-latest-arm64-v8a.apk`
-            - **Arsip Versi Ini:** `lotura-${{ env.VERSION_TAG }}-arm64-v8a-release.apk`
-            - **Verifikasi Integritas:** `CHECKSUMS.txt` & `CERT_FINGERPRINT.txt`
-            - **Panduan Pengguna:** https://chucklebytes482.github.io/lotura-site/
+            Panduan & unduhan: https://chucklebytes482.github.io/lotura-site/
           files: |
-            dist/*.apk
-            dist/CHECKSUMS.txt
-            dist/CERT_FINGERPRINT.txt
+            dist/${{ env.APP_SLUG }}-latest-arm64-v8a.apk
           generate_release_notes: false
 
       - name: Clean Private Key on Runner
