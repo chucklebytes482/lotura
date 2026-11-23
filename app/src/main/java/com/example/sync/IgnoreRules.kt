@@ -60,6 +60,9 @@ class IgnoreRules(rawPatterns: String) {
     }
 
     companion object {
+        /** Pola default untuk folder hasil koneksi. */
+        const val DEFAULT_PATTERNS = ".git/\n.DS_Store\nThumbs.db\n*.tmp\n*.swp\n*~\n.trash/"
+
         private fun globToRegex(glob: String): Regex {
             val sb = StringBuilder("^")
             var i = 0

@@ -50,6 +50,7 @@ class GithubApiClient(
         private const val BASE_URL = "https://api.github.com"
         private const val API_VERSION = "2022-11-28"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+        private const val MAX_REPO_PAGES = 20
         const val MAX_GITHUB_FILE_BYTES = 45L * 1024L * 1024L // Safe limit below 50 MB warning / 100 MB hard cap
     }
 
@@ -67,25 +68,31 @@ class GithubApiClient(
 
     override suspend fun listRepositories(pat: String): List<GithubRepoSummary> =
         withContext(Dispatchers.IO) {
-            val req = baseRequest(pat, "$BASE_URL/user/repos?per_page=100&sort=updated")
-                .get()
-                .build()
-            val arr = JSONArray(executeString(req))
             val repos = mutableListOf<GithubRepoSummary>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val ownerObj = obj.optJSONObject("owner") ?: continue
-                repos.add(
-                    GithubRepoSummary(
-                        owner = ownerObj.optString("login", ""),
-                        name = obj.optString("name", ""),
-                        fullName = obj.optString("full_name", ""),
-                        defaultBranch = obj.optString("default_branch", "main"),
-                        isPrivate = obj.optBoolean("private", false)
+            var page = 1
+            while (page <= MAX_REPO_PAGES) {
+                val req = baseRequest(pat, "$BASE_URL/user/repos?per_page=100&sort=updated&page=$page")
+                    .get()
+                    .build()
+                val arr = JSONArray(executeString(req))
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val ownerObj = obj.optJSONObject("owner") ?: continue
+                    repos.add(
+                        GithubRepoSummary(
+                            owner = ownerObj.optString("login", ""),
+                            name = obj.optString("name", ""),
+                            fullName = obj.optString("full_name", ""),
+                            defaultBranch = obj.optString("default_branch", "main"),
+                            isPrivate = obj.optBoolean("private", false),
+                            archived = obj.optBoolean("archived", false)
+                        )
                     )
-                )
+                }
+                if (arr.length() < 100) break
+                page++
             }
-            repos
+            repos.distinctBy { it.fullName }
         }
 
     /**

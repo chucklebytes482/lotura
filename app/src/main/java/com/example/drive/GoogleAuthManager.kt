@@ -1,5 +1,6 @@
 package com.example.drive
 
+import android.accounts.Account
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -20,11 +21,19 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
 
 object GoogleAuthManager {
     const val DRIVE_FULL_SCOPE = "https://www.googleapis.com/auth/drive"
+    private const val GOOGLE_ACCOUNT_TYPE = "com.google"
 
-    fun buildDriveAuthRequest(): AuthorizationRequest {
-        return AuthorizationRequest.builder()
+    /**
+     * Membangun permintaan otorisasi Drive. Jika [email] diisi, permintaan diikat ke akun
+     * Google tersebut sehingga token yang diambil selalu milik akun itu.
+     */
+    fun buildDriveAuthRequest(email: String? = null): AuthorizationRequest {
+        val builder = AuthorizationRequest.builder()
             .setRequestedScopes(listOf(Scope(DRIVE_FULL_SCOPE)))
-            .build()
+        if (!email.isNullOrBlank()) {
+            builder.setAccount(Account(email, GOOGLE_ACCOUNT_TYPE))
+        }
+        return builder.build()
     }
 
     /**
@@ -82,12 +91,13 @@ object GoogleAuthManager {
     }
 
     /**
-     * Attempts silent token retrieval for background/foreground sync without launching UI.
+     * Mengambil token Drive tanpa UI untuk akun [email] yang sudah pernah diotorisasi.
+     * Mengembalikan null jika perlu interaksi user.
      */
-    suspend fun tryGetSilentAccessToken(context: Context): String? =
+    suspend fun tryGetSilentAccessToken(context: Context, email: String): String? =
         suspendCancellableCoroutine { cont ->
             Identity.getAuthorizationClient(context)
-                .authorize(buildDriveAuthRequest())
+                .authorize(buildDriveAuthRequest(email))
                 .addOnSuccessListener { result ->
                     if (!result.hasResolution() && !result.accessToken.isNullOrBlank()) {
                         cont.resume(result.accessToken)
