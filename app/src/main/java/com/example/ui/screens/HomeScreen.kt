@@ -132,9 +132,9 @@ fun HomeScreen(
                 val sourceKey = SourceKeys.drive(account.email)
                 item(key = "drive-head:${account.email}") {
                     AccountHeader(
-                        title = account.displayName.ifBlank { account.email },
-                        subtitle = account.email,
-                        path = LocalPathHelper.driveRoot(account.email).absolutePath,
+                        title = account.email,
+                        subtitle = null,
+                        path = null,
                         onReload = { onReloadDrive(account.email) },
                         onRemove = { onRemoveDrive(account.email) },
                         isLoading = sourceKey in loading
@@ -169,14 +169,14 @@ fun HomeScreen(
             }
             githubAccounts.forEach { account ->
                 item(key = "gh-head:${account.id}") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        IconButton(onClick = { onRefreshRepos(account) }) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang daftar repo")
-                        }
-                        IconButton(onClick = { onDeleteGithubAccount(account) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Hapus akun GitHub")
-                        }
-                    }
+                    AccountHeader(
+                        title = account.username,
+                        subtitle = null,
+                        path = null,
+                        onReload = { onRefreshRepos(account) },
+                        onRemove = { onDeleteGithubAccount(account) },
+                        isLoading = false
+                    )
                 }
                 val accountRepos = repos.filter { it.accountId == account.id }
                     .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
@@ -280,7 +280,7 @@ private fun SectionTitle(title: String, hint: String?) {
 @Composable
 private fun AccountHeader(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     path: String?,
     onReload: () -> Unit,
     onRemove: () -> Unit,
