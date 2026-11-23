@@ -12,6 +12,9 @@ object SourceKeys {
  *  - size: ukuran byte. null untuk folder dan Google Docs/Sheets/Slides (native).
  *  - remoteId: id folder/file Drive, atau sha blob untuk GitHub.
  */
+/** Path yang punya segmen tersembunyi (diawali '.'), di level mana pun. Dilewati saat sinkron. */
+fun isHiddenPath(path: String): Boolean = path.split('/').any { it.startsWith(".") }
+
 data class TreeItem(
     val sourceKey: String,
     val path: String,

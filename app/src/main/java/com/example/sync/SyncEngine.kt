@@ -57,7 +57,7 @@ class SyncEngine(
                     result += OpResult(failed = 1)
                     null
                 }
-                listing?.forEach { remote ->
+                listing?.filterNot { isHiddenPath(it.relativePath) }?.forEach { remote ->
                     result += downloadDriveFile(
                         token = token,
                         source = source,
@@ -188,6 +188,7 @@ class SyncEngine(
         val blobs = github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
         var result = OpResult()
         for (blob in blobs) {
+            if (isHiddenPath(blob.repoPath)) continue
             if (items.none { it.covers(blob.repoPath) }) continue
             val dest = File(rootDir, blob.repoPath)
             if (!SyncDecisions.shouldTransfer(sourceSize = blob.size, targetSize = dest.takeIf { it.isFile }?.length())) {
