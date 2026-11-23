@@ -62,7 +62,7 @@ class UiRobolectricTest {
             githubOwner = "pengguna",
             githubRepo = "Petapikir",
             githubSubfolder = "panduan",
-            lastStatus = "GitHub: ↑3 ↓2 Hapus:1 Konflik:4"
+            lastStatus = "GitHub: ↑3 ↓2"
         )
         val drivePair = SyncPairEntity(
             id = 8L,
@@ -105,13 +105,9 @@ class UiRobolectricTest {
         composeRule.onNodeWithTag("pair_provider_icon_7", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("pair_metric_upload_7", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("pair_metric_download_7", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("pair_metric_delete_7", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("pair_metric_conflict_7", useUnmergedTree = true).assertIsDisplayed()
 
         // Redundant provider text badges & verbose status words must not exist on pair cards
         composeRule.onNodeWithTag("pair_provider_badge_7", useUnmergedTree = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Hapus:1", substring = true, useUnmergedTree = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Konflik:4", substring = true, useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("/storage/emulated/0/Documents/GitHub/Petapikir/panduan", useUnmergedTree = true).assertDoesNotExist()
 
         // Per-folder sync button works directly
@@ -171,8 +167,6 @@ class UiRobolectricTest {
             .assertDoesNotExist()
         composeRule.onNodeWithTag("pair_metric_upload_9", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("pair_metric_download_9", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("pair_metric_delete_9", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("pair_metric_conflict_9", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

@@ -1,8 +1,8 @@
 package com.example.sync
 
 import com.example.data.SyncRepository
-import com.example.data.db.FileStateEntity
 import com.example.drive.DriveAuthExpiredException
+import com.example.drive.DriveMimeTypes
 import com.example.drive.DriveRemote
 import com.example.github.GithubApiClient
 import com.example.github.GithubRemote
@@ -19,13 +19,16 @@ data class SyncRunResult(
     val success: Boolean,
     val uploaded: Int = 0,
     val downloaded: Int = 0,
-    val exportedDocs: Int = 0,
-    val deleted: Int = 0,
-    val conflicts: Int = 0,
     val summary: String,
     val error: String? = null
 )
 
+/**
+ * Sinkronisasi sederhana, dua langkah berurutan:
+ *  1. ↓ Download: setiap berkas sumber menimpa berkas lokal dengan nama sama.
+ *  2. ↑ Upload:   setiap berkas lokal menimpa berkas sumber dengan nama sama.
+ * Tanpa pengecekan waktu, tanpa hash, tanpa berkas konflik, dan tanpa penghapusan.
+ */
 class SyncExecutor(
     private val repository: SyncRepository,
     private val driveRemote: DriveRemote,
@@ -56,270 +59,56 @@ class SyncExecutor(
 
             try {
                 val ignoreRules = IgnoreRules(pair.ignorePatterns)
-                val localFiles = LocalScanner.scanDirectory(rootDir, ignoreRules)
-                val remoteList = driveRemote.listFilesRecursive(accessToken, pair.driveFolderId)
+                val remoteFiles = driveRemote.listFilesRecursive(accessToken, pair.driveFolderId)
                     .filterNot { ignoreRules.isIgnored(it.relativePath, isDirectory = false) }
-                val remoteMap = remoteList.associateBy { it.relativePath }
-                val baselineMap = repository.getFileStates(pairId).associateBy { it.relativePath }
 
-                val ops = SyncPlanner.planDriveSync(
-                    localFiles = localFiles,
-                    remoteFiles = remoteMap,
-                    baseline = baselineMap,
-                    deletePolicy = com.example.data.db.DeletePolicy.TWO_WAY
-                )
-
-                var uploaded = 0
                 var downloaded = 0
-                var exportedDocs = 0
-                var deleted = 0
-                var conflicts = 0
+                var uploaded = 0
 
-                for (op in ops) {
-                    val localFile = File(rootDir, op.relativePath)
-                    when (op) {
-                        is DriveSyncOp.UploadToDrive -> {
-                            val remoteItem = driveRemote.uploadFile(
-                                accessToken = accessToken,
-                                rootFolderId = pair.driveFolderId,
-                                relativePath = op.relativePath,
-                                existingFileId = op.existingDriveFileId,
-                                sourceFile = localFile,
-                                nativeWorkspaceMimeType = op.nativeWorkspaceMimeType
-                            )
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            val prev = baselineMap[op.relativePath]
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = remoteItem.id,
-                                    driveModifiedAt = remoteItem.modifiedTimeMillis,
-                                    driveNativeMimeType = remoteItem.nativeWorkspaceMimeType,
-                                    githubBlobSha = prev?.githubBlobSha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            uploaded++
-                            repository.addLog(pairId, pair.name, "DRIVE", "UPLOAD", op.relativePath, "OK", "Diunggah ke Google Drive")
-                        }
-
-                        is DriveSyncOp.DownloadFromDrive -> {
-                            driveRemote.downloadFile(accessToken, op.remote.id, localFile)
-                            if (op.remote.modifiedTimeMillis > 0L) {
-                                localFile.setLastModified(op.remote.modifiedTimeMillis)
-                            }
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            val prev = baselineMap[op.relativePath]
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = op.remote.id,
-                                    driveModifiedAt = op.remote.modifiedTimeMillis,
-                                    driveNativeMimeType = null,
-                                    githubBlobSha = prev?.githubBlobSha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            downloaded++
-                            repository.addLog(pairId, pair.name, "DRIVE", "DOWNLOAD", op.relativePath, "OK", "Diunduh dari Google Drive")
-                        }
-
-                        is DriveSyncOp.ExportGoogleDocFromDrive -> {
-                            driveRemote.exportGoogleWorkspaceFile(
-                                accessToken = accessToken,
-                                fileId = op.remote.id,
-                                exportMimeType = op.exportMimeType,
-                                destFile = localFile
-                            )
-                            if (op.remote.modifiedTimeMillis > 0L) {
-                                localFile.setLastModified(op.remote.modifiedTimeMillis)
-                            }
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            val prev = baselineMap[op.relativePath]
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = op.remote.id,
-                                    driveModifiedAt = op.remote.modifiedTimeMillis,
-                                    driveNativeMimeType = op.remote.nativeWorkspaceMimeType,
-                                    githubBlobSha = prev?.githubBlobSha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            exportedDocs++
-                            repository.addLog(
-                                pairId,
-                                pair.name,
-                                "DRIVE",
-                                "EXPORT_DOCS",
-                                op.relativePath,
-                                "OK",
-                                "Diekspor otomatis dari Google Docs/Sheets/Slides"
-                            )
-                        }
-
-                        is DriveSyncOp.TrashOnDrive -> {
-                            driveRemote.trashFile(accessToken, op.driveFileId)
-                            repository.deleteFileState(pairId, op.relativePath)
-                            deleted++
-                            repository.addLog(pairId, pair.name, "DRIVE", "DELETE", op.relativePath, "OK", "Dipindahkan ke Sampah Drive")
-                        }
-
-                        is DriveSyncOp.DeleteLocal -> {
-                            if (localFile.exists()) localFile.delete()
-                            repository.deleteFileState(pairId, op.relativePath)
-                            deleted++
-                            repository.addLog(pairId, pair.name, "DRIVE", "DELETE", op.relativePath, "OK", "Dihapus lokal mengikuti Drive")
-                        }
-
-                        is DriveSyncOp.ConflictLocalWins -> {
-                            // Save losing remote version as conflict file
-                            val conflictFile = File(rootDir, op.losingConflictPath)
-                            val nativeMime = op.remote.nativeWorkspaceMimeType
-                            if (nativeMime != null) {
-                                driveRemote.exportGoogleWorkspaceFile(accessToken, op.remote.id, op.remote.mimeType, conflictFile)
-                            } else {
-                                driveRemote.downloadFile(accessToken, op.remote.id, conflictFile)
-                            }
-                            // Upload winning local version
-                            val uploadedRemote = driveRemote.uploadFile(
-                                accessToken = accessToken,
-                                rootFolderId = pair.driveFolderId,
-                                relativePath = op.relativePath,
-                                existingFileId = op.remote.id,
-                                sourceFile = localFile,
-                                nativeWorkspaceMimeType = op.remote.nativeWorkspaceMimeType
-                            )
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = uploadedRemote.id,
-                                    driveModifiedAt = uploadedRemote.modifiedTimeMillis,
-                                    driveNativeMimeType = uploadedRemote.nativeWorkspaceMimeType,
-                                    githubBlobSha = baselineMap[op.relativePath]?.githubBlobSha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            conflicts++
-                            uploaded++
-                            repository.addLog(
-                                pairId,
-                                pair.name,
-                                "DRIVE",
-                                "CONFLICT",
-                                op.relativePath,
-                                "CONFLICT",
-                                "Lokal lebih baru menang; versi Drive disimpan sebagai ${op.losingConflictPath}"
-                            )
-                        }
-
-                        is DriveSyncOp.ConflictRemoteWins -> {
-                            // Move losing local file to conflict copy
-                            val conflictFile = File(rootDir, op.losingConflictPath)
-                            conflictFile.parentFile?.mkdirs()
-                            if (localFile.exists()) {
-                                localFile.copyTo(conflictFile, overwrite = true)
-                            }
-                            // Download/export winning remote version
-                            val nativeMime = op.remote.nativeWorkspaceMimeType
-                            if (nativeMime != null) {
-                                driveRemote.exportGoogleWorkspaceFile(accessToken, op.remote.id, op.remote.mimeType, localFile)
-                            } else {
-                                driveRemote.downloadFile(accessToken, op.remote.id, localFile)
-                            }
-                            if (op.remote.modifiedTimeMillis > 0L) {
-                                localFile.setLastModified(op.remote.modifiedTimeMillis)
-                            }
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = op.remote.id,
-                                    driveModifiedAt = op.remote.modifiedTimeMillis,
-                                    driveNativeMimeType = op.remote.nativeWorkspaceMimeType,
-                                    githubBlobSha = baselineMap[op.relativePath]?.githubBlobSha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            conflicts++
-                            downloaded++
-                            repository.addLog(
-                                pairId,
-                                pair.name,
-                                "DRIVE",
-                                "CONFLICT",
-                                op.relativePath,
-                                "CONFLICT",
-                                "Drive lebih baru menang; versi lokal disimpan sebagai ${op.losingConflictPath}"
-                            )
-                        }
-
-                        is DriveSyncOp.SkipDeleteProtected -> {
-                            repository.addLog(pairId, pair.name, "DRIVE", "SKIP", op.relativePath, "SKIP", op.reason)
-                        }
+                // ↓ Download: timpa berkas lokal dengan nama sama
+                for (remote in remoteFiles) {
+                    val dest = File(rootDir, remote.relativePath)
+                    dest.parentFile?.mkdirs()
+                    val exportSpec = remote.nativeWorkspaceMimeType?.let { DriveMimeTypes.exportSpecFor(it) }
+                    if (exportSpec != null) {
+                        driveRemote.exportGoogleWorkspaceFile(
+                            accessToken = accessToken,
+                            fileId = remote.id,
+                            exportMimeType = exportSpec.exportMimeType,
+                            destFile = dest
+                        )
+                    } else {
+                        driveRemote.downloadFile(accessToken, remote.id, dest)
                     }
+                    downloaded++
+                    repository.addLog(pairId, pair.name, "DRIVE", "DOWNLOAD", remote.relativePath, "OK", "Diunduh dari Google Drive")
                 }
 
-                // Refresh baseline for already-matching files that had no baseline yet
-                for ((relPath, localSnap) in localFiles) {
-                    val remoteSnap = remoteMap[relPath]
-                    if (remoteSnap != null && !baselineMap.containsKey(relPath) &&
-                        !remoteSnap.md5Checksum.isNullOrBlank() &&
-                        remoteSnap.md5Checksum.equals(localSnap.contentHash, ignoreCase = true)
-                    ) {
-                        repository.upsertFileState(
-                            FileStateEntity(
-                                pairId = pairId,
-                                relativePath = relPath,
-                                localModifiedAt = localSnap.modifiedAtMillis,
-                                localSize = localSnap.size,
-                                localHash = localSnap.contentHash,
-                                driveFileId = remoteSnap.id,
-                                driveModifiedAt = remoteSnap.modifiedTimeMillis,
-                                driveNativeMimeType = remoteSnap.nativeWorkspaceMimeType,
-                                lastSyncedAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
+                // ↑ Upload: timpa berkas Drive dengan nama sama
+                val remoteById = remoteFiles.associateBy { it.relativePath }
+                val localFiles = LocalScanner.scanDirectory(rootDir, ignoreRules)
+                for (path in localFiles.keys) {
+                    val remote = remoteById[path]
+                    driveRemote.uploadFile(
+                        accessToken = accessToken,
+                        rootFolderId = pair.driveFolderId,
+                        relativePath = path,
+                        existingFileId = remote?.id,
+                        sourceFile = File(rootDir, path),
+                        nativeWorkspaceMimeType = remote?.nativeWorkspaceMimeType
+                    )
+                    uploaded++
+                    repository.addLog(pairId, pair.name, "DRIVE", "UPLOAD", path, "OK", "Diunggah ke Google Drive")
                 }
 
                 val now = System.currentTimeMillis()
-                val summary = if (uploaded + downloaded + exportedDocs + deleted + conflicts == 0) {
-                    "Drive selaras • Tidak ada perubahan"
+                val summary = if (uploaded + downloaded == 0) {
+                    "Drive selaras • Tidak ada berkas"
                 } else {
-                    "Drive: ↑$uploaded ↓$downloaded Ekspor:$exportedDocs Hapus:$deleted Konflik:$conflicts"
+                    "Drive: ↑$uploaded ↓$downloaded"
                 }
                 repository.updateDriveStatus(pairId, now, summary, null)
-                SyncRunResult(
-                    success = true,
-                    uploaded = uploaded,
-                    downloaded = downloaded,
-                    exportedDocs = exportedDocs,
-                    deleted = deleted,
-                    conflicts = conflicts,
-                    summary = summary
-                )
+                SyncRunResult(success = true, uploaded = uploaded, downloaded = downloaded, summary = summary)
             } catch (authEx: DriveAuthExpiredException) {
                 val msg = authEx.message ?: "Otorisasi Google Drive kedaluwarsa"
                 repository.updateDriveStatus(pairId, pair.lastDriveSyncAt, "Perlu otorisasi Google", msg)
@@ -369,12 +158,12 @@ class SyncExecutor(
 
             try {
                 val ignoreRules = IgnoreRules(pair.ignorePatterns)
-                val localFiles = LocalScanner.scanDirectory(rootDir, ignoreRules)
+                val branch = pair.githubBranch.ifBlank { "main" }
                 val (headCommitSha, rootTreeSha) = githubRemote.getBranchHeadCommit(
                     pat = pat,
                     owner = pair.githubOwner,
                     repo = pair.githubRepo,
-                    branch = pair.githubBranch.ifBlank { "main" }
+                    branch = branch
                 )
                 val remoteBlobs = githubRemote.listBlobsInSubfolder(
                     pat = pat,
@@ -383,198 +172,63 @@ class SyncExecutor(
                     treeSha = rootTreeSha,
                     subfolder = pair.githubSubfolder
                 ).filterNot { ignoreRules.isIgnored(it.relativePath, isDirectory = false) }
-                val remoteMap = remoteBlobs.associateBy { it.relativePath }
-                val baselineMap = repository.getFileStates(pairId).associateBy { it.relativePath }
 
-                val ops = SyncPlanner.planGithubSync(
-                    localFiles = localFiles,
-                    remoteBlobs = remoteMap,
-                    baseline = baselineMap,
-                    deletePolicy = com.example.data.db.DeletePolicy.TWO_WAY
-                )
+                var downloaded = 0
+                var uploaded = 0
 
+                // ↓ Download: timpa berkas lokal dengan nama sama
+                for (blob in remoteBlobs) {
+                    val dest = File(rootDir, blob.relativePath)
+                    dest.parentFile?.mkdirs()
+                    githubRemote.downloadBlobToFile(pat, pair.githubOwner, pair.githubRepo, blob.sha, dest)
+                    downloaded++
+                    repository.addLog(pairId, pair.name, "GITHUB", "DOWNLOAD", blob.relativePath, "OK", "Ditarik dari GitHub")
+                }
+
+                // ↑ Upload: timpa berkas GitHub dengan nama sama, dalam 1 commit
                 val cleanSub = pair.githubSubfolder.trim().trim('/')
                 fun toRepoPath(rel: String): String = if (cleanSub.isEmpty()) rel else "$cleanSub/$rel"
 
-                val stagedChanges = mutableListOf<GithubTreeChange>()
-                val uploadedShaMap = mutableMapOf<String, String>()
-                val deletedPaths = mutableListOf<String>()
-
-                var uploaded = 0
-                var downloaded = 0
-                var deleted = 0
-                var conflicts = 0
-
-                for (op in ops) {
-                    val localFile = File(rootDir, op.relativePath)
-                    when (op) {
-                        is GithubSyncOp.StageUploadToGithub -> {
-                            if (localFile.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
-                                repository.addLog(
-                                    pairId, pair.name, "GITHUB", "SKIP", op.relativePath, "SKIP",
-                                    "Melewati file > 45 MB (batas aman GitHub)"
-                                )
-                                continue
-                            }
-                            val blobSha = githubRemote.createBlobFromFile(pat, pair.githubOwner, pair.githubRepo, localFile)
-                            stagedChanges.add(GithubTreeChange(toRepoPath(op.relativePath), blobSha))
-                            uploadedShaMap[op.relativePath] = blobSha
-                            uploaded++
-                        }
-
-                        is GithubSyncOp.StageDeleteFromGithub -> {
-                            stagedChanges.add(GithubTreeChange(toRepoPath(op.relativePath), null))
-                            deletedPaths.add(op.relativePath)
-                            deleted++
-                        }
-
-                        is GithubSyncOp.DownloadFromGithub -> {
-                            githubRemote.downloadBlobToFile(pat, pair.githubOwner, pair.githubRepo, op.blob.sha, localFile)
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            val prev = baselineMap[op.relativePath]
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = prev?.driveFileId,
-                                    driveModifiedAt = prev?.driveModifiedAt ?: 0L,
-                                    driveNativeMimeType = prev?.driveNativeMimeType,
-                                    githubBlobSha = op.blob.sha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            downloaded++
-                            repository.addLog(pairId, pair.name, "GITHUB", "DOWNLOAD", op.relativePath, "OK", "Ditarik dari GitHub")
-                        }
-
-                        is GithubSyncOp.DeleteLocalFromGithub -> {
-                            if (localFile.exists()) localFile.delete()
-                            repository.deleteFileState(pairId, op.relativePath)
-                            deleted++
-                            repository.addLog(pairId, pair.name, "GITHUB", "DELETE", op.relativePath, "OK", "Dihapus lokal mengikuti GitHub")
-                        }
-
-                        is GithubSyncOp.ConflictBackupLocalAndPull -> {
-                            val conflictFile = File(rootDir, op.losingConflictPath)
-                            conflictFile.parentFile?.mkdirs()
-                            if (localFile.exists()) {
-                                localFile.copyTo(conflictFile, overwrite = true)
-                            }
-                            githubRemote.downloadBlobToFile(pat, pair.githubOwner, pair.githubRepo, op.blob.sha, localFile)
-                            val hashes = LocalScanner.computeHashes(localFile)
-                            val prev = baselineMap[op.relativePath]
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = op.relativePath,
-                                    localModifiedAt = localFile.lastModified(),
-                                    localSize = localFile.length(),
-                                    localHash = hashes.first,
-                                    driveFileId = prev?.driveFileId,
-                                    driveModifiedAt = prev?.driveModifiedAt ?: 0L,
-                                    driveNativeMimeType = prev?.driveNativeMimeType,
-                                    githubBlobSha = op.blob.sha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                            conflicts++
-                            downloaded++
-                            repository.addLog(
-                                pairId, pair.name, "GITHUB", "CONFLICT", op.relativePath, "CONFLICT",
-                                "Konflik GitHub: versi lokal diamankan ke ${op.losingConflictPath}"
-                            )
-                        }
-
-                        is GithubSyncOp.SkipDeleteProtected -> {
-                            repository.addLog(pairId, pair.name, "GITHUB", "SKIP", op.relativePath, "SKIP", op.reason)
-                        }
+                val localFiles = LocalScanner.scanDirectory(rootDir, ignoreRules)
+                val changes = mutableListOf<GithubTreeChange>()
+                for (path in localFiles.keys) {
+                    val file = File(rootDir, path)
+                    if (file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
+                        repository.addLog(
+                            pairId, pair.name, "GITHUB", "SKIP", path, "SKIP",
+                            "Melewati file > 45 MB (batas aman GitHub)"
+                        )
+                        continue
                     }
+                    val blobSha = githubRemote.createBlobFromFile(pat, pair.githubOwner, pair.githubRepo, file)
+                    changes.add(GithubTreeChange(toRepoPath(path), blobSha))
+                    uploaded++
+                    repository.addLog(pairId, pair.name, "GITHUB", "UPLOAD", path, "OK", "Diunggah ke GitHub")
                 }
 
-                // Commit all staged uploads & deletions atomically in 1 single GitHub commit
-                if (stagedChanges.isNotEmpty()) {
+                if (changes.isNotEmpty()) {
                     val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
-                    val commitMessage = "Lotura: ${pair.name} ($uploaded ubah, ${deletedPaths.size} hapus) [$stamp]"
-                    val newCommitSha = githubRemote.createAtomicCommit(
+                    val commitSha = githubRemote.createAtomicCommit(
                         pat = pat,
                         owner = pair.githubOwner,
                         repo = pair.githubRepo,
-                        branch = pair.githubBranch.ifBlank { "main" },
+                        branch = branch,
                         parentCommitSha = headCommitSha,
                         baseTreeSha = rootTreeSha,
-                        changes = stagedChanges,
-                        message = commitMessage
+                        changes = changes,
+                        message = "Lotura: ${pair.name} ($uploaded berkas) [$stamp]"
                     )
-                    for ((relPath, blobSha) in uploadedShaMap) {
-                        val file = File(rootDir, relPath)
-                        val hashes = if (file.exists()) LocalScanner.computeHashes(file) else "" to blobSha
-                        val prev = baselineMap[relPath]
-                        repository.upsertFileState(
-                            FileStateEntity(
-                                pairId = pairId,
-                                relativePath = relPath,
-                                localModifiedAt = file.lastModified(),
-                                localSize = file.length(),
-                                localHash = hashes.first,
-                                driveFileId = prev?.driveFileId,
-                                driveModifiedAt = prev?.driveModifiedAt ?: 0L,
-                                driveNativeMimeType = prev?.driveNativeMimeType,
-                                githubBlobSha = blobSha,
-                                lastSyncedAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
-                    for (relPath in deletedPaths) {
-                        repository.deleteFileState(pairId, relPath)
-                    }
-                    repository.addLog(
-                        pairId, pair.name, "GITHUB", "COMMIT", "", "OK",
-                        "Commit ${newCommitSha.take(7)} berhasil ($uploaded file, ${deletedPaths.size} hapus)"
-                    )
-                }
-
-                // Update baseline githubBlobSha for already identical files
-                for ((relPath, localSnap) in localFiles) {
-                    val remoteBlob = remoteMap[relPath]
-                    if (remoteBlob != null && remoteBlob.sha == localSnap.gitBlobSha) {
-                        val prev = baselineMap[relPath]
-                        if (prev == null || prev.githubBlobSha != remoteBlob.sha) {
-                            repository.upsertFileState(
-                                FileStateEntity(
-                                    pairId = pairId,
-                                    relativePath = relPath,
-                                    localModifiedAt = localSnap.modifiedAtMillis,
-                                    localSize = localSnap.size,
-                                    localHash = localSnap.contentHash,
-                                    driveFileId = prev?.driveFileId,
-                                    driveModifiedAt = prev?.driveModifiedAt ?: 0L,
-                                    driveNativeMimeType = prev?.driveNativeMimeType,
-                                    githubBlobSha = remoteBlob.sha,
-                                    lastSyncedAt = System.currentTimeMillis()
-                                )
-                            )
-                        }
-                    }
+                    repository.addLog(pairId, pair.name, "GITHUB", "COMMIT", "", "OK", "Commit ${commitSha.take(7)} berhasil ($uploaded file)")
                 }
 
                 val now = System.currentTimeMillis()
-                val summary = if (uploaded + downloaded + deleted + conflicts == 0) {
-                    "GitHub selaras • Tidak ada perubahan"
+                val summary = if (uploaded + downloaded == 0) {
+                    "GitHub selaras • Tidak ada berkas"
                 } else {
-                    "GitHub: ↑$uploaded ↓$downloaded Hapus:$deleted Konflik:$conflicts"
+                    "GitHub: ↑$uploaded ↓$downloaded"
                 }
                 repository.updateGithubStatus(pairId, now, summary, null)
-                SyncRunResult(
-                    success = true,
-                    uploaded = uploaded,
-                    downloaded = downloaded,
-                    deleted = deleted,
-                    conflicts = conflicts,
-                    summary = summary
-                )
+                SyncRunResult(success = true, uploaded = uploaded, downloaded = downloaded, summary = summary)
             } catch (e: Exception) {
                 val msg = e.localizedMessage ?: "Gagal sinkronisasi GitHub"
                 repository.updateGithubStatus(pairId, pair.lastGithubSyncAt, "Galat GitHub", msg)
