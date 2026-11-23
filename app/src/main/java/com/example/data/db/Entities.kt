@@ -1,77 +1,19 @@
 package com.example.data.db
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-enum class DeletePolicy {
-    TWO_WAY,
-    SAFE_NO_DELETE
-}
-
-enum class SyncSourceType {
-    DRIVE,
-    GITHUB
-}
-
-@Entity(tableName = "sync_pairs")
-data class SyncPairEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
-    val name: String,
-    val localPath: String,
-    val driveFolderId: String,
-    val driveFolderName: String,
-    val deletePolicy: String = DeletePolicy.TWO_WAY.name,
-    val ignorePatterns: String = DEFAULT_IGNORE_PATTERNS,
-    val autoSyncDrive: Boolean = false,
-    val githubEnabled: Boolean = false,
-    val githubAccountId: Long? = null,
-    val githubOwner: String = "",
-    val githubRepo: String = "",
-    val githubBranch: String = "main",
-    val githubSubfolder: String = "",
-    val githubIntervalMinutes: Int = 0,
-    val lastDriveSyncAt: Long = 0L,
-    val lastGithubSyncAt: Long = 0L,
-    val lastStatus: String = "Siap disinkronkan",
-    val lastError: String? = null,
+/** Satu akun Google Drive. Token disimpan terpisah per email di SecureTokenStore. */
+@Entity(tableName = "drive_accounts")
+data class DriveAccountEntity(
+    @PrimaryKey val email: String,
+    val displayName: String = "",
     val createdAt: Long = System.currentTimeMillis()
-) {
-    val resolvedDeletePolicy: DeletePolicy
-        get() = DeletePolicy.TWO_WAY
-
-    val sourceType: SyncSourceType
-        get() = if (githubEnabled && githubRepo.isNotBlank()) SyncSourceType.GITHUB else SyncSourceType.DRIVE
-
-    val isGithubPair: Boolean
-        get() = sourceType == SyncSourceType.GITHUB
-
-    val isDrivePair: Boolean
-        get() = sourceType == SyncSourceType.DRIVE
-
-    companion object {
-        const val DEFAULT_IGNORE_PATTERNS = ".git/\n.DS_Store\nThumbs.db\n*.tmp\n*.swp\n*~\n.trash/"
-    }
-}
-
-@Entity(
-    tableName = "file_states",
-    primaryKeys = ["pairId", "relativePath"],
-    indices = [Index(value = ["pairId"])]
-)
-data class FileStateEntity(
-    val pairId: Long,
-    val relativePath: String,
-    val localModifiedAt: Long = 0L,
-    val localSize: Long = 0L,
-    val localHash: String = "",
-    val driveFileId: String? = null,
-    val driveModifiedAt: Long = 0L,
-    val driveNativeMimeType: String? = null,
-    val githubBlobSha: String? = null,
-    val lastSyncedAt: Long = System.currentTimeMillis()
 )
 
+/** Satu akun GitHub. PAT disimpan terenkripsi di SecureTokenStore. */
 @Entity(tableName = "github_accounts")
 data class GithubAccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -81,18 +23,41 @@ data class GithubAccountEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+/** Setiap repo di akun GitHub menjadi satu folder lokal sendiri. */
+@Entity(
+    tableName = "github_repos",
+    foreignKeys = [
+        ForeignKey(
+            entity = GithubAccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["accountId"])]
+)
+data class GithubRepoEntity(
+    @PrimaryKey val fullName: String,
+    val accountId: Long,
+    val owner: String,
+    val name: String,
+    val defaultBranch: String,
+    val isPrivate: Boolean,
+    val archived: Boolean,
+    val localPath: String
+)
+
 @Entity(
     tableName = "sync_logs",
-    indices = [Index(value = ["pairId"]), Index(value = ["timestampMillis"])]
+    indices = [Index(value = ["timestampMillis"])]
 )
 data class SyncLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
-    val pairId: Long? = null,
-    val pairName: String = "Sistem",
+    val sourceLabel: String = "Sistem",
     val target: String, // DRIVE, GITHUB, SYSTEM
-    val action: String, // UPLOAD, DOWNLOAD, EXPORT_DOCS, DELETE, CONFLICT, COMMIT, ERROR
+    val action: String, // UPLOAD, DOWNLOAD, SKIP, ERROR
     val relativePath: String = "",
-    val status: String, // OK, CONFLICT, ERROR, SKIP
+    val status: String, // OK, SKIP, ERROR
     val message: String,
     val timestampMillis: Long = System.currentTimeMillis()
 )
