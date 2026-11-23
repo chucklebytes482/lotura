@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -486,39 +485,7 @@ private fun SyncPairCard(
                     }
                 }
 
-                AnimatedVisibility(visible = isSyncing) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = brand.container.copy(alpha = 0.72f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                1.dp,
-                                brand.accent.copy(alpha = 0.45f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .testTag("pair_syncing_notice_${pair.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
-                                color = brand.accent
-                            )
-                            Text(
-                                text = "Tunggu hingga selesai agar sinkronisasi berhasil",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = brand.onContainer
-                            )
-                        }
-                    }
-                }
-
-                // Baris ikon metrik besar berjarak renggang tanpa teks redundan
+                // Baris ikon metrik besar berjarak renggang tanpa teks redundan (dimensi kartu tetap konsisten)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,

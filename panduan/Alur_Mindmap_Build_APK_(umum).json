@@ -14,7 +14,7 @@
     "    - 1 berkas tunggal di /storage/emulated/0/Documents/<NamaApp>/ dengan pengaman anti-timpa file kosong & entri terbanyak",
     "    - 100% luring: tanpa izin INTERNET, tanpa akun/login cloud, tanpa layanan latar belakang",
     "  - 3. UI Minimalis Berbasis Ikon & Target < 10 MB",
-    "    - Hapus fitur opsional, pemilih tema, teks redundan di samping ikon, & dependensi berat tak terpakai",
+    "    - Hapus fitur opsional, pemilih tema, teks redundan, & duplikat keterangan; jaga ukuran kotak/kartu konsisten sejak awal (tanpa membesar/menyusut)",
     "    - Gunakan ikon lebih besar dengan jarak renggang; legenda arti ikon & penjelasan rinci hanya di situs publik (docs/index.html)",
     "    - Sediakan bilah pencarian cepat & mode pilih dengan BackHandler",
     "  - 4. Pengujian Cepat, Anti-429, & Build R8",
@@ -87,7 +87,7 @@
         "children": [
           {
             "id": "a1b2c3d4-3100-4000-8000-000000000001",
-            "title": "Hapus fitur opsional, pemilih tema, teks redundan di samping ikon, & dependensi berat tak terpakai",
+            "title": "Hapus fitur opsional, pemilih tema, teks redundan, & duplikat keterangan; jaga ukuran kotak/kartu konsisten sejak awal (tanpa membesar/menyusut)",
             "color": "sage"
           },
           {

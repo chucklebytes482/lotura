@@ -232,10 +232,15 @@ fun LazyListScope.standardHomePriorityCards(
 }
 
 /**
- * Pola kartu minimalis berbasis ikon (icon-first):
- * Jika ikon sudah jelas mewakili sumber/metrik/status, tampilkan ikon berukuran lega (20.dp–28.dp)
- * dengan jarak renggang (18.dp) tanpa label teks berulang. Penjelasan lengkap tiap ikon diletakkan
- * di Web Panduan (<slug>-site), sementara TalkBack tetap terdukung lewat contentDescription.
+ * Pola kartu minimalis berbasis ikon (icon-first) dengan dimensi kotak konsisten:
+ * - Jika ikon sudah jelas mewakili sumber/metrik/status, tampilkan ikon berukuran lega (20.dp–28.dp)
+ *   dengan jarak renggang (18.dp) tanpa label teks berulang.
+ * - Jaga ukuran (tinggi & lebar) setiap kartu konsisten sejak awal: jangan menyisipkan blok teks
+ *   kondisional (mis. AnimatedVisibility) di dalam kartu yang membuat kotak membesar/menyusut.
+ * - Anti-duplikat keterangan: tampilkan pesan proses cukup di satu tempat saja (mis. Snackbar bawah)
+ *   sementara tombol aksi cukup berubah menjadi CircularProgressIndicator di ukuran tombol yang sama.
+ * - Penjelasan lengkap tiap ikon diletakkan di Web Panduan (<slug>-site), sementara TalkBack tetap
+ *   terdukung lewat contentDescription.
  */
 @Composable
 fun MinimalMetricIconItem(
