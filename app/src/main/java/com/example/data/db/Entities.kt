@@ -46,18 +46,3 @@ data class GithubRepoEntity(
     val archived: Boolean,
     val localPath: String
 )
-
-@Entity(
-    tableName = "sync_logs",
-    indices = [Index(value = ["timestampMillis"])]
-)
-data class SyncLogEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
-    val sourceLabel: String = "Sistem",
-    val target: String, // DRIVE, GITHUB, SYSTEM
-    val action: String, // UPLOAD, DOWNLOAD, SKIP, ERROR
-    val relativePath: String = "",
-    val status: String, // OK, SKIP, ERROR
-    val message: String,
-    val timestampMillis: Long = System.currentTimeMillis()
-)

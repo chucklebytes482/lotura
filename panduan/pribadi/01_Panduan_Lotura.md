@@ -25,13 +25,15 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 - Centang file atau folder. Mencentang folder ikut mencentang seluruh isinya.
 - Dokumen Google (Docs, Sheets, Slides) selalu ditransfer karena ukurannya tidak diketahui.
 - Muat ulang pohon dengan ikon *muat ulang* untuk daftar terbaru.
+- Isi repo GitHub tidak tampil di aplikasi. Ketuk kartu repo untuk melihat detailnya.
+- Ketuk kartu folder root Drive atau repo GitHub untuk melihat detail folder: path, jumlah file, total ukuran, dan sync terakhir.
 
 ## 4. Download dan Upload
 
 - **Download:** menyalin item yang dicentang dari Drive atau GitHub ke folder lokal.
 - **Upload:** mengirim item yang dicentang dari folder lokal ke Drive atau GitHub.
 - Perbandingan hanya memakai ukuran. Ukuran sama berarti dilewati. Ukuran beda berarti ditransfer.
-- Hasil setiap operasi tercatat di tab *Log*.
+- Ringkasan sync terakhir tampil sebagai ikon di kartu (centang OK, peringatan sebagian, silang gagal). Teks lengkapnya ada di layar detail.
 - Batasan: upload hanya mengirim file yang sudah ada di pohon. File baru harus berada di folder yang sudah ada di pohon. Muat ulang pohon setelah menambah folder.
 
 ## 5. Hapus akun
