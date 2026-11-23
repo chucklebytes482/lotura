@@ -55,6 +55,5 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 ## 7. Rilis
 
-- APK dirilis sebagai GitHub Release di repo `chucklebytes482/lotura`.
-- Unduhan terbaru: `https://github.com/chucklebytes482/lotura/releases/latest/download/lotura-latest-arm64-v8a.apk`
+- APK terbaru tersedia di halaman unduhan Lotura.
 - Langkah CI dan keystore ada di `../umum/02_Setup_Rilis_CI.md`.
