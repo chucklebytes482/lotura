@@ -12,7 +12,7 @@ Buatkan kredensial rilis permanen untuk aplikasi Android yang sedang kita buat, 
 Berkas rahasia yang wajib dimasukkan ke folder `release/` di dalam kontainer `.hc`:
 1. `<slug_app>-release.jks`: keystore permanen RSA 2048-bit, berlaku 30 tahun (`-validity 10950`), alias `upload`, dengan `STORE_PASSWORD` dan `KEY_PASSWORD` acak 24 karakter alfanumerik.
 2. `keystore.properties`: berisi `storeFile`, `storePassword`, `keyAlias`, dan `keyPassword`.
-3. `GITHUB_SECRETS.md`: hanya berisi kotak kode terpisah 1-ketuk untuk `RELEASE_KEYSTORE_BASE64` (1 baris tanpa spasi/baris baru), `STORE_PASSWORD`, `KEY_PASSWORD`, dan `KEY_ALIAS` (`upload`).
+3. `GITHUB_SECRETS.md`: hanya berisi kotak kode terpisah 1-ketuk untuk `RELEASE_KEYSTORE_BASE64` (1 baris tanpa spasi/baris baru), `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (`upload`), serta pengingat opsional `PUBLIC_DIST_TOKEN` (Fine-grained PAT khusus repo publik `<slug_app>-site` bila repo utama dibuat Private).
 4. *(Opsional)* `.env` hanya jika aplikasi memakai API key eksternal (aplikasi 100% luring cukup 3 berkas di atas).
 
 Aturan Enkripsi, HTML Pengunduh & Keamanan:
@@ -34,6 +34,6 @@ Hanya berisi berkas rahasia (tanpa panduan umum, tanpa setup Google Cloud, dan t
 |---|---|
 | `release/<slug_app>-release.jks` | Keystore rilis permanen (RSA 2048-bit, alias `upload`, berlaku 30 tahun) |
 | `release/keystore.properties` | Konfigurasi signing lokal (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) |
-| `release/GITHUB_SECRETS.md` | Nilai 1-ketuk salin: `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` |
+| `release/GITHUB_SECRETS.md` | Nilai 1-ketuk salin: `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` (+ catatan opsional `PUBLIC_DIST_TOKEN` untuk Dual-Repo) |
 | *(Opsional)* `release/.env` | Hanya bila aplikasi memakai API key eksternal (tidak diperlukan untuk aplikasi 100% luring) |
 | *(Opsional)* `katasandi/` | Daftar kata sandi tambahan bila diminta |

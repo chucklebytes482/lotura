@@ -1,13 +1,15 @@
 package com.example
 
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performTouchInput
 import com.example.data.db.DeletePolicy
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.SyncPairEntity
@@ -20,7 +22,6 @@ import com.example.ui.GithubFolderBrowserUiState
 import com.example.ui.screens.AccountsScreen
 import com.example.ui.screens.DriveSyncConnectedSheetContent
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.PairDetailScreen
 import com.example.ui.screens.PairEditorScreen
 import com.example.ui.theme.SyncBebasTheme
 import org.junit.Assert.assertEquals
@@ -33,8 +34,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.File
-import kotlin.io.path.createTempDirectory
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -43,30 +42,35 @@ class UiRobolectricTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @OptIn(ExperimentalTestApi::class)
     @Test
-    fun homeScreen_displaysAccountCardWebGuideDistinctProviderBadgesAndSyncButton() {
+    fun homeScreen_displaysIconOnlyMetricsSupportsLongPressDeleteAndNoRedundantLabels() {
         var openedSheet = false
         var openedWebGuide = false
-        var openedPairId = -1L
         var syncedPairId = -1L
+        var deletedPairs: List<SyncPairEntity> = emptyList()
+
         val githubPair = SyncPairEntity(
             id = 7L,
-            name = "lotura/docs",
-            localPath = "/storage/emulated/0/Documents/lotura/docs",
+            name = "Petapikir/panduan",
+            localPath = "/storage/emulated/0/Documents/GitHub/Petapikir/panduan",
             driveFolderId = "",
             driveFolderName = "",
             githubEnabled = true,
             githubAccountId = 1L,
             githubOwner = "pengguna",
-            githubRepo = "lotura",
-            githubSubfolder = "docs"
+            githubRepo = "Petapikir",
+            githubSubfolder = "panduan",
+            lastStatus = "GitHub: ↑3 ↓2 Hapus:1 Konflik:4"
         )
         val drivePair = SyncPairEntity(
             id = 8L,
             name = "Catatan",
-            localPath = "/storage/emulated/0/Documents/Catatan",
+            localPath = "/storage/emulated/0/Documents/Google Drive/Catatan",
             driveFolderId = "drv-8",
-            driveFolderName = "Catatan"
+            driveFolderName = "Catatan",
+            lastStatus = "Galat Drive",
+            lastError = "Token kedaluwarsa"
         )
 
         composeRule.setContent {
@@ -80,9 +84,8 @@ class UiRobolectricTest {
                     onRequestStoragePermission = {},
                     onOpenDriveSheet = { openedSheet = true },
                     onOpenWebGuide = { openedWebGuide = true },
-                    onOpenPairDetail = { openedPairId = it },
                     onSyncPair = { syncedPairId = it },
-                    onDeleteSelectedPairs = {},
+                    onDeleteSelectedPairs = { deletedPairs = it },
                     onAddPairClick = {}
                 )
             }
@@ -94,27 +97,41 @@ class UiRobolectricTest {
 
         composeRule.onNodeWithTag("home_web_guide_card").assertIsDisplayed().performClick()
         assertTrue(openedWebGuide)
+        composeRule.onNodeWithText("Panduan & Arti Ikon", useUnmergedTree = true).assertIsDisplayed()
 
-        // Distinct provider badges for GitHub vs Google Drive cards
+        // Scroll to GitHub pair card and verify icon-only layout with 4 always-visible metrics
         composeRule.onNodeWithTag("home_pair_list").performScrollToKey(7L)
-        composeRule.onNodeWithTag("pair_provider_badge_7", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_provider_icon_7", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_upload_7", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_download_7", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_delete_7", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_conflict_7", useUnmergedTree = true).assertIsDisplayed()
 
-        // Per-folder sync button directly on pair card
+        // Redundant provider text badges & verbose status words must not exist on pair cards
+        composeRule.onNodeWithTag("pair_provider_badge_7", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Hapus:1", substring = true, useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Konflik:4", substring = true, useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("/storage/emulated/0/Documents/GitHub/Petapikir/panduan", useUnmergedTree = true).assertDoesNotExist()
+
+        // Per-folder sync button works directly
         composeRule.onNodeWithTag("pair_sync_button_7").assertIsDisplayed().performClick()
         assertEquals(7L, syncedPairId)
         composeRule.onNodeWithTag("pair_syncing_notice_7", useUnmergedTree = true).assertDoesNotExist()
 
-        // Local default path and delete policy pills must not appear on Home card
-        composeRule.onNodeWithText("/storage/emulated/0/Documents/lotura/docs", useUnmergedTree = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Mode Aman").assertDoesNotExist()
-        composeRule.onNodeWithText("Aman").assertDoesNotExist()
-
-        composeRule.onNodeWithTag("pair_card_7").assertIsDisplayed().performClick()
-        assertEquals(7L, openedPairId)
-
-        // Scroll to Google Drive pair card and verify its distinct provider badge
+        // Scroll to Drive pair card with error: shows error icon, not verbose error text
         composeRule.onNodeWithTag("home_pair_list").performScrollToKey(8L)
-        composeRule.onNodeWithTag("pair_provider_badge_8", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_provider_icon_8", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_error_8", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Token kedaluwarsa", useUnmergedTree = true).assertDoesNotExist()
+
+        // Long-press enters selection mode and deletes selected pair
+        composeRule.onNodeWithTag("pair_card_8").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home_pair_list").performScrollToKey("selection_bar")
+        composeRule.onNodeWithTag("selection_action_bar").assertIsDisplayed()
+        composeRule.onNodeWithTag("delete_selected_button").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(8L), deletedPairs.map { it.id })
     }
 
     @Test
@@ -122,7 +139,7 @@ class UiRobolectricTest {
         val samplePair = SyncPairEntity(
             id = 9L,
             name = "Catatan",
-            localPath = "/storage/emulated/0/Documents/Catatan",
+            localPath = "/storage/emulated/0/Documents/Google Drive/Catatan",
             driveFolderId = "drv-1",
             driveFolderName = "Catatan"
         )
@@ -138,7 +155,6 @@ class UiRobolectricTest {
                     onRequestStoragePermission = {},
                     onOpenDriveSheet = {},
                     onOpenWebGuide = {},
-                    onOpenPairDetail = {},
                     onSyncPair = {},
                     onDeleteSelectedPairs = {},
                     onAddPairClick = {}
@@ -177,7 +193,6 @@ class UiRobolectricTest {
         composeRule.onNodeWithTag("accounts_realtime_switch").assertDoesNotExist()
         composeRule.onNodeWithText("Tema Precision Slate").assertDoesNotExist()
 
-        // Open Add GitHub dialog: only PAT field, no manual Label Akun field
         composeRule.onNodeWithTag("add_github_account_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("github_pat_input").assertIsDisplayed()
@@ -207,68 +222,12 @@ class UiRobolectricTest {
     }
 
     @Test
-    fun pairDetailScreen_embedsFileExplorerDirectlyWithoutEditOrRecentLogs() {
-        val tempDir = createTempDirectory("lotura_detail_test").toFile()
-        try {
-            val sampleNote = File(tempDir, "catatan.md").apply { writeText("# Halo Lotura\n") }
-            val samplePair = SyncPairEntity(
-                id = 3L,
-                name = "Petapikir/panduan",
-                localPath = tempDir.absolutePath,
-                driveFolderId = "",
-                driveFolderName = "",
-                githubEnabled = true,
-                githubAccountId = 1L,
-                githubOwner = "chucklebytes482",
-                githubRepo = "Petapikir",
-                githubBranch = "main",
-                githubSubfolder = "panduan"
-            )
-
-            composeRule.setContent {
-                SyncBebasTheme {
-                    PairDetailScreen(
-                        pair = samplePair,
-                        trackedFiles = emptyList(),
-                        onDeletePair = {},
-                        onShowMessage = {},
-                        onNavigateBack = {}
-                    )
-                }
-            }
-
-            composeRule.waitForIdle()
-            // Top summary shows device path and Delete button
-            composeRule.onNodeWithText(tempDir.absolutePath).assertIsDisplayed()
-            composeRule.onNodeWithTag("detail_delete_pair_button").assertIsDisplayed()
-
-            // Inline File Explorer controls & file are displayed directly
-            composeRule.onNodeWithTag("detail_content_list").performScrollToKey("explorer_header_bar")
-            composeRule.onNodeWithTag("explorer_new_file_button").assertIsDisplayed()
-            composeRule.onNodeWithTag("explorer_new_folder_button").assertIsDisplayed()
-            composeRule.onNodeWithTag("detail_content_list").performScrollToKey("explorer_search")
-            composeRule.onNodeWithTag("explorer_search_input").assertIsDisplayed()
-            composeRule.onNodeWithTag("detail_content_list").performScrollToKey(sampleNote.absolutePath)
-            composeRule.onNodeWithText("catatan.md", useUnmergedTree = true).assertIsDisplayed()
-
-            // Removed controls & sections must not exist
-            composeRule.onNodeWithTag("detail_open_explorer_button").assertDoesNotExist()
-            composeRule.onNodeWithTag("detail_edit_pair_button").assertDoesNotExist()
-            composeRule.onNodeWithTag("detail_sync_now_button").assertDoesNotExist()
-            composeRule.onNodeWithTag("detail_commit_github_button").assertDoesNotExist()
-            composeRule.onNodeWithText("Aktivitas Sinkronisasi Terbaru").assertDoesNotExist()
-        } finally {
-            tempDir.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun pairEditorScreen_sourceFirstAutoNamesDrivePairAndMarksAlreadyPairedFolders() {
+    fun pairEditorScreen_driveUsesRootOnlyPickerAndGoogleDriveFolderHierarchy() {
         var savedPair: SyncPairEntity? = null
         val alreadyPairedDrive = SyncPairEntity(
             id = 10L,
             name = "SudahAda",
-            localPath = "/storage/emulated/0/Documents/SudahAda",
+            localPath = "/storage/emulated/0/Documents/Google Drive/SudahAda",
             driveFolderId = "drv-paired",
             driveFolderName = "SudahAda"
         )
@@ -279,8 +238,6 @@ class UiRobolectricTest {
                     existingPairs = listOf(alreadyPairedDrive),
                     githubAccounts = emptyList(),
                     driveBrowser = DriveBrowserUiState(
-                        currentParentId = "drv-paired",
-                        breadcrumbs = listOf("root" to "Drive Saya", "drv-paired" to "SudahAda"),
                         folders = listOf(
                             DriveFolderItem(id = "drv-paired", name = "SudahAda"),
                             DriveFolderItem(id = "drv-99", name = "Catatan Kerja")
@@ -288,11 +245,10 @@ class UiRobolectricTest {
                     ),
                     githubBrowser = GithubBrowserUiState(),
                     githubFolderBrowser = GithubFolderBrowserUiState(),
-                    onOpenDriveFolder = { _, _ -> },
+                    onLoadDriveRootFolders = {},
                     onCreateDriveFolder = {},
                     onLoadGithubRepos = {},
                     onLoadGithubFolders = { _, _, _, _ -> },
-                    onOpenGithubFolderPath = {},
                     onSavePair = { savedPair = it },
                     onNavigateBack = {}
                 )
@@ -300,20 +256,19 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
-        // Legacy controls must not exist
         composeRule.onNodeWithTag("pair_name_input").assertDoesNotExist()
         composeRule.onNodeWithTag("pair_browse_local_button").assertDoesNotExist()
         composeRule.onNodeWithTag("pair_resolved_local_path").assertDoesNotExist()
         composeRule.onNodeWithTag("auto_pair_name_preview").assertDoesNotExist()
 
-        // Open Drive folder picker: paired folder shows Terpasang badge, no Pilih button, and confirm button disabled
+        // Open Drive root-only folder picker: paired folder shows Terpasang badge and no subfolder confirm button
         composeRule.onNodeWithTag("pair_pick_drive_folder_button").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("drive_folder_paired_drv-paired", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("pick_drive_folder_drv-paired").assertDoesNotExist()
-        composeRule.onNodeWithTag("confirm_drive_folder_button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("confirm_drive_folder_button").assertDoesNotExist()
 
-        // Pick unpaired Google Drive folder
+        // Single-tap unpaired root Google Drive folder
         composeRule.onNodeWithTag("pick_drive_folder_drv-99").performClick()
         composeRule.waitForIdle()
 
@@ -323,18 +278,18 @@ class UiRobolectricTest {
 
         assertNotNull(savedPair)
         assertEquals("Catatan Kerja", savedPair?.name)
-        assertEquals("/storage/emulated/0/Documents/Catatan Kerja", savedPair?.localPath)
+        assertEquals("/storage/emulated/0/Documents/Google Drive/Catatan Kerja", savedPair?.localPath)
         assertFalse(savedPair?.githubEnabled == true)
         assertEquals(DeletePolicy.TWO_WAY, savedPair?.resolvedDeletePolicy)
     }
 
     @Test
-    fun pairEditorScreen_githubNestsRepoInLocalPathAndPreventsDuplicateFolders() {
+    fun pairEditorScreen_githubUsesRootOnlyPickerAndGithubRepoFolderHierarchy() {
         var savedPair: SyncPairEntity? = null
         val alreadyPairedGithub = SyncPairEntity(
             id = 20L,
             name = "Petapikir/docs",
-            localPath = "/storage/emulated/0/Documents/Petapikir/docs",
+            localPath = "/storage/emulated/0/Documents/GitHub/Petapikir/docs",
             driveFolderId = "",
             driveFolderName = "",
             githubEnabled = true,
@@ -366,14 +321,12 @@ class UiRobolectricTest {
                         owner = "chucklebytes482",
                         repo = "Petapikir",
                         branch = "main",
-                        allFolders = listOf("docs", "docs/guides", "panduan"),
-                        currentPath = ""
+                        allFolders = listOf("docs", "docs/guides", "panduan", "panduan/sub")
                     ),
-                    onOpenDriveFolder = { _, _ -> },
+                    onLoadDriveRootFolders = {},
                     onCreateDriveFolder = {},
                     onLoadGithubRepos = {},
                     onLoadGithubFolders = { _, _, _, _ -> },
-                    onOpenGithubFolderPath = {},
                     onSavePair = { savedPair = it },
                     onNavigateBack = {}
                 )
@@ -381,28 +334,31 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
-        // Switch source to GitHub
         composeRule.onNodeWithTag("source_type_github_card").performClick()
         composeRule.waitForIdle()
 
-        // Attempting to save without selecting repo/folder must be blocked
+        // Saving without selecting repo/folder is blocked
         composeRule.onNodeWithTag("save_pair_button").performScrollTo().performClick()
         composeRule.waitForIdle()
         assertNull(savedPair)
         composeRule.onNodeWithTag("pair_validation_error").assertIsDisplayed()
 
-        // Pick repo -> opens folder picker automatically
+        // Pick repo -> opens root-only folder picker automatically
         composeRule.onNodeWithTag("pair_pick_github_repo_button").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("pick_gh_repo_Petapikir").performClick()
         composeRule.waitForIdle()
 
-        // Already-paired "docs" folder shows Terpasang badge and cannot be selected
+        // Subfolder navigation controls must not exist; nested subfolder "guides" is not listed
+        composeRule.onNodeWithTag("gh_folder_up_button").assertDoesNotExist()
+        composeRule.onNodeWithTag("confirm_gh_folder_button").assertDoesNotExist()
+        composeRule.onNodeWithText("guides").assertDoesNotExist()
+
+        // Already-paired root folder "docs" shows Terpasang badge and cannot be picked
         composeRule.onNodeWithTag("gh_folder_paired_docs", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("pick_gh_folder_docs").assertDoesNotExist()
 
-        // Root cannot be confirmed directly; pick unpaired "panduan" folder
-        composeRule.onNodeWithTag("confirm_gh_folder_button").assertDoesNotExist()
+        // Pick unpaired root folder "panduan"
         composeRule.onNodeWithTag("pick_gh_folder_panduan").performClick()
         composeRule.waitForIdle()
 
@@ -413,7 +369,7 @@ class UiRobolectricTest {
         assertNotNull(savedPair)
         assertEquals("Petapikir/panduan", savedPair?.name)
         assertEquals("panduan", savedPair?.githubSubfolder)
-        assertEquals("/storage/emulated/0/Documents/Petapikir/panduan", savedPair?.localPath)
+        assertEquals("/storage/emulated/0/Documents/GitHub/Petapikir/panduan", savedPair?.localPath)
         assertTrue(savedPair?.githubEnabled == true)
         assertEquals("", savedPair?.driveFolderId)
     }

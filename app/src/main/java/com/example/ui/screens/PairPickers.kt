@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
@@ -47,22 +45,17 @@ import com.example.github.GithubRepoSummary
 import com.example.ui.DriveBrowserUiState
 import com.example.ui.GithubBrowserUiState
 import com.example.ui.GithubFolderBrowserUiState
-import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.ui.theme.providerBrandColors
 
 @Composable
 internal fun DriveFolderPickerSheet(
     state: DriveBrowserUiState,
     pairedDriveFolderIds: Set<String> = emptySet(),
-    onOpenFolder: (parentId: String, folderName: String?) -> Unit,
     onCreateFolder: (String) -> Unit,
-    onSelectCurrent: (id: String, name: String) -> Unit
+    onSelectFolder: (id: String, name: String) -> Unit
 ) {
     val brand = providerBrandColors(isGithub = false)
     var newFolderName by remember { mutableStateOf("") }
-    val currentCrumb = state.breadcrumbs.lastOrNull() ?: ("root" to "Drive Saya")
-    val isInSubfolder = state.breadcrumbs.size > 1 && currentCrumb.first != "root"
-    val isCurrentPaired = currentCrumb.first in pairedDriveFolderIds
 
     Column(
         modifier = Modifier
@@ -74,9 +67,9 @@ internal fun DriveFolderPickerSheet(
         Text("Pilih Folder Google Drive", style = MaterialTheme.typography.titleLarge)
 
         Text(
-            text = state.breadcrumbs.joinToString(" / ") { it.second },
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-            color = brand.accent
+            text = "Pilih folder utama di Drive Saya. Semua subfolder di dalamnya ikut disinkronkan otomatis.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Row(
@@ -108,19 +101,6 @@ internal fun DriveFolderPickerSheet(
             }
         }
 
-        if (state.breadcrumbs.size > 1) {
-            TextButton(
-                onClick = {
-                    val parent = state.breadcrumbs[state.breadcrumbs.size - 2]
-                    onOpenFolder(parent.first, parent.second)
-                }
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Naik ke ${state.breadcrumbs[state.breadcrumbs.size - 2].second}")
-            }
-        }
-
         when {
             state.isLoading -> {
                 Box(
@@ -135,15 +115,15 @@ internal fun DriveFolderPickerSheet(
             }
             state.folders.isEmpty() -> {
                 Text(
-                    text = "Folder kosong",
+                    text = "Belum ada folder di Drive Saya",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             else -> {
                 LazyColumn(
-                    modifier = Modifier.heightIn(max = 260.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.heightIn(max = 300.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(state.folders, key = { it.id }) { folder ->
                         val isPaired = folder.id in pairedDriveFolderIds
@@ -156,18 +136,27 @@ internal fun DriveFolderPickerSheet(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 52.dp)
                                 .border(
                                     1.dp,
                                     if (isPaired) MaterialTheme.colorScheme.outline.copy(alpha = 0.45f) else brand.border,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenFolder(folder.id, folder.name) }
+                                .then(
+                                    if (!isPaired) {
+                                        Modifier
+                                            .clickable { onSelectFolder(folder.id, folder.name) }
+                                            .testTag("pick_drive_folder_${folder.id}")
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Folder,
@@ -182,12 +171,12 @@ internal fun DriveFolderPickerSheet(
                                 if (isPaired) {
                                     PairedFolderBadge(testTag = "drive_folder_paired_${folder.id}")
                                 } else {
-                                    TextButton(
-                                        onClick = { onSelectCurrent(folder.id, folder.name) },
-                                        modifier = Modifier.testTag("pick_drive_folder_${folder.id}")
-                                    ) {
-                                        Text("Pilih", color = brand.accent, fontWeight = FontWeight.SemiBold)
-                                    }
+                                    Text(
+                                        text = "Pilih",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = brand.accent,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
@@ -196,29 +185,6 @@ internal fun DriveFolderPickerSheet(
             }
         }
 
-        if (isInSubfolder) {
-            Button(
-                onClick = { onSelectCurrent(currentCrumb.first, currentCrumb.second) },
-                enabled = !isCurrentPaired,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = brand.accent,
-                    contentColor = brand.onAccent
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 50.dp)
-                    .testTag("confirm_drive_folder_button")
-            ) {
-                Text(
-                    if (isCurrentPaired) {
-                        "\"${currentCrumb.second}\" sudah terpasang"
-                    } else {
-                        "Gunakan \"${currentCrumb.second}\""
-                    }
-                )
-            }
-        }
         Spacer(Modifier.heightIn(min = 12.dp))
     }
 }
@@ -290,32 +256,16 @@ internal fun GithubRepoPickerDialog(
 @Composable
 internal fun GithubFolderPickerSheet(
     state: GithubFolderBrowserUiState,
-    pairedGithubPaths: Set<String> = emptySet(),
-    onOpenPath: (String) -> Unit,
+    pairedGithubRootFolders: Set<String> = emptySet(),
     onSelectFolder: (String) -> Unit
 ) {
     val brand = providerBrandColors(isGithub = true)
-    val directChildren = remember(state.allFolders, state.currentPath) {
-        val prefix = if (state.currentPath.isEmpty()) "" else "${state.currentPath}/"
+    val rootFolders = remember(state.allFolders) {
         state.allFolders
-            .filter { it.startsWith(prefix) }
-            .map { it.removePrefix(prefix).substringBefore('/') }
+            .map { PairPathHelper.rootGithubFolderName(it) }
             .filter { it.isNotBlank() }
             .distinct()
             .sortedBy { it.lowercase() }
-            .map { childName ->
-                val fullPath = if (prefix.isEmpty()) childName else "$prefix$childName"
-                childName to fullPath
-            }
-    }
-
-    val normalizedCurrentPath = PairPathHelper.normalizeGithubFolderPath(state.currentPath)
-    val isCurrentPaired = normalizedCurrentPath.isNotEmpty() && normalizedCurrentPath in pairedGithubPaths
-
-    val breadcrumbText = if (state.currentPath.isEmpty()) {
-        state.repo.ifBlank { "Repositori" }
-    } else {
-        "${state.repo} / ${state.currentPath.replace("/", " / ")}"
     }
 
     Column(
@@ -325,27 +275,13 @@ internal fun GithubFolderPickerSheet(
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Pilih 1 Folder GitHub", style = MaterialTheme.typography.titleLarge)
+        Text("Pilih Folder Utama GitHub", style = MaterialTheme.typography.titleLarge)
 
         Text(
-            text = breadcrumbText,
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-            color = brand.accent
+            text = "Pilih folder tingkat teratas di ${state.repo.ifBlank { "repositori" }}. Semua subfolder di dalamnya ikut disinkronkan otomatis.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
-        if (state.currentPath.isNotEmpty()) {
-            TextButton(
-                onClick = {
-                    val parent = state.currentPath.substringBeforeLast('/', "")
-                    onOpenPath(parent)
-                },
-                modifier = Modifier.testTag("gh_folder_up_button")
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Naik folder")
-            }
-        }
 
         when {
             state.isLoading -> {
@@ -359,25 +295,20 @@ internal fun GithubFolderPickerSheet(
             !state.error.isNullOrBlank() -> {
                 Text(state.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-            directChildren.isEmpty() -> {
+            rootFolders.isEmpty() -> {
                 Text(
-                    text = if (state.currentPath.isEmpty()) {
-                        "Tidak ada folder di repositori ini."
-                    } else {
-                        "Tidak ada subfolder di dalam \"${state.currentPath}\"."
-                    },
+                    text = "Tidak ada folder di repositori ini.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             else -> {
                 LazyColumn(
-                    modifier = Modifier.heightIn(max = 280.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.heightIn(max = 300.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(directChildren, key = { it.second }) { (childName, fullPath) ->
-                        val normalizedFullPath = PairPathHelper.normalizeGithubFolderPath(fullPath)
-                        val isPaired = normalizedFullPath in pairedGithubPaths
+                    items(rootFolders, key = { it }) { folderName ->
+                        val isPaired = folderName in pairedGithubRootFolders
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isPaired) {
@@ -387,18 +318,27 @@ internal fun GithubFolderPickerSheet(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 52.dp)
                                 .border(
                                     1.dp,
                                     if (isPaired) MaterialTheme.colorScheme.outline.copy(alpha = 0.45f) else brand.border,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenPath(fullPath) }
+                                .then(
+                                    if (!isPaired) {
+                                        Modifier
+                                            .clickable { onSelectFolder(folderName) }
+                                            .testTag("pick_gh_folder_$folderName")
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Folder,
@@ -406,19 +346,19 @@ internal fun GithubFolderPickerSheet(
                                     tint = if (isPaired) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else brand.accent
                                 )
                                 Text(
-                                    text = childName,
+                                    text = folderName,
                                     color = if (isPaired) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (isPaired) {
-                                    PairedFolderBadge(testTag = "gh_folder_paired_$normalizedFullPath")
+                                    PairedFolderBadge(testTag = "gh_folder_paired_$folderName")
                                 } else {
-                                    TextButton(
-                                        onClick = { onSelectFolder(fullPath) },
-                                        modifier = Modifier.testTag("pick_gh_folder_$fullPath")
-                                    ) {
-                                        Text("Pilih", color = brand.accent, fontWeight = FontWeight.SemiBold)
-                                    }
+                                    Text(
+                                        text = "Pilih",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = brand.accent,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
@@ -427,30 +367,6 @@ internal fun GithubFolderPickerSheet(
             }
         }
 
-        // Root repo cannot be selected; confirm button only appears when inside a specific folder
-        if (state.currentPath.isNotEmpty()) {
-            Button(
-                onClick = { onSelectFolder(state.currentPath) },
-                enabled = !isCurrentPaired,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = brand.accent,
-                    contentColor = brand.onAccent
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 50.dp)
-                    .testTag("confirm_gh_folder_button")
-            ) {
-                Text(
-                    if (isCurrentPaired) {
-                        "\"${state.currentPath}\" sudah terpasang"
-                    } else {
-                        "Gunakan \"${state.currentPath}\""
-                    }
-                )
-            }
-        }
         Spacer(Modifier.heightIn(min = 12.dp))
     }
 }

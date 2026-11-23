@@ -26,8 +26,6 @@ import java.io.File
 
 data class DriveBrowserUiState(
     val isLoading: Boolean = false,
-    val currentParentId: String = "root",
-    val breadcrumbs: List<Pair<String, String>> = listOf("root" to "Drive Saya"),
     val folders: List<DriveFolderItem> = emptyList(),
     val error: String? = null
 )
@@ -44,7 +42,6 @@ data class GithubFolderBrowserUiState(
     val repo: String = "",
     val branch: String = "main",
     val allFolders: List<String> = emptyList(),
-    val currentPath: String = "",
     val error: String? = null
 )
 
@@ -83,10 +80,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SyncUiState(isOnline = checkOnline(application)))
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
-
-    fun observePair(pairId: Long) = repository.observePair(pairId)
-    fun observeFileStates(pairId: Long) = repository.observeFileStates(pairId)
-    fun observeLogsForPair(pairId: Long) = repository.observeLogsForPair(pairId)
 
     fun refreshNetworkStatus() {
         _uiState.update { it.copy(isOnline = checkOnline(app)) }
@@ -289,7 +282,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openDriveFolder(parentId: String = "root", folderName: String? = null) {
+    fun loadDriveRootFolders() {
         viewModelScope.launch {
             val token = GoogleAuthManager.tryGetSilentAccessToken(app)
                 ?: repository.getDriveAccessToken()
@@ -306,30 +299,16 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiState.update { state ->
-                val crumbs = when {
-                    parentId == "root" -> listOf("root" to "Drive Saya")
-                    folderName != null -> {
-                        val existingIdx = state.driveBrowser.breadcrumbs.indexOfFirst { it.first == parentId }
-                        if (existingIdx >= 0) {
-                            state.driveBrowser.breadcrumbs.take(existingIdx + 1)
-                        } else {
-                            state.driveBrowser.breadcrumbs + (parentId to folderName)
-                        }
-                    }
-                    else -> state.driveBrowser.breadcrumbs
-                }
                 state.copy(
                     driveBrowser = state.driveBrowser.copy(
                         isLoading = true,
-                        currentParentId = parentId,
-                        breadcrumbs = crumbs,
                         error = null
                     )
                 )
             }
 
             try {
-                val folders = driveApi.listFolders(token, parentId)
+                val folders = driveApi.listFolders(token, "root")
                 _uiState.update {
                     it.copy(
                         driveBrowser = it.driveBrowser.copy(
@@ -359,11 +338,10 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             val token = GoogleAuthManager.tryGetSilentAccessToken(app)
                 ?: repository.getDriveAccessToken()
                 ?: return@launch
-            val parentId = _uiState.value.driveBrowser.currentParentId
             _uiState.update { it.copy(driveBrowser = it.driveBrowser.copy(isLoading = true, error = null)) }
             try {
-                val created = driveApi.createFolder(token, parentId, clean)
-                val updatedList = driveApi.listFolders(token, parentId)
+                val created = driveApi.createFolder(token, "root", clean)
+                val updatedList = driveApi.listFolders(token, "root")
                 _uiState.update {
                     it.copy(
                         driveBrowser = it.driveBrowser.copy(isLoading = false, folders = updatedList),
@@ -420,8 +398,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = true,
                         owner = owner,
                         repo = repo,
-                        branch = branch.ifBlank { "main" },
-                        currentPath = ""
+                        branch = branch.ifBlank { "main" }
                     )
                 )
             }
@@ -444,7 +421,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                         githubFolderBrowser = it.githubFolderBrowser.copy(
                             isLoading = false,
                             allFolders = folders,
-                            currentPath = "",
                             error = null
                         )
                     )
@@ -459,16 +435,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
-        }
-    }
-
-    fun openGithubFolderPath(path: String) {
-        _uiState.update {
-            it.copy(
-                githubFolderBrowser = it.githubFolderBrowser.copy(
-                    currentPath = path.trim().trim('/')
-                )
-            )
         }
     }
 
