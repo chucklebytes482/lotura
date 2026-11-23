@@ -51,12 +51,7 @@ class DeviceAutoSyncManager(
 ) {
     val displayPath = "/storage/emulated/0/Documents/$appFolder/$fileName"
 
-    fun mergeLastWriteWins(local: List<SyncRecord>, device: List<SyncRecord>): List<SyncRecord> =
-        (local + device).fold(linkedMapOf<String, SyncRecord>()) { acc, item ->
-            val cur = acc[item.id]
-            if (cur == null || item.updatedAtMillis >= cur.updatedAtMillis) acc[item.id] = item
-            acc
-        }.values.toList()
+    // Tanpa merge/LWW: unduh dari remote menimpa lokal, lalu unggah lokal menimpa remote (nama sama).
 
     suspend fun readSingleBackupFile(): String? = withContext(Dispatchers.IO) {
         val f = directFile()
