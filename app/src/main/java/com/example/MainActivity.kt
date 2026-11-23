@@ -14,22 +14,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderCopy
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.outlined.FolderCopy
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,13 +49,13 @@ import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.ui.SyncViewModel
 import com.example.ui.components.StoragePermissionHelper
+import com.example.ui.screens.FolderDetailScreen
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.SyncLogScreen
 import com.example.ui.theme.SyncBebasTheme
 
 object Routes {
     const val HOME = "home"
-    const val LOGS = "logs"
+    const val DETAIL = "detail"
 }
 
 class MainActivity : ComponentActivity() {
@@ -87,7 +82,9 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val driveAccounts by viewModel.driveAccounts.collectAsStateWithLifecycle()
     val githubAccounts by viewModel.githubAccounts.collectAsStateWithLifecycle()
     val repos by viewModel.repos.collectAsStateWithLifecycle()
-    val recentLogs by viewModel.recentLogs.collectAsStateWithLifecycle()
+    val summaries by viewModel.summaries.collectAsStateWithLifecycle()
+    val detail by viewModel.detail.collectAsStateWithLifecycle()
+    val detailStats by viewModel.detailStats.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
@@ -151,13 +148,15 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
-    val isTopLevel = currentRoute in setOf(Routes.HOME, Routes.LOGS)
+    val isDetail = currentRoute == Routes.DETAIL
 
-    val topBarTitle = when (currentRoute) {
-        Routes.HOME -> "Lotura"
-        Routes.LOGS -> "Log"
-        else -> "Lotura"
+    fun goBackFromDetail() {
+        viewModel.closeDetail()
+        navController.popBackStack()
     }
+    BackHandler(enabled = isDetail) { goBackFromDetail() }
+
+    val topBarTitle = if (isDetail) detail?.title ?: "Lotura" else "Lotura"
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -173,9 +172,9 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     )
                 },
                 navigationIcon = {
-                    if (!isTopLevel) {
+                    if (isDetail) {
                         IconButton(
-                            onClick = { navController.popBackStack() },
+                            onClick = { goBackFromDetail() },
                             modifier = Modifier.testTag("navigate_back_button")
                         ) {
                             Icon(
@@ -191,50 +190,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                 )
             )
         },
-        bottomBar = {
-            if (isTopLevel) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.HOME,
-                        onClick = {
-                            navController.navigate(Routes.HOME) {
-                                popUpTo(Routes.HOME) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.HOME) Icons.Filled.FolderCopy else Icons.Outlined.FolderCopy,
-                                contentDescription = "Beranda"
-                            )
-                        },
-                        label = { Text("Beranda") },
-                        modifier = Modifier.testTag("nav_home_tab")
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.LOGS,
-                        onClick = {
-                            navController.navigate(Routes.LOGS) {
-                                popUpTo(Routes.HOME) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.LOGS) Icons.Filled.History else Icons.Outlined.History,
-                                contentDescription = "Log"
-                            )
-                        },
-                        label = { Text("Log") },
-                        modifier = Modifier.testTag("nav_logs_tab")
-                    )
-                }
-            }
-        }
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -248,7 +203,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     repos = repos,
                     trees = uiState.trees,
                     loading = uiState.loading,
-                    expanded = uiState.expanded,
+                    summaries = summaries,
                     busySources = uiState.busySources,
                     isConnectingDrive = uiState.isConnectingDrive,
                     driveAuthError = uiState.driveAuthError,
@@ -277,18 +232,27 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
                     onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
                     onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
-                    onToggleRepo = { repo -> viewModel.toggleRepoExpand(repo) },
-                    onReloadRepo = { repo -> viewModel.reloadRepo(repo) },
+                    onOpenDriveFolder = { item -> viewModel.openDriveFolder(item); navController.navigate(Routes.DETAIL) },
+                    onOpenRepo = { repo -> viewModel.openRepo(repo); navController.navigate(Routes.DETAIL) },
                     onSyncFolder = { item, upload -> viewModel.syncFolder(item, upload) },
                     onSyncRepo = { repo, upload -> viewModel.syncRepo(repo, upload) }
                 )
             }
 
-            composable(Routes.LOGS) {
-                SyncLogScreen(
-                    logs = recentLogs,
-                    onClearLogs = { viewModel.clearLogs() }
-                )
+            composable(Routes.DETAIL) {
+                val current = detail
+                if (current == null) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                } else {
+                    FolderDetailScreen(
+                        detail = current,
+                        stats = detailStats,
+                        summary = summaries[current.summaryKey],
+                        busy = uiState.busySources.contains(current.sourceKey),
+                        onDownload = { viewModel.syncDetail(upload = false) },
+                        onUpload = { viewModel.syncDetail(upload = true) }
+                    )
+                }
             }
         }
     }

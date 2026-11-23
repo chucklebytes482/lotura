@@ -41,7 +41,6 @@ class SyncBebasApp : Application() {
         driveApiClient = DriveApiClient()
         githubApiClient = GithubApiClient()
         syncEngine = SyncEngine(
-            repository = repository,
             drive = driveApiClient,
             github = githubApiClient,
             driveTokenProvider = { email -> resolveDriveToken(email) }

@@ -57,23 +57,3 @@ interface GithubRepoDao {
         insertAll(repos)
     }
 }
-
-@Dao
-interface SyncLogDao {
-    @Query("SELECT * FROM sync_logs ORDER BY timestampMillis DESC LIMIT 400")
-    fun observeRecent(): Flow<List<SyncLogEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(log: SyncLogEntity): Long
-
-    @Query("DELETE FROM sync_logs")
-    suspend fun clearAll()
-
-    @Query(
-        """
-        DELETE FROM sync_logs
-        WHERE id NOT IN (SELECT id FROM sync_logs ORDER BY timestampMillis DESC LIMIT 500)
-        """
-    )
-    suspend fun pruneOld()
-}
