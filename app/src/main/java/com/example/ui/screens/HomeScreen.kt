@@ -34,9 +34,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
@@ -510,22 +508,6 @@ private fun SyncPairCard(
                             mutedColor = mutedMetricColor,
                             contentDescription = "Diunduh: ${metrics.downloaded}",
                             testTag = "pair_metric_download_${pair.id}"
-                        )
-                        MetricIconCount(
-                            icon = Icons.Rounded.DeleteOutline,
-                            count = metrics.deleted,
-                            activeColor = AmberPending,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Dihapus: ${metrics.deleted}",
-                            testTag = "pair_metric_delete_${pair.id}"
-                        )
-                        MetricIconCount(
-                            icon = Icons.Rounded.WarningAmber,
-                            count = metrics.conflicts,
-                            activeColor = MaterialTheme.colorScheme.error,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Konflik: ${metrics.conflicts}",
-                            testTag = "pair_metric_conflict_${pair.id}"
                         )
                     }
 
