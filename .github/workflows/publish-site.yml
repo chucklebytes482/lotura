@@ -1,0 +1,72 @@
+name: Publish Public Site (lotura-site)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/publish-site.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: publish-public-site-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PUBLIC_SITE_REPO: "chucklebytes482/lotura-site"
+
+jobs:
+  publish-site:
+    name: Mirror docs/ to chucklebytes482/lotura-site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync Web Panduan to Public Site
+        shell: bash
+        env:
+          PUBLIC_DIST_TOKEN: ${{ secrets.PUBLIC_DIST_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PUBLIC_DIST_TOKEN" ]; then
+            echo "::error::Secret PUBLIC_DIST_TOKEN belum diatur di repositori ini. Tambahkan Fine-grained PAT dengan izin Contents (Read and write) khusus untuk ${PUBLIC_SITE_REPO}."
+            exit 1
+          fi
+
+          WORK_DIR="$RUNNER_TEMP/lotura-site-sync"
+          rm -rf "$WORK_DIR"
+          AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$PUBLIC_DIST_TOKEN" | base64 | tr -d '\n')"
+          REMOTE_URL="https://github.com/${PUBLIC_SITE_REPO}.git"
+
+          if git -c http.extraheader="$AUTH_HEADER" ls-remote --exit-code --heads "$REMOTE_URL" main >/dev/null 2>&1; then
+            git -c http.extraheader="$AUTH_HEADER" clone --depth 1 --branch main "$REMOTE_URL" "$WORK_DIR"
+          else
+            mkdir -p "$WORK_DIR"
+            git init -b main "$WORK_DIR"
+            git -C "$WORK_DIR" remote add origin "$REMOTE_URL"
+          fi
+
+          find "$WORK_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -R docs/. "$WORK_DIR/"
+          touch "$WORK_DIR/.nojekyll"
+
+          git -C "$WORK_DIR" config user.name "github-actions[bot]"
+          git -C "$WORK_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$WORK_DIR" add -A
+
+          if git -C "$WORK_DIR" diff --cached --quiet; then
+            echo "Konten situs publik sudah mutakhir."
+          else
+            git -C "$WORK_DIR" commit -m "chore: perbarui halaman panduan Lotura"
+            git -C "$WORK_DIR" -c http.extraheader="$AUTH_HEADER" push -u origin main
+          fi
+
+          rm -rf "$WORK_DIR"
+
+      - name: Clean Workspace Temp
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/lotura-site-sync"
