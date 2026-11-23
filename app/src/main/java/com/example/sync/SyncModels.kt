@@ -42,10 +42,17 @@ object SyncDecisions {
         sourceSize == null || targetSize == null || sourceSize != targetSize
 }
 
-data class OpResult(val transferred: Int = 0, val skipped: Int = 0, val failed: Int = 0) {
+data class OpResult(
+    val transferred: Int = 0,
+    val skipped: Int = 0,
+    val failed: Int = 0,
+    /** Item tersembunyi (mis. file sistem) yang dilewati sebelum sync. */
+    val hidden: Int = 0
+) {
     operator fun plus(other: OpResult) = OpResult(
         transferred + other.transferred,
         skipped + other.skipped,
-        failed + other.failed
+        failed + other.failed,
+        hidden + other.hidden
     )
 }
