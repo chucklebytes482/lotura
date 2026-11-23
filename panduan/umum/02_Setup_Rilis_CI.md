@@ -10,7 +10,7 @@ Tambahkan di **Settings → Secrets and variables → Actions** repo:
 
 | Secret | Nilai |
 |---|---|
-| `RELEASE_KEYSTORE_BASE64` | Base64 1 baris dari `release.jks` (lihat `03_Generator_Kredensial_VeraCrypt_(umum).md`) |
+| `RELEASE_KEYSTORE_BASE64` | Base64 1 baris dari `release.jks` (lihat `03_Generator_Kredensial_VeraCrypt.md`) |
 | `STORE_PASSWORD` / `KEY_PASSWORD` / `KEY_ALIAS` | Password keystore, password key, alias (`upload`) |
 
 `.gitignore` wajib (jangan blokir `<slug_app>_secrets_download.html` agar mudah diunduh lalu dihapus):
