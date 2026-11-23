@@ -9,7 +9,7 @@ Aplikasi Android untuk sinkronisasi manual antara perangkat, Google Drive, dan G
   - [`02_Setup_Rilis_CI.md`](panduan/umum/02_Setup_Rilis_CI.md): APK rilis, Gradle R8, dan CI
   - [`03_Generator_Kredensial_VeraCrypt.md`](panduan/umum/03_Generator_Kredensial_VeraCrypt.md): kredensial rilis
   - [`04_Standar_UI_Tema_Google.md`](panduan/umum/04_Standar_UI_Tema_Google.md): tema Material 3 dan ikon adaptif
-- Situs panduan dan unduhan: https://lotura.runable.site
+- Situs panduan dan unduhan: https://chucklebytes482.github.io/lotura/
 
 ## Build
 
