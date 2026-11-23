@@ -10,7 +10,7 @@ Tepat **3 berkas** dengan nama persis sama, **tanpa teks panduan/cara**, dan **k
 
 1. **`release.jks`** — Keystore Android RSA 2048-bit, alias `upload`, `-validity 10950` (30 tahun), `STORE_PASSWORD` & `KEY_PASSWORD` acak kuat 24 karakter (atau gunakan keystore existing bila dilampirkan pengguna).
 2. **`GITHUB_SECRETS.md`**:
-   ```markdown
+   ~~~markdown
    ### RELEASE_KEYSTORE_BASE64
 
    ```text
@@ -20,9 +20,9 @@ Tepat **3 berkas** dengan nama persis sama, **tanpa teks panduan/cara**, dan **k
    - **STORE_PASSWORD:** `<password_keystore>`
    - **KEY_PASSWORD:** `<password_key>`
    - **KEY_ALIAS:** `upload`
-   ```
+   ~~~
 3. **`apk Fingerprint.md`**:
-   ```markdown
+   ~~~markdown
    - **Package name:** `<applicationId>`
    - **Alias keystore:** `upload`
 
@@ -37,7 +37,7 @@ Tepat **3 berkas** dengan nama persis sama, **tanpa teks panduan/cara**, dan **k
    ```text
    <AA:BB:CC:...>
    ```
-   ```
+   ~~~
 
 ---
 
