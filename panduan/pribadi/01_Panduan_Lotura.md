@@ -1,4 +1,4 @@
-# 01 — Panduan Lotura (Umum)
+# 01 — Panduan Lotura
 
 Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google Drive, dan GitHub.
 
@@ -43,4 +43,4 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 - APK dirilis sebagai GitHub Release di repo `chucklebytes482/lotura`.
 - Unduhan terbaru: `https://github.com/chucklebytes482/lotura/releases/latest/download/lotura-latest-arm64-v8a.apk`
-- Langkah CI dan keystore ada di `02_Setup_Rilis_CI_(umum).md`.
+- Langkah CI dan keystore ada di `../umum/02_Setup_Rilis_CI.md`.
