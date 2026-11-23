@@ -3,9 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,12 +11,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -30,22 +25,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.SyncStatus
-import com.example.ui.FolderDetail
-import com.example.ui.FolderStats
 import com.example.data.SyncSummary
+import com.example.ui.FolderDetail
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Layar detail folder root Drive atau repo GitHub. Tombol kembali ada di top bar. */
+/**
+ * Kartu detail folder. Hanya menampilkan tombol jelajah file (repo GitHub saja)
+ * dan status sync terakhir. Tombol top bar tetap ada untuk kembali.
+ */
 @Composable
 fun FolderDetailScreen(
     detail: FolderDetail,
-    stats: FolderStats,
     summary: SyncSummary?,
     busy: Boolean,
-    onDownload: () -> Unit,
-    onUpload: () -> Unit,
     onOpenFiles: (() -> Unit)? = null
 ) {
     Column(
@@ -57,51 +51,10 @@ fun FolderDetailScreen(
     ) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-        Text(detail.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onDownload, enabled = !busy) {
-                Icon(Icons.Rounded.CloudDownload, contentDescription = "Download")
-            }
-            IconButton(onClick = onUpload, enabled = !busy) {
-                Icon(Icons.Rounded.CloudUpload, contentDescription = "Unggah")
-            }
-        }
-
         if (onOpenFiles != null) {
             OutlinedButton(onClick = onOpenFiles, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                 Text("Jelajahi file")
-            }
-            NoteText("Edit file teks di sini. Setiap perubahan langsung tersimpan ke perangkat dan di-push ke GitHub.")
-        }
-
-        HorizontalDivider()
-
-        InfoLine("Path relatif", detail.relPath.ifEmpty { "/" })
-        InfoLine("Path lokal", detail.localPath)
-
-        HorizontalDivider()
-
-        Text("Isi", fontWeight = FontWeight.SemiBold)
-        when {
-            stats.loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            stats.error != null -> Text(
-                "Gagal menghitung: ${stats.error}",
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 13.sp
-            )
-            else -> {
-                InfoLine("Jumlah file", stats.fileCount.toString())
-                InfoLine("Total ukuran", formatBytes(stats.totalBytes))
-                if (stats.unknownSizeCount > 0) {
-                    NoteText("${stats.unknownSizeCount} file tidak diketahui ukurannya (dokumen Google) dan tidak ikut total.")
-                }
-                if (stats.partial) {
-                    NoteText("Hitungan berhenti di batas panggilan API, angka ini belum lengkap.")
-                }
             }
         }
 
@@ -125,7 +78,6 @@ fun FolderDetailScreen(
             InfoLine("Gagal", summary.failCount.toString())
             InfoLine("Item tersembunyi dilewati", summary.hiddenSkipped.toString())
         }
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -150,15 +102,3 @@ private fun statusText(status: SyncStatus): String = when (status) {
 
 private fun formatTime(millis: Long): String =
     SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(millis))
-
-internal fun formatBytes(bytes: Long): String {
-    if (bytes < 1024) return "$bytes B"
-    val units = listOf("KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var index = -1
-    while (value >= 1024 && index < units.lastIndex) {
-        value /= 1024
-        index++
-    }
-    return String.format(Locale("id", "ID"), "%.1f %s", value, units[index])
-}

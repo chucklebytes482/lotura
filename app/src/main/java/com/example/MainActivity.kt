@@ -86,7 +86,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val repos by viewModel.repos.collectAsStateWithLifecycle()
     val summaries by viewModel.summaries.collectAsStateWithLifecycle()
     val detail by viewModel.detail.collectAsStateWithLifecycle()
-    val detailStats by viewModel.detailStats.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val browse by viewModel.browse.collectAsStateWithLifecycle()
 
@@ -262,11 +261,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                 } else {
                     FolderDetailScreen(
                         detail = current,
-                        stats = detailStats,
                         summary = summaries[current.summaryKey],
                         busy = uiState.busySources.contains(current.sourceKey),
-                        onDownload = { viewModel.syncDetail(upload = false) },
-                        onUpload = { viewModel.syncDetail(upload = true) },
                         onOpenFiles = current.repo?.let { repo ->
                             val open: () -> Unit = {
                                 viewModel.openFiles(repo)
