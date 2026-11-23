@@ -11,6 +11,7 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 - Lokasi folder di perangkat:
   - Google Drive: `/storage/emulated/0/google drive <email>/`
   - GitHub: `/storage/emulated/0/github <username>/<repo>/`
+- Folder lama di `Documents` dari versi sebelumnya tidak dihapus oleh aplikasi. Pindahkan isinya manual ke lokasi di atas.
 
 ## 2. Hubungkan akun
 
