@@ -29,6 +29,7 @@ Aturan inti pembuatan aplikasi Android (**Kotlin + Jetpack Compose + Material 3 
 - **Sinkronisasi dua langkah, tanpa aturan konflik:**
   1. **↓ Download:** setiap berkas sumber (Drive/GitHub) **menimpa** berkas lokal bernama sama.
   2. **↑ Upload:** setiap berkas lokal **menimpa** berkas sumber bernama sama.
+  - **Tombol per pasangan:** kartu Beranda punya tombol **Download** dan **Upload** terpisah; masing-masing menjalankan hanya satu langkah di atas.
 - **Dilarang:** pengecekan waktu ubah, hash, Last-Write-Wins, berkas salinan konflik, dan penghapusan 2 arah/pagar penghapusan.
 - **Tanpa:** login cloud (kecuali diminta), `WorkManager`, layanan latar belakang, atau file backup bertanggal ganda.
 
