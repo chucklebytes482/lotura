@@ -311,7 +311,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                             viewModel.showMessage("Gagal membuka browser.")
                         }
                     },
-                    onSyncPair = { id -> viewModel.syncPairNow(id) },
+                    onDownloadPair = { id -> viewModel.downloadPair(id) },
+                    onUploadPair = { id -> viewModel.uploadPair(id) },
                     onDeleteSelectedPairs = { selected -> selected.forEach { viewModel.deletePair(it) } },
                     onAddPairClick = { navController.navigate(Routes.PAIR_CREATE) }
                 )
@@ -346,6 +347,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     driveBrowser = uiState.driveBrowser,
                     githubBrowser = uiState.githubBrowser,
                     githubFolderBrowser = uiState.githubFolderBrowser,
+                    driveEmail = appPrefs.googleEmail,
                     onLoadDriveRootFolders = { viewModel.loadDriveRootFolders() },
                     onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
                     onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
