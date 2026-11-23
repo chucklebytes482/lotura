@@ -1,50 +1,42 @@
 package com.example.ui.screens
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,589 +44,505 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.data.SyncCardMetrics
-import com.example.data.db.SyncPairEntity
-import com.example.data.secure.AppPrefs
-import com.example.ui.components.BrandIcons
-import com.example.ui.components.CompactSearchBar
-import com.example.ui.components.SelectionActionBar
-import com.example.ui.components.StatusPill
-import com.example.ui.components.formatCompactRelativeTime
-import com.example.ui.theme.AmberPending
-import com.example.ui.theme.JetBrainsMonoFamily
-import com.example.ui.theme.providerBrandColors
+import androidx.compose.ui.unit.sp
+import com.example.data.LocalPathHelper
+import com.example.data.db.DriveAccountEntity
+import com.example.data.db.GithubAccountEntity
+import com.example.data.db.GithubRepoEntity
+import com.example.sync.SourceKeys
+import com.example.sync.TreeItem
+import com.example.ui.components.StoragePermissionHelper
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * Beranda: setiap akun (Drive atau GitHub) tampil sebagai pohon yang bisa dibuka.
+ * Centang file/folder, lalu pakai Download atau Upload di bawah.
+ */
 @Composable
 fun HomeScreen(
-    pairs: List<SyncPairEntity>,
-    appPrefs: AppPrefs,
-    syncingPairIds: Set<Long>,
-    isOnline: Boolean,
+    driveAccounts: List<DriveAccountEntity>,
+    githubAccounts: List<GithubAccountEntity>,
+    repos: List<GithubRepoEntity>,
+    trees: Map<String, List<TreeItem>>,
+    loading: Set<String>,
+    expanded: Set<String>,
+    selected: Set<String>,
+    busySources: Set<String>,
+    isConnectingDrive: Boolean,
+    driveAuthError: String?,
+    isAddingGithub: Boolean,
+    githubAccountError: String?,
     hasStoragePermission: Boolean,
-    onRequestStoragePermission: () -> Unit,
-    onOpenDriveSheet: () -> Unit,
-    onOpenWebGuide: () -> Unit,
-    onSyncPair: (Long) -> Unit,
-    onDeleteSelectedPairs: (List<SyncPairEntity>) -> Unit,
-    onAddPairClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedIds by remember { mutableStateOf(emptySet<Long>()) }
-    val selectionMode = selectedIds.isNotEmpty()
-
-    BackHandler(enabled = selectionMode) {
-        selectedIds = emptySet()
-    }
-
-    val filteredPairs = remember(pairs, searchQuery) {
-        val q = searchQuery.trim()
-        if (q.isEmpty()) {
-            pairs
-        } else {
-            pairs.filter {
-                it.name.contains(q, ignoreCase = true) ||
-                    it.localPath.contains(q, ignoreCase = true) ||
-                    it.driveFolderName.contains(q, ignoreCase = true) ||
-                    it.githubRepo.contains(q, ignoreCase = true) ||
-                    it.githubSubfolder.contains(q, ignoreCase = true)
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .widthIn(max = 640.dp)
-                .fillMaxSize()
-                .testTag("home_pair_list"),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Prioritas #1: Kartu Status Akun (tanpa jadwal & tanpa tombol sinkron global)
-            item(key = "drive_status_card") {
-                AccountQuickStatusCard(
-                    appPrefs = appPrefs,
-                    isOnline = isOnline,
-                    onClick = onOpenDriveSheet
-                )
-            }
-
-            // Prioritas #2: Web Panduan & Arti Ikon
-            item(key = "web_guide_card") {
-                WebGuideCard(onClick = onOpenWebGuide)
-            }
-
-            if (!hasStoragePermission) {
-                item(key = "storage_permission_banner") {
-                    StoragePermissionBanner(onGrantClick = onRequestStoragePermission)
-                }
-            }
-
-            if (selectionMode) {
-                item(key = "selection_bar") {
-                    SelectionActionBar(
-                        selectedCount = selectedIds.size,
-                        onSelectAll = { selectedIds = filteredPairs.map { it.id }.toSet() },
-                        onDeleteSelected = {
-                            val toDelete = pairs.filter { it.id in selectedIds }
-                            onDeleteSelectedPairs(toDelete)
-                            selectedIds = emptySet()
-                        },
-                        onClose = { selectedIds = emptySet() }
-                    )
-                }
-            } else {
-                item(key = "search_bar") {
-                    CompactSearchBar(
-                        query = searchQuery,
-                        placeholder = "Cari folder...",
-                        onQueryChange = { searchQuery = it },
-                        testTag = "home_search_input"
-                    )
-                }
-            }
-
-            if (filteredPairs.isEmpty()) {
-                item(key = "empty_pairs") {
-                    EmptyPairsCard(
-                        hasSearchQuery = searchQuery.isNotBlank(),
-                        onAddPairClick = onAddPairClick
-                    )
-                }
-            } else {
-                items(filteredPairs, key = { it.id }) { pair ->
-                    val isSelected = pair.id in selectedIds
-                    val isSyncing = pair.id in syncingPairIds
-                    SyncPairCard(
-                        pair = pair,
-                        isSelected = isSelected,
-                        selectionMode = selectionMode,
-                        isSyncing = isSyncing,
-                        onSyncClick = { onSyncPair(pair.id) },
-                        onToggleSelect = {
-                            selectedIds = if (isSelected) selectedIds - pair.id else selectedIds + pair.id
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AccountQuickStatusCard(
-    appPrefs: AppPrefs,
     isOnline: Boolean,
-    onClick: () -> Unit
+    onRequestStoragePermission: () -> Unit,
+    onOpenWebGuide: () -> Unit,
+    onConnectDrive: () -> Unit,
+    onRemoveDrive: (String) -> Unit,
+    onReloadDrive: (String) -> Unit,
+    onAddGithubAccount: (String, () -> Unit) -> Unit,
+    onRefreshRepos: (GithubAccountEntity) -> Unit,
+    onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
+    onToggleRepo: (GithubRepoEntity) -> Unit,
+    onReloadRepo: (GithubRepoEntity) -> Unit,
+    onToggleFolder: (TreeItem) -> Unit,
+    onToggleSelect: (TreeItem) -> Unit,
+    onDownload: () -> Unit,
+    onUpload: () -> Unit,
+    onClearSelection: () -> Unit
 ) {
-    val driveBrand = providerBrandColors(isGithub = false)
-    val dotColor = when {
-        !appPrefs.driveConnected -> AmberPending
-        !isOnline -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.secondary
-    }
+    var showAddGithub by remember { mutableStateOf(false) }
+    val busy = busySources.isNotEmpty()
 
-    val subtitleText = when {
-        !appPrefs.driveConnected -> "Belum terhubung"
-        !isOnline -> "Offline"
-        else -> appPrefs.googleEmail.ifBlank { "Terhubung" }
-    }
+    Column(Modifier.fillMaxWidth()) {
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .testTag("home_drive_status_card")
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(driveBrand.container),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = BrandIcons.GoogleDrive,
-                    contentDescription = "Status Google Drive",
-                    tint = if (appPrefs.driveConnected) driveBrand.accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "Google Drive",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitleText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            StatusPill(
-                label = if (appPrefs.driveConnected) "Aktif" else "Off",
-                dotColor = dotColor
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Buka status akun Google Drive",
-                tint = driveBrand.accent
-            )
-        }
-    }
-}
-
-@Composable
-private fun WebGuideCard(onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .testTag("home_web_guide_card")
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MenuBook,
-                    contentDescription = "Web Panduan",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "Web Panduan",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Panduan & Arti Ikon",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Icon(
-                imageVector = Icons.Default.OpenInNew,
-                contentDescription = "Buka Web Panduan",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-private fun StoragePermissionBanner(onGrantClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = AmberPending.copy(alpha = 0.14f),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, AmberPending.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
-            .testTag("storage_permission_banner")
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Security,
-                contentDescription = "Izin Akses File",
-                tint = AmberPending
-            )
-            Text(
-                text = "Izin Akses Semua File",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Button(
-                onClick = onGrantClick,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("grant_storage_permission_button")
-            ) {
-                Text("Aktifkan")
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SyncPairCard(
-    pair: SyncPairEntity,
-    isSelected: Boolean,
-    selectionMode: Boolean,
-    isSyncing: Boolean,
-    onSyncClick: () -> Unit,
-    onToggleSelect: () -> Unit
-) {
-    val isGithub = pair.isGithubPair
-    val brand = providerBrandColors(isGithub = isGithub)
-    val metrics = remember(pair.lastStatus, pair.lastError) {
-        SyncCardMetrics.parse(pair.lastStatus, pair.lastError)
-    }
-    val cardShape = RoundedCornerShape(18.dp)
-    val borderColor = if (isSelected) brand.accent else brand.border
-    val cardColor = if (isSelected) brand.container.copy(alpha = 0.45f) else brand.cardSurface
-    val mutedMetricColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
-
-    Surface(
-        shape = cardShape,
-        color = cardColor,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(if (isSelected) 2.dp else 1.dp, borderColor, cardShape)
-            .clip(cardShape)
-            .combinedClickable(
-                onClick = {
-                    if (selectionMode) {
-                        onToggleSelect()
-                    }
-                },
-                onLongClick = onToggleSelect
-            )
-            .testTag("pair_card_${pair.id}")
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-        ) {
-            // Garis aksen sisi kiri yang tegas untuk membedakan Google Drive (Biru-Cyan) vs GitHub (Ungu-Violet)
-            Box(
-                modifier = Modifier
-                    .width(5.dp)
-                    .fillMaxHeight()
-                    .background(brand.accent)
-            )
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(brand.container)
-                            .border(1.dp, brand.accent.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            .testTag("pair_provider_icon_${pair.id}"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Terpilih",
-                                tint = brand.accent,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (isGithub) BrandIcons.GitHub else BrandIcons.GoogleDrive,
-                                contentDescription = if (isGithub) "GitHub" else "Google Drive",
-                                tint = brand.accent,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = pair.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    FilledTonalIconButton(
-                        onClick = onSyncClick,
-                        enabled = !isSyncing && !selectionMode,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = brand.container,
-                            contentColor = brand.accent
-                        ),
-                        modifier = Modifier
-                            .size(48.dp)
-                            .border(1.dp, brand.accent.copy(alpha = 0.38f), RoundedCornerShape(999.dp))
-                            .testTag("pair_sync_button_${pair.id}")
-                    ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp,
-                                color = brand.accent
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Sinkronkan ${pair.name}",
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Baris ikon metrik besar berjarak renggang tanpa teks redundan (dimensi kartu tetap konsisten)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        MetricIconCount(
-                            icon = Icons.Rounded.CloudUpload,
-                            count = metrics.uploaded,
-                            activeColor = brand.accent,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Diunggah: ${metrics.uploaded}",
-                            testTag = "pair_metric_upload_${pair.id}"
-                        )
-                        MetricIconCount(
-                            icon = Icons.Rounded.CloudDownload,
-                            count = metrics.downloaded,
-                            activeColor = MaterialTheme.colorScheme.secondary,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Diunduh: ${metrics.downloaded}",
-                            testTag = "pair_metric_download_${pair.id}"
-                        )
-                        MetricIconCount(
-                            icon = Icons.Rounded.DeleteOutline,
-                            count = metrics.deleted,
-                            activeColor = AmberPending,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Dihapus: ${metrics.deleted}",
-                            testTag = "pair_metric_delete_${pair.id}"
-                        )
-                        MetricIconCount(
-                            icon = Icons.Rounded.WarningAmber,
-                            count = metrics.conflicts,
-                            activeColor = MaterialTheme.colorScheme.error,
-                            mutedColor = mutedMetricColor,
-                            contentDescription = "Konflik: ${metrics.conflicts}",
-                            testTag = "pair_metric_conflict_${pair.id}"
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (metrics.hasError && !isSyncing) {
-                            Icon(
-                                imageVector = Icons.Rounded.ErrorOutline,
-                                contentDescription = "Terjadi galat sinkronisasi",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .testTag("pair_metric_error_${pair.id}")
-                            )
-                        }
-                        val latestTime = maxOf(pair.lastDriveSyncAt, pair.lastGithubSyncAt)
-                        Text(
-                            text = formatCompactRelativeTime(latestTime),
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MetricIconCount(
-    icon: ImageVector,
-    count: Int,
-    activeColor: Color,
-    mutedColor: Color,
-    contentDescription: String,
-    testTag: String
-) {
-    val tint = if (count > 0) activeColor else mutedColor
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = Modifier.testTag(testTag)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(20.dp)
-        )
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelLarge.copy(fontFamily = JetBrainsMonoFamily),
-            fontWeight = if (count > 0) FontWeight.Bold else FontWeight.Medium,
-            color = tint
-        )
-    }
-}
-
-@Composable
-private fun EmptyPairsCard(
-    hasSearchQuery: Boolean,
-    onAddPairClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-            .testTag("empty_pairs_card")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
+            if (!isOnline) {
+                item { Notice("Tidak ada koneksi internet.") }
+            }
+            if (!hasStoragePermission) {
+                item {
+                    Notice("Izin akses semua file belum diberikan. Lotura butuh izin ini untuk membaca dan menulis folder lokal.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onRequestStoragePermission) { Text("Beri izin") }
+                }
+            }
+            item {
+                TextButton(onClick = onOpenWebGuide) { Text("Buka panduan") }
+            }
+
+            // ---------- Google Drive ----------
+            item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_DIR}/<email>/") }
+            item {
+                Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
+                    Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")
+                }
+            }
+            driveAuthError?.let { item { ErrorText(it) } }
+            if (driveAccounts.isEmpty()) {
+                item { EmptyText("Belum ada akun Drive.") }
+            }
+            driveAccounts.forEach { account ->
+                val sourceKey = SourceKeys.drive(account.email)
+                item(key = "drive-head:${account.email}") {
+                    AccountHeader(
+                        title = account.displayName.ifBlank { account.email },
+                        subtitle = account.email,
+                        path = LocalPathHelper.driveRoot(account.email).absolutePath,
+                        onReload = { onReloadDrive(account.email) },
+                        onRemove = { onRemoveDrive(account.email) },
+                        isLoading = sourceKey in loading
+                    )
+                }
+                visibleTreeItems(trees[sourceKey].orEmpty(), expanded).forEach { treeItem ->
+                    item(key = treeItem.key) {
+                        TreeRow(
+                            item = treeItem,
+                            selected = treeItem.key in selected,
+                            isLoading = treeItem.key in loading,
+                            isExpanded = treeItem.key in expanded,
+                            onToggleFolder = { onToggleFolder(treeItem) },
+                            onToggleSelect = { onToggleSelect(treeItem) }
+                        )
+                    }
+                }
+            }
+
+            // ---------- GitHub ----------
+            item { Spacer(Modifier.height(8.dp)) }
+            item { SectionTitle("GitHub", "Setiap repo jadi folder sendiri: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.GITHUB_DIR}/<username>/<repo>/") }
+            item {
+                Button(onClick = { showAddGithub = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Tambah akun GitHub")
+                }
+            }
+            if (githubAccounts.isEmpty()) {
+                item { EmptyText("Belum ada akun GitHub.") }
+            }
+            githubAccounts.forEach { account ->
+                item(key = "gh-head:${account.id}") {
+                    AccountHeader(
+                        title = account.label,
+                        subtitle = "@${account.username}",
+                        path = null,
+                        onReload = { onRefreshRepos(account) },
+                        onRemove = { onDeleteGithubAccount(account) },
+                        isLoading = false
+                    )
+                }
+                val accountRepos = repos.filter { it.accountId == account.id }
+                    .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
+                if (accountRepos.isEmpty()) {
+                    item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
+                }
+                accountRepos.forEach { repo ->
+                    repoSection(
+                        repo = repo,
+                        trees = trees,
+                        loading = loading,
+                        expanded = expanded,
+                        selected = selected,
+                        onToggleRepo = onToggleRepo,
+                        onReloadRepo = onReloadRepo,
+                        onToggleFolder = onToggleFolder,
+                        onToggleSelect = onToggleSelect
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(8.dp)) }
+        }
+
+        if (selected.isNotEmpty()) {
+            ActionBar(
+                count = selected.size,
+                enabled = !busy,
+                onDownload = onDownload,
+                onUpload = onUpload,
+                onClear = onClearSelection
+            )
+        }
+    }
+
+    if (showAddGithub) {
+        AddGithubDialog(
+            isAdding = isAddingGithub,
+            error = githubAccountError,
+            onDismiss = { showAddGithub = false },
+            onSubmit = { pat ->
+                onAddGithubAccount(pat) { showAddGithub = false }
+            }
+        )
+    }
+}
+
+// ---------- Bagian repo GitHub ----------
+
+private fun LazyListScope.repoSection(
+    repo: GithubRepoEntity,
+    trees: Map<String, List<TreeItem>>,
+    loading: Set<String>,
+    expanded: Set<String>,
+    selected: Set<String>,
+    onToggleRepo: (GithubRepoEntity) -> Unit,
+    onReloadRepo: (GithubRepoEntity) -> Unit,
+    onToggleFolder: (TreeItem) -> Unit,
+    onToggleSelect: (TreeItem) -> Unit
+) {
+    val sourceKey = SourceKeys.github(repo.fullName)
+    val isOpen = sourceKey in expanded
+    item(key = "repo:${repo.fullName}") {
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { onToggleRepo(repo) },
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (hasSearchQuery) Icons.Default.FolderOpen else Icons.Default.Sync,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
+                    imageVector = if (isOpen) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null
                 )
-            }
-            Text(
-                text = if (hasSearchQuery) "Tidak ditemukan" else "Belum ada pasangan",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            if (!hasSearchQuery) {
-                Spacer(Modifier.height(4.dp))
-                Button(
-                    onClick = onAddPairClick,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.testTag("empty_add_pair_button")
-                ) {
-                    Text("Tambah Pasangan", fontWeight = FontWeight.SemiBold)
+                Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = repo.name,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (repo.archived) {
+                            Spacer(Modifier.width(6.dp))
+                            Tag("Archived")
+                        }
+                        if (repo.isPrivate) {
+                            Spacer(Modifier.width(6.dp))
+                            Tag("Private")
+                        }
+                    }
+                    Text(
+                        text = LocalPathHelper.githubRoot(repo.owner, repo.name).absolutePath,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (sourceKey in loading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else if (isOpen) {
+                    IconButton(onClick = { onReloadRepo(repo) }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang repo")
+                    }
                 }
             }
         }
     }
+    if (isOpen) {
+        visibleTreeItems(trees[sourceKey].orEmpty(), expanded).forEach { treeItem ->
+            item(key = treeItem.key) {
+                TreeRow(
+                    item = treeItem,
+                    selected = treeItem.key in selected,
+                    isLoading = treeItem.key in loading,
+                    isExpanded = treeItem.key in expanded,
+                    onToggleFolder = { onToggleFolder(treeItem) },
+                    onToggleSelect = { onToggleSelect(treeItem) }
+                )
+            }
+        }
+    }
+}
+
+// ---------- Komponen ----------
+
+/** Baris pohon yang terlihat: anak folder hanya muncul kalau induknya terbuka. */
+private fun visibleTreeItems(items: List<TreeItem>, expanded: Set<String>): List<TreeItem> {
+    if (items.isEmpty()) return emptyList()
+    val byParent = items.groupBy { it.path.substringBeforeLast('/', "") }
+    val out = mutableListOf<TreeItem>()
+    fun walk(parentPath: String) {
+        val children = byParent[parentPath].orEmpty()
+            .sortedWith(compareByDescending<TreeItem> { it.isFolder }.thenBy { it.name.lowercase() })
+        for (child in children) {
+            out += child
+            if (child.isFolder && child.key in expanded) walk(child.path)
+        }
+    }
+    walk("")
+    return out
+}
+
+@Composable
+private fun SectionTitle(title: String, hint: String) {
+    Column(Modifier.padding(top = 8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun AccountHeader(
+    title: String,
+    subtitle: String,
+    path: String?,
+    onReload: () -> Unit,
+    onRemove: () -> Unit,
+    isLoading: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                path?.let {
+                    Text(it, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (isLoading) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onReload) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang")
+                }
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Filled.Delete, contentDescription = "Hapus akun")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TreeRow(
+    item: TreeItem,
+    selected: Boolean,
+    isLoading: Boolean,
+    isExpanded: Boolean,
+    onToggleFolder: () -> Unit,
+    onToggleSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = (item.depth * 16).dp)
+            .clickable { if (item.isFolder) onToggleFolder() else onToggleSelect() }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(checked = selected, onCheckedChange = { onToggleSelect() })
+        if (item.isFolder) {
+            Icon(
+                imageVector = if (isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+        } else {
+            Spacer(Modifier.width(18.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = item.name,
+                    fontSize = 14.sp,
+                    fontWeight = if (item.isFolder) FontWeight.Medium else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (item.archived && item.depth == 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Tag("Archived")
+                }
+            }
+            Text(
+                text = rowSubtitle(item),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (isLoading) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+    }
+    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 16).dp))
+}
+
+private fun rowSubtitle(item: TreeItem): String = when {
+    item.isFolder -> "Folder"
+    item.nativeMime != null || item.size == null -> "Dokumen Google · selalu ditransfer"
+    else -> formatBytes(item.size)
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+    bytes < 1024L * 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    else -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+}
+
+@Composable
+private fun Tag(label: String) {
+    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun ActionBar(
+    count: Int,
+    enabled: Boolean,
+    onDownload: () -> Unit,
+    onUpload: () -> Unit,
+    onClear: () -> Unit
+) {
+    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text("$count item dicentang", fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onDownload, enabled = enabled, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.CloudDownload, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Download")
+                }
+                OutlinedButton(onClick = onUpload, enabled = enabled, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.CloudUpload, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Upload")
+                }
+                TextButton(onClick = onClear, enabled = enabled) { Text("Batal") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddGithubDialog(
+    isAdding: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var pat by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!isAdding) onDismiss() },
+        title = { Text("Tambah akun GitHub") },
+        text = {
+            Column {
+                Text(
+                    "Pakai fine-grained PAT dengan akses read/write Contents ke repo yang ingin disinkronkan. Semua repo di akun itu akan terhubung.",
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = pat,
+                    onValueChange = { pat = it },
+                    label = { Text("Fine-grained PAT") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !isAdding,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    ErrorText(it)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(pat) }, enabled = !isAdding && pat.isNotBlank()) {
+                Text(if (isAdding) "Memverifikasi..." else "Simpan")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isAdding) { Text("Batal") }
+        }
+    )
+}
+
+@Composable
+private fun Notice(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.errorContainer
+    ) {
+        Text(text, modifier = Modifier.padding(12.dp), fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun ErrorText(text: String) {
+    Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+}
+
+@Composable
+private fun EmptyText(text: String) {
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
 }
