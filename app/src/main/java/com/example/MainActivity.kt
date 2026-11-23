@@ -31,6 +31,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -143,11 +144,24 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         }
     }
 
+    val waitSyncMessage = "Tunggu hingga selesai agar sinkronisasi berhasil"
     LaunchedEffect(uiState.snackbarMessage) {
         val msg = uiState.snackbarMessage ?: return@LaunchedEffect
         snackbarHostState.currentSnackbarData?.dismiss()
-        snackbarHostState.showSnackbar(msg)
+        val duration = if (msg == waitSyncMessage && uiState.syncingPairIds.isNotEmpty()) {
+            SnackbarDuration.Indefinite
+        } else {
+            SnackbarDuration.Short
+        }
+        snackbarHostState.showSnackbar(message = msg, duration = duration)
         viewModel.consumeSnackbar()
+    }
+    LaunchedEffect(uiState.syncingPairIds) {
+        if (uiState.syncingPairIds.isEmpty() &&
+            snackbarHostState.currentSnackbarData?.visuals?.message == waitSyncMessage
+        ) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()

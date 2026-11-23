@@ -2,6 +2,7 @@ package com.example
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
@@ -135,7 +136,7 @@ class UiRobolectricTest {
     }
 
     @Test
-    fun homeScreen_showsWaitNoticeWhilePairIsSyncing() {
+    fun homeScreen_keepsFixedCardLayoutWithoutDuplicateWaitNoticeWhileSyncing() {
         val samplePair = SyncPairEntity(
             id = 9L,
             name = "Catatan",
@@ -163,8 +164,15 @@ class UiRobolectricTest {
         }
 
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("pair_syncing_notice_9", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithText("Tunggu hingga selesai agar sinkronisasi berhasil", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("home_pair_list").performScrollToKey(9L)
+        composeRule.onNodeWithTag("pair_sync_button_9").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithTag("pair_syncing_notice_9", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Tunggu hingga selesai agar sinkronisasi berhasil", useUnmergedTree = true)
+            .assertDoesNotExist()
+        composeRule.onNodeWithTag("pair_metric_upload_9", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_download_9", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_delete_9", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("pair_metric_conflict_9", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
