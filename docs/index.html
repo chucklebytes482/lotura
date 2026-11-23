@@ -425,7 +425,7 @@
       <span class="hero-badge">Panduan &amp; Unduhan Resmi Lotura</span>
       <h1>Sinkronkan Google Drive &amp; GitHub ke Perangkat Android</h1>
       <p class="lead">
-        Hubungkan akun, centang file yang Anda mau, lalu unduh atau unggah secara manual. Tanpa server perantara.
+        Hubungkan akun, lalu unduh atau unggah folder dengan satu ketukan ikon. Tanpa server perantara.
       </p>
       <div class="cta-group">
         <a
@@ -445,7 +445,7 @@
       <a href="#unduh">Unduh APK</a>
       <a href="#persiapan">1. Persiapan</a>
       <a href="#akun">2. Hubungkan akun</a>
-      <a href="#pilih">3. Pilih file</a>
+      <a href="#pilih">3. Beranda &amp; detail folder</a>
       <a href="#transfer">4. Download &amp; Upload</a>
       <a href="#hapus">5. Hapus akun</a>
       <a href="#keamanan">Keamanan</a>
@@ -459,7 +459,7 @@
           Lotura butuh izin ini untuk membaca dan menulis folder lokal.
         </li>
         <li>
-          <strong>Koneksi internet:</strong> dibutuhkan saat memuat pohon file, mengunduh, dan mengunggah.
+          <strong>Koneksi internet:</strong> dibutuhkan saat memuat daftar folder, mengunduh, dan mengunggah.
         </li>
       </ol>
       <h3>Lokasi folder di perangkat</h3>
@@ -491,7 +491,7 @@
       <ol>
         <li>Di Beranda, ketuk <em>Hubungkan akun Google Drive</em>.</li>
         <li>Pilih akun Google dan berikan izin. Anda bisa menambah lebih dari satu akun.</li>
-        <li>Lotura memuat 3 level folder pertama. Folder yang lebih dalam dimuat saat dibuka.</li>
+        <li>Beranda menampilkan folder tingkat teratas di root Drive sebagai kartu. Isi folder tidak ditampilkan satu per satu.</li>
       </ol>
       <h3>GitHub</h3>
       <ol>
@@ -508,16 +508,29 @@
     </section>
 
     <section id="pilih" class="card">
-      <h2>3. Pilih file</h2>
+      <h2>3. Beranda &amp; detail folder</h2>
       <ul>
-        <li>Ketuk kartu folder root Drive atau repo GitHub untuk membuka layar detail: path, jumlah file, total ukuran, dan sync terakhir.</li>
-        <li>Isi repo GitHub tidak tampil di aplikasi. Ikon <em>download</em> dan <em>unggah</em> ada langsung di kartu.</li>
-        <li>Centang file atau folder. Mencentang folder juga mencentang seluruh isinya.</li>
+        <li>Setiap folder root Drive dan setiap repo GitHub tampil sebagai kartu di Beranda.</li>
+        <li>
+          Ikon <em>download</em> dan <em>unggah</em> ada langsung di kartu. Ketuk ikon itu untuk menyinkronkan seluruh
+          folder atau repo tersebut.
+        </li>
+        <li>
+          Ikon status di kartu menunjukkan hasil sync terakhir: centang (OK), peringatan (sebagian berhasil), silang
+          (gagal).
+        </li>
+        <li>
+          Ketuk kartu untuk membuka <em>detail folder</em>: path relatif, path lokal, jumlah file, total ukuran, dan
+          ringkasan sync terakhir (waktu, status, jumlah berhasil, gagal, dan item tersembunyi yang dilewati).
+        </li>
+        <li>
+          Isi repo GitHub tidak ditampilkan di aplikasi. Untuk melihat isinya, buka repo di GitHub.
+        </li>
         <li>
           Dokumen Google (Docs, Sheets, Slides) ditandai <em>Dokumen Google · selalu ditransfer</em>. Ukurannya
           tidak diketahui, jadi dokumen ini selalu ditransfer ulang.
         </li>
-        <li>Ketuk ikon <em>muat ulang</em> untuk mengambil daftar terbaru dari Drive atau GitHub.</li>
+        <li>Ketuk ikon <em>muat ulang</em> di header akun untuk mengambil daftar terbaru dari Drive atau GitHub.</li>
       </ul>
     </section>
 
@@ -525,27 +538,23 @@
       <h2>4. Download &amp; Upload</h2>
       <ul>
         <li>
-          <strong>Download</strong> menyalin item yang dicentang dari Drive atau GitHub ke folder lokal.
+          <strong>Download</strong> menyalin isi folder atau repo dari Drive atau GitHub ke folder lokal.
         </li>
         <li>
-          <strong>Upload</strong> mengirim item yang dicentang dari folder lokal ke Drive atau GitHub.
+          <strong>Upload</strong> mengirim isi folder lokal ke Drive atau GitHub. File baru di dalam folder itu ikut
+          terkirim.
         </li>
         <li>
           Perbandingan hanya memakai <strong>ukuran file</strong>. File dengan ukuran sama dilewati. Jika ukuran
           berbeda, file ditransfer.
         </li>
         <li>
-          Ringkasan sync terakhir tampil sebagai ikon di kartu: centang (OK), peringatan (sebagian), silang (gagal).
-          Teks lengkapnya ada di layar detail.
+          File dan folder tersembunyi (nama diawali titik) tidak ikut disinkronkan.
         </li>
         <li>
-          <em>Batal</em> menghapus semua centang tanpa menjalankan apa pun.
+          Selama transfer berjalan, ikon di kartu tidak bisa ditekan dan bar progres tampil di atas daftar.
         </li>
       </ul>
-      <div class="notice">
-        <strong>Batasan upload:</strong> Upload hanya mengirim file yang sudah ada di pohon. File baru di folder
-        lokal harus berada di dalam folder yang sudah ada di pohon. Muat ulang pohon setelah menambah folder baru.
-      </div>
     </section>
 
     <section id="hapus" class="card">
