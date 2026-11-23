@@ -71,6 +71,7 @@ fun PairEditorScreen(
     driveBrowser: DriveBrowserUiState,
     githubBrowser: GithubBrowserUiState,
     githubFolderBrowser: GithubFolderBrowserUiState,
+    driveEmail: String = "",
     onLoadDriveRootFolders: () -> Unit,
     onCreateDriveFolder: (String) -> Unit,
     onLoadGithubRepos: (Long) -> Unit,
@@ -131,11 +132,13 @@ fun PairEditorScreen(
         }
     }
 
-    val resolvedLocalPath = remember(sourceType, driveFolderName, githubRepo, githubSubfolder) {
+    val githubUsername = githubAccounts.firstOrNull { it.id == githubAccountId }?.username.orEmpty()
+
+    val resolvedLocalPath = remember(sourceType, driveFolderName, driveEmail, githubRepo, githubSubfolder, githubUsername) {
         if (sourceType == SyncSourceType.DRIVE) {
-            PairPathHelper.resolveDefaultLocalPathForDrive(driveFolderName)
+            PairPathHelper.resolveDefaultLocalPathForDrive(driveEmail, driveFolderName)
         } else {
-            PairPathHelper.resolveDefaultLocalPathForGithub(githubRepo, githubSubfolder)
+            PairPathHelper.resolveDefaultLocalPathForGithub(githubUsername, githubRepo, githubSubfolder)
         }
     }
 

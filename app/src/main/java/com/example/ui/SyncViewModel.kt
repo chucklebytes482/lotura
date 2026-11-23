@@ -252,7 +252,29 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun syncPairNow(pairId: Long) {
+    fun downloadPair(pairId: Long) = runPairAction(pairId) { pair ->
+        if (pair.isGithubPair) {
+            syncExecutor.downloadFromGithub(pairId).summary
+        } else {
+            withDriveToken { token -> syncExecutor.downloadFromDrive(pairId, token).summary }
+        }
+    }
+
+    fun uploadPair(pairId: Long) = runPairAction(pairId) { pair ->
+        if (pair.isGithubPair) {
+            syncExecutor.uploadToGithub(pairId).summary
+        } else {
+            withDriveToken { token -> syncExecutor.uploadToDrive(pairId, token).summary }
+        }
+    }
+
+    private suspend fun withDriveToken(block: suspend (String) -> String): String {
+        val token = GoogleAuthManager.tryGetSilentAccessToken(app)
+            ?: repository.getDriveAccessToken()
+        return if (!token.isNullOrBlank()) block(token) else "Google Drive belum terhubung"
+    }
+
+    private fun runPairAction(pairId: Long, action: suspend (SyncPairEntity) -> String) {
         viewModelScope.launch {
             refreshNetworkStatus()
             if (pairId in _uiState.value.syncingPairIds) return@launch
@@ -264,17 +286,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             }
             try {
                 val pair = repository.getPairById(pairId) ?: return@launch
-                val message = if (pair.isGithubPair) {
-                    syncExecutor.syncPairWithGithub(pairId).summary
-                } else {
-                    val token = GoogleAuthManager.tryGetSilentAccessToken(app)
-                        ?: repository.getDriveAccessToken()
-                    if (!token.isNullOrBlank()) {
-                        syncExecutor.syncPairWithDrive(pairId, token).summary
-                    } else {
-                        "Google Drive belum terhubung"
-                    }
-                }
+                val message = action(pair)
                 _uiState.update { it.copy(snackbarMessage = message.ifBlank { "Sinkronisasi selesai" }) }
             } finally {
                 _uiState.update { it.copy(syncingPairIds = it.syncingPairIds - pairId) }

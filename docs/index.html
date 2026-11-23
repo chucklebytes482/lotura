@@ -467,7 +467,7 @@
             Garis sisi kiri dan ikon pita segitiga berwarna <strong>Biru-Cyan</strong> menandakan folder yang
             terhubung ke Google Drive Anda.
           </p>
-          <div class="code-box"><code>Documents/Google Drive/&lt;NamaFolder&gt;</code></div>
+          <div class="code-box"><code>Documents/Google Drive &lt;email&gt;/&lt;FolderRoot&gt;</code></div>
         </div>
 
         <div class="provider-card github">
@@ -481,7 +481,7 @@
             Garis sisi kiri dan ikon khas GitHub berwarna <strong>Ungu-Violet</strong> menandakan folder dari
             repositori GitHub Anda.
           </p>
-          <div class="code-box"><code>Documents/GitHub/&lt;NamaRepo&gt;/&lt;NamaFolder&gt;</code></div>
+          <div class="code-box"><code>Documents/GitHub &lt;username&gt;/&lt;NamaRepo&gt;/&lt;FolderRoot&gt;</code></div>
         </div>
       </div>
 
@@ -518,8 +518,8 @@
             <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
           </span>
           <div class="legend-text">
-            <strong>Tombol Sinkron</strong>
-            <span>Ketuk untuk memulai sinkronisasi 2 arah pada folder tersebut. Ikon berputar saat proses berjalan.</span>
+            <strong>Tombol Download &amp; Upload</strong>
+            <span>Setiap pasangan punya dua tombol. <strong>Download</strong> menimpa berkas lokal dengan berkas sumber yang namanya sama. <strong>Upload</strong> menimpa berkas sumber dengan berkas lokal yang namanya sama.</span>
           </div>
         </div>
 
@@ -595,15 +595,15 @@
           <tbody>
             <tr>
               <td>Google Drive: <code>Catatan Kerja</code></td>
-              <td><code>/storage/emulated/0/Documents/Google Drive/Catatan Kerja</code></td>
+              <td><code>/storage/emulated/0/Documents/Google Drive user@gmail.com/Catatan Kerja</code></td>
             </tr>
             <tr>
               <td>GitHub: <code>akun-anda/Catatan / panduan</code></td>
-              <td><code>/storage/emulated/0/Documents/GitHub/Catatan/panduan</code></td>
+              <td><code>/storage/emulated/0/Documents/GitHub akun-anda/Catatan/panduan</code></td>
             </tr>
             <tr>
               <td>GitHub: <code>akun-anda/Catatan / arsip</code></td>
-              <td><code>/storage/emulated/0/Documents/GitHub/Catatan/arsip</code></td>
+              <td><code>/storage/emulated/0/Documents/GitHub akun-anda/Catatan/arsip</code></td>
             </tr>
           </tbody>
         </table>
@@ -617,15 +617,21 @@
         setiap folder diselaraskan:
       </p>
       <ul>
-        <li>Ketuk tombol <strong>Sinkron</strong> di sisi kanan kartu pasangan pada Beranda.</li>
         <li>
-          Saat sinkronisasi berjalan, ikon pada tombol <strong>Sinkron</strong> berputar di tempat tanpa mengubah
-          ukuran kartu, sementara pemberitahuan <em>"Tunggu hingga selesai agar sinkronisasi berhasil"</em> muncul
-          di bilah bawah layar hingga proses selesai.
+          Setiap kartu pasangan di Beranda punya dua tombol di sisi kanan: <strong>Download</strong> (unduh) dan
+          <strong>Upload</strong> (unggah). Keduanya bekerja per pasangan, tanpa pengecekan waktu.
         </li>
         <li>
-          Setelah selesai, angka di samping ikon <strong>Unggah</strong> dan <strong>Unduh</strong>
-          langsung diperbarui sesuai hasil terbaru.
+          <strong>Download</strong>: setiap berkas dari sumber (Google Drive atau folder GitHub terpilih) diunduh
+          dan <strong>menimpa</strong> berkas lokal dengan nama yang sama.
+        </li>
+        <li>
+          <strong>Upload</strong>: setiap berkas lokal <strong>menimpa</strong> berkas di sumber dengan nama yang
+          sama. Untuk GitHub, semua berkas dikirim dalam satu commit.
+        </li>
+        <li>
+          Saat berjalan, kedua tombol nonaktif dan muncul indikator putar. Angka di samping ikon
+          <strong>Unggah</strong> dan <strong>Unduh</strong> pada kartu menunjukkan hasil terakhir.
         </li>
       </ul>
       <div class="notice">
@@ -638,10 +644,10 @@
       <h2>5. Mengakses Berkas &amp; Menghapus Pasangan</h2>
       <ul>
         <li>
-          <strong>Membuka &amp; Mengedit Berkas:</strong> Buka langsung folder <code>Documents/Google Drive/</code>
-          atau <code>Documents/GitHub/&lt;NamaRepo&gt;/</code> melalui aplikasi manajer berkas ponsel maupun editor
+          <strong>Membuka &amp; Mengedit Berkas:</strong> Buka langsung folder <code>Documents/Google Drive &lt;email&gt;/</code>
+          atau <code>Documents/GitHub &lt;username&gt;/&lt;NamaRepo&gt;/</code> melalui aplikasi manajer berkas ponsel maupun editor
           pilihan Anda (seperti aplikasi catatan Markdown atau dokumen). Setelah selesai menyunting, buka Lotura dan
-          ketuk tombol <strong>Sinkron</strong>.
+          ketuk tombol <strong>Upload</strong> (atau <strong>Download</strong> untuk mengambil versi terbaru).
         </li>
         <li>
           <strong>Menghapus Pasangan Folder:</strong> <strong>Tekan tahan</strong> kartu pasangan di Beranda hingga

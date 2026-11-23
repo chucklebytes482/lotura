@@ -61,12 +61,21 @@ object PairPathHelper {
     }
 
     /**
-     * Resolves a source-scoped device directory for a Google Drive pair:
-     * `/storage/emulated/0/Documents/Google Drive/<FolderName>`.
+     * Nama folder tingkat atas: "Google Drive <email>" atau "GitHub <username>".
+     * Identitas kosong hanya memakai nama sumber.
      */
-    fun resolveDefaultLocalPathForDrive(driveFolderName: String): String {
+    fun sourceAccountDirName(source: String, identity: String): String {
+        val cleanIdentity = sanitizeFolderName(identity)
+        return if (cleanIdentity.isEmpty()) source else "$source $cleanIdentity"
+    }
+
+    /**
+     * Folder lokal pasangan Google Drive:
+     * `/storage/emulated/0/Documents/Google Drive <email>/<FolderRoot>`.
+     */
+    fun resolveDefaultLocalPathForDrive(email: String, driveFolderName: String): String {
+        val sourceRoot = File(DEFAULT_LOCAL_BASE_DIR, sourceAccountDirName(DRIVE_SOURCE_DIR, email))
         val cleanFolder = sourceFolderNameForDrive(driveFolderName)
-        val sourceRoot = File(DEFAULT_LOCAL_BASE_DIR, DRIVE_SOURCE_DIR)
         return if (cleanFolder.isEmpty()) {
             sourceRoot.path
         } else {
@@ -75,17 +84,17 @@ object PairPathHelper {
     }
 
     /**
-     * Resolves a source- and repo-scoped device directory for a GitHub pair:
-     * `/storage/emulated/0/Documents/GitHub/<RepoName>/<FolderPath>`.
+     * Folder lokal pasangan GitHub:
+     * `/storage/emulated/0/Documents/GitHub <username>/<RepoName>/<FolderPath>`.
      */
-    fun resolveDefaultLocalPathForGithub(repoName: String, githubSubfolder: String): String {
+    fun resolveDefaultLocalPathForGithub(username: String, repoName: String, githubSubfolder: String): String {
         val cleanRepo = sanitizeFolderName(repoName)
         val folderSegments = normalizeGithubFolderPath(githubSubfolder)
             .split('/')
             .map { sanitizeFolderName(it) }
             .filter { it.isNotEmpty() }
 
-        var current = File(DEFAULT_LOCAL_BASE_DIR, GITHUB_SOURCE_DIR)
+        var current = File(DEFAULT_LOCAL_BASE_DIR, sourceAccountDirName(GITHUB_SOURCE_DIR, username))
         if (cleanRepo.isNotEmpty()) {
             current = File(current, cleanRepo)
         }
