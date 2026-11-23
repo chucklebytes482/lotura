@@ -14,6 +14,7 @@ import com.example.data.db.GithubRepoEntity
 import com.example.data.db.SyncLogEntity
 import com.example.github.GithubTreeBlob
 import com.example.sync.IgnoreRules
+import com.example.sync.isHiddenPath
 import com.example.sync.OpResult
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
@@ -37,8 +38,6 @@ data class SyncUiState(
     val loaded: Set<String> = emptySet(),
     val loading: Set<String> = emptySet(),
     val expanded: Set<String> = emptySet(),
-    /** TreeItem.key yang dicentang. */
-    val selected: Set<String> = emptySet(),
     /** sourceKey yang sedang diunduh/diunggah. */
     val busySources: Set<String> = emptySet(),
     val isConnectingDrive: Boolean = false,
@@ -165,29 +164,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { fetchDriveLevel(email, parent = null, remaining = DRIVE_PRELOAD_LEVELS) }
     }
 
-    /** Membuka/menutup folder atau akun Drive. Folder yang belum dimuat diambil dari Drive. */
-    fun toggleDriveExpand(email: String, folder: TreeItem?) {
-        val key = folder?.key ?: SourceKeys.drive(email)
-        val wasExpanded = key in _uiState.value.expanded
-        _uiState.update { st ->
-            st.copy(expanded = if (wasExpanded) st.expanded - key else st.expanded + key)
-        }
-        if (!wasExpanded && key !in _uiState.value.loaded && folder != null) {
-            viewModelScope.launch { fetchDriveLevel(email, parent = folder, remaining = 1) }
-        }
-    }
-
-    /** Buka/tutup folder di mana pun: Drive memuat anak dari Drive, GitHub cukup ganti status lokal. */
-    fun toggleFolder(item: TreeItem) {
-        if (item.sourceKey.startsWith("drive:")) {
-            toggleDriveExpand(item.sourceKey.removePrefix("drive:"), item)
-        } else {
-            _uiState.update { st ->
-                st.copy(expanded = if (item.key in st.expanded) st.expanded - item.key else st.expanded + item.key)
-            }
-        }
-    }
-
     // ---------- GitHub ----------
 
     fun addGithubAccount(pat: String, onSuccess: () -> Unit) {
@@ -270,85 +246,53 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { loadRepoTree(repo) }
     }
 
-    // ---------- Pilihan & transfer ----------
+    // ---------- Transfer (lewat ikon per folder dasar atau per repo) ----------
 
-    fun toggleSelect(item: TreeItem) {
-        _uiState.update { st ->
-            st.copy(selected = if (item.key in st.selected) st.selected - item.key else st.selected + item.key)
-        }
+    /** Download/unggah satu folder dasar, termasuk seluruh isinya. */
+    fun syncFolder(item: TreeItem, upload: Boolean) {
+        viewModelScope.launch { runItems(listOf(item), upload, label = item.name) }
     }
 
-    fun clearSelection() {
-        _uiState.update { it.copy(selected = emptySet()) }
-    }
-
-    fun downloadSelected() = runSelected(upload = false)
-
-    fun uploadSelected() = runSelected(upload = true)
-
-    private fun runSelected(upload: Boolean) {
+    /**
+     * Download/unggah seluruh repo: semua item dasar (folder dan file dasar).
+     * File dasar tetap ikut walau tidak ditampilkan. Pohon dimuat dulu bila belum ada.
+     */
+    fun syncRepo(repo: GithubRepoEntity, upload: Boolean) {
         viewModelScope.launch {
-            val st = _uiState.value
-            val all = st.trees.values.flatten()
-            val picked = all.filter { it.key in st.selected }
-            // Folder yang sudah dipilih sudah mencakup anak-anaknya; jangan dikerjakan dua kali.
-            val tops = picked.filter { item ->
-                picked.none { other -> other !== item && other.isFolder && other.sourceKey == item.sourceKey && other.covers(item.path) }
-            }
-            if (tops.isEmpty()) {
-                _uiState.update { it.copy(snackbarMessage = "Centang file atau folder dulu") }
+            val sourceKey = SourceKeys.github(repo.fullName)
+            if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
+            val rootItems = _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
+            if (rootItems.isEmpty()) {
+                _uiState.update { it.copy(snackbarMessage = "Repo ${repo.name} kosong atau gagal dimuat") }
                 return@launch
             }
-
-            var total = OpResult()
-            for ((sourceKey, items) in tops.groupBy { it.sourceKey }) {
-                _uiState.update { it.copy(busySources = it.busySources + sourceKey) }
-                total += try {
-                    runOperation(sourceKey, items, upload)
-                } catch (e: Exception) {
-                    repository.addLog(
-                        sourceLabel = sourceLabel(sourceKey),
-                        target = "SYSTEM",
-                        action = if (upload) "UPLOAD" else "DOWNLOAD",
-                        status = "ERROR",
-                        message = e.message ?: "Operasi gagal"
-                    )
-                    OpResult(failed = items.size)
-                } finally {
-                    _uiState.update { it.copy(busySources = it.busySources - sourceKey) }
-                }
-            }
-
-            val verb = if (upload) "Upload" else "Download"
-            _uiState.update {
-                it.copy(
-                    selected = emptySet(),
-                    snackbarMessage = "$verb selesai: ${total.transferred} ditransfer, ${total.skipped} dilewati, ${total.failed} gagal"
-                )
-            }
+            runItems(rootItems, upload, label = repo.name)
         }
     }
 
-    private suspend fun runOperation(sourceKey: String, items: List<TreeItem>, upload: Boolean): OpResult {
-        if (sourceKey.startsWith("drive:")) {
-            val email = sourceKey.removePrefix("drive:")
-            val root = LocalPathHelper.driveRoot(email)
-            return if (upload) {
-                engine.uploadDrive(email, root, ignoreRules, items)
-            } else {
-                engine.downloadDrive(email, root, items)
-            }
+    private suspend fun runItems(items: List<TreeItem>, upload: Boolean, label: String) {
+        if (items.isEmpty()) return
+        val sourceKey = items.first().sourceKey
+        _uiState.update { it.copy(busySources = it.busySources + sourceKey) }
+        val result = try {
+            runOperation(sourceKey, items, upload)
+        } catch (e: Exception) {
+            repository.addLog(
+                sourceLabel = sourceLabel(sourceKey),
+                target = "SYSTEM",
+                action = if (upload) "UPLOAD" else "DOWNLOAD",
+                status = "ERROR",
+                message = e.message ?: "Operasi gagal"
+            )
+            OpResult(failed = items.size)
+        } finally {
+            _uiState.update { it.copy(busySources = it.busySources - sourceKey) }
         }
-        val fullName = sourceKey.removePrefix("github:")
-        val repo = repos.value.firstOrNull { it.fullName == fullName }
-            ?: error("Repo $fullName tidak ditemukan")
-        val pat = repository.getGithubPat(repo.accountId)
-            ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
-        val root = File(repo.localPath)
-        return if (upload) {
-            engine.uploadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items)
-        } else {
-            engine.downloadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, items)
+        val verb = if (upload) "Unggah" else "Download"
+        _uiState.update {
+            it.copy(
+                snackbarMessage = "$verb $label selesai: ${result.transferred} ditransfer, ${result.skipped} dilewati, ${result.failed} gagal"
+            )
         }
     }
 
@@ -370,17 +314,19 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(loading = it.loading + parentKey) }
         try {
             val children = engine.driveChildren(email, parent?.remoteId ?: "root")
-            val items = children.map { child ->
-                TreeItem(
-                    sourceKey = sourceKey,
-                    path = if (parentPath.isEmpty()) child.name else "$parentPath/${child.name}",
-                    name = child.name,
-                    isFolder = child.isFolder,
-                    size = child.size,
-                    remoteId = child.id,
-                    nativeMime = child.nativeMime
-                )
-            }
+            val items = children
+                .filterNot { it.name.startsWith(".") }
+                .map { child ->
+                    TreeItem(
+                        sourceKey = sourceKey,
+                        path = if (parentPath.isEmpty()) child.name else "$parentPath/${child.name}",
+                        name = child.name,
+                        isFolder = child.isFolder,
+                        size = child.size,
+                        remoteId = child.id,
+                        nativeMime = child.nativeMime
+                    )
+                }
             _uiState.update { st ->
                 val prefix = if (parentPath.isEmpty()) "$sourceKey|" else "$sourceKey|$parentPath/"
                 val existing = st.trees[sourceKey].orEmpty()
@@ -411,6 +357,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             val pat = repository.getGithubPat(repo.accountId) ?: error("PAT tidak ada, tambahkan ulang akun.")
             val (_, treeSha) = githubApi.getBranchHeadCommit(pat, repo.owner, repo.name, repo.defaultBranch)
             val blobs: List<GithubTreeBlob> = githubApi.listBlobsInSubfolder(pat, repo.owner, repo.name, treeSha, "")
+                .filterNot { isHiddenPath(it.repoPath) }
             val folders = linkedSetOf<String>()
             blobs.forEach { blob ->
                 val parts = blob.repoPath.split('/')
@@ -431,6 +378,29 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun runOperation(sourceKey: String, items: List<TreeItem>, upload: Boolean): OpResult {
+        if (sourceKey.startsWith("drive:")) {
+            val email = sourceKey.removePrefix("drive:")
+            val root = LocalPathHelper.driveRoot(email)
+            return if (upload) {
+                engine.uploadDrive(email, root, ignoreRules, items)
+            } else {
+                engine.downloadDrive(email, root, items)
+            }
+        }
+        val fullName = sourceKey.removePrefix("github:")
+        val repo = repos.value.firstOrNull { it.fullName == fullName }
+            ?: error("Repo $fullName tidak ditemukan")
+        val pat = repository.getGithubPat(repo.accountId)
+            ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
+        val root = File(repo.localPath)
+        return if (upload) {
+            engine.uploadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items)
+        } else {
+            engine.downloadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, items)
+        }
+    }
+
     /** Membuang semua state (pohon, pilihan, expand) untuk satu sumber. */
     private fun dropSource(sourceKey: String) {
         _uiState.update { st ->
@@ -439,7 +409,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 trees = st.trees - sourceKey,
                 loaded = st.loaded.filterNot(::owned).toSet(),
                 expanded = st.expanded.filterNot(::owned).toSet(),
-                selected = st.selected.filterNot(::owned).toSet()
             )
         }
     }
@@ -471,6 +440,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
-        private const val DRIVE_PRELOAD_LEVELS = 3
+        private const val DRIVE_PRELOAD_LEVELS = 1
     }
 }

@@ -21,6 +21,7 @@ object LocalScanner {
         for (child in children.sortedBy { it.name.lowercase() }) {
             val rel = child.relativeTo(root).invariantSeparatorsPath
             if (rel.isEmpty()) continue
+            if (child.name.startsWith(".")) continue
             if (ignoreRules.isIgnored(rel, isDirectory = child.isDirectory)) continue
             when {
                 child.isDirectory -> walk(root, child, ignoreRules, out)
