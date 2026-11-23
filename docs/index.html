@@ -137,12 +137,6 @@
       }
     }
 
-    .btn-secondary {
-      background: var(--surface-alt);
-      color: var(--text);
-      border-color: var(--border);
-    }
-
     .btn:hover, .btn:focus-visible {
       opacity: 0.92;
       outline: 2px solid var(--accent);
@@ -360,19 +354,11 @@
           id="apk-download-btn"
           href="https://github.com/chucklebytes482/lotura-site/releases/latest/download/lotura-latest-arm64-v8a.apk"
         >
-          Unduh APK Terbaru (arm64-v8a)
-        </a>
-        <a
-          class="btn btn-secondary"
-          href="https://github.com/chucklebytes482/lotura-site/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Semua Rilis &amp; Checksum
+          Unduh Aplikasi (APK)
         </a>
       </div>
       <p class="release-meta" id="release-meta">
-        Rilis stabil • Android 7.0+ (arm64-v8a) • Ditandatangani &amp; disertai SHA-256
+        Versi terbaru untuk perangkat Android
       </p>
     </header>
 
@@ -463,12 +449,12 @@
               <td><code>/storage/emulated/0/Documents/Catatan Kerja</code></td>
             </tr>
             <tr>
-              <td>GitHub: <code>chucklebytes482/Petapikir@main / panduan</code></td>
-              <td><code>/storage/emulated/0/Documents/Petapikir/panduan</code></td>
+              <td>GitHub: <code>akun-anda/Catatan@main / panduan</code></td>
+              <td><code>/storage/emulated/0/Documents/Catatan/panduan</code></td>
             </tr>
             <tr>
-              <td>GitHub: <code>chucklebytes482/Petapikir@main / docs/sub</code></td>
-              <td><code>/storage/emulated/0/Documents/Petapikir/docs/sub</code></td>
+              <td>GitHub: <code>akun-anda/Catatan@main / arsip/kerja</code></td>
+              <td><code>/storage/emulated/0/Documents/Catatan/arsip/kerja</code></td>
             </tr>
           </tbody>
         </table>
@@ -527,25 +513,25 @@
     </section>
 
     <section id="keamanan" class="card">
-      <h2>6. Privasi &amp; Keamanan Kredensial</h2>
+      <h2>6. Privasi &amp; Keamanan</h2>
       <ul>
         <li>
-          Seluruh komunikasi berjalan langsung dari ponsel Anda ke API resmi Google Drive dan GitHub melalui
-          HTTPS tanpa server perantara.
+          Seluruh sinkronisasi terhubung langsung dari ponsel Anda ke layanan Google Drive dan GitHub
+          tanpa server perantara.
         </li>
         <li>
-          Token akses Google Drive dan Fine-Grained PAT GitHub disimpan secara terenkripsi menggunakan
-          <strong>Android Keystore (AES-256-GCM)</strong> di perangkat Anda sendiri.
+          Kunci akses akun Google Drive dan GitHub Anda disimpan secara terenkripsi di dalam keamanan
+          perangkat Anda sendiri.
         </li>
         <li>
-          Menghapus pasangan dari Lotura hanya menghapus tautan sinkronisasi dari daftar aplikasi dan tidak
-          menghapus berkas asli Anda di perangkat maupun di cloud.
+          Menghapus pasangan dari Lotura hanya memutuskan tautan sinkronisasi dari daftar aplikasi dan
+          tidak menghapus berkas asli Anda di perangkat maupun di cloud.
         </li>
       </ul>
     </section>
 
     <footer>
-      Lotura • Aplikasi Sinkronisasi Folder Android (Google Drive &amp; GitHub)
+      Lotura • Aplikasi Sinkronisasi Folder Android
     </footer>
   </main>
   <script>
@@ -559,7 +545,7 @@
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
           if (!data || !data.tag_name) return;
-          var parts = ["Versi terbaru: " + data.tag_name];
+          var parts = ["Versi " + data.tag_name];
           if (data.published_at) {
             var dt = new Date(data.published_at);
             if (!isNaN(dt.getTime())) {
@@ -570,14 +556,13 @@
               }));
             }
           }
-          parts.push("Android 7.0+ (arm64-v8a)");
           metaEl.textContent = parts.join(" • ");
           if (btnEl) {
-            btnEl.textContent = "Unduh APK " + data.tag_name + " (arm64-v8a)";
+            btnEl.textContent = "Unduh Lotura " + data.tag_name;
           }
         })
         .catch(function () {
-          // Biarkan teks fallback statis jika offline atau terkena batas API
+          // Biarkan teks bawaan jika tidak dapat memuat info versi
         });
     })();
   </script>
