@@ -80,7 +80,8 @@ fun HomeScreen(
     onRequestStoragePermission: () -> Unit,
     onOpenDriveSheet: () -> Unit,
     onOpenWebGuide: () -> Unit,
-    onSyncPair: (Long) -> Unit,
+    onDownloadPair: (Long) -> Unit,
+    onUploadPair: (Long) -> Unit,
     onDeleteSelectedPairs: (List<SyncPairEntity>) -> Unit,
     onAddPairClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -182,7 +183,8 @@ fun HomeScreen(
                         isSelected = isSelected,
                         selectionMode = selectionMode,
                         isSyncing = isSyncing,
-                        onSyncClick = { onSyncPair(pair.id) },
+                        onDownloadClick = { onDownloadPair(pair.id) },
+                        onUploadClick = { onUploadPair(pair.id) },
                         onToggleSelect = {
                             selectedIds = if (isSelected) selectedIds - pair.id else selectedIds + pair.id
                         }
@@ -366,7 +368,8 @@ private fun SyncPairCard(
     isSelected: Boolean,
     selectionMode: Boolean,
     isSyncing: Boolean,
-    onSyncClick: () -> Unit,
+    onDownloadClick: () -> Unit,
+    onUploadClick: () -> Unit,
     onToggleSelect: () -> Unit
 ) {
     val isGithub = pair.isGithubPair
@@ -455,31 +458,54 @@ private fun SyncPairCard(
                         modifier = Modifier.weight(1f)
                     )
 
-                    FilledTonalIconButton(
-                        onClick = onSyncClick,
-                        enabled = !isSyncing && !selectionMode,
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = brand.container,
-                            contentColor = brand.accent
-                        ),
-                        modifier = Modifier
-                            .size(48.dp)
-                            .border(1.dp, brand.accent.copy(alpha = 0.38f), RoundedCornerShape(999.dp))
-                            .testTag("pair_sync_button_${pair.id}")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp,
-                                color = brand.accent
-                            )
-                        } else {
+                        FilledTonalIconButton(
+                            onClick = onDownloadClick,
+                            enabled = !isSyncing && !selectionMode,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.secondary
+                            ),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("pair_download_button_${pair.id}")
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Sinkronkan ${pair.name}",
+                                imageVector = Icons.Rounded.CloudDownload,
+                                contentDescription = "Download ${pair.name}",
                                 modifier = Modifier.size(24.dp)
                             )
                         }
+
+                        FilledTonalIconButton(
+                            onClick = onUploadClick,
+                            enabled = !isSyncing && !selectionMode,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = brand.container,
+                                contentColor = brand.accent
+                            ),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .border(1.dp, brand.accent.copy(alpha = 0.38f), RoundedCornerShape(999.dp))
+                                .testTag("pair_upload_button_${pair.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CloudUpload,
+                                contentDescription = "Upload ${pair.name}",
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    if (isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = brand.accent
+                        )
                     }
                 }
 

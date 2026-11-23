@@ -48,7 +48,8 @@ class UiRobolectricTest {
     fun homeScreen_displaysIconOnlyMetricsSupportsLongPressDeleteAndNoRedundantLabels() {
         var openedSheet = false
         var openedWebGuide = false
-        var syncedPairId = -1L
+        var downloadedPairId = -1L
+        var uploadedPairId = -1L
         var deletedPairs: List<SyncPairEntity> = emptyList()
 
         val githubPair = SyncPairEntity(
@@ -85,7 +86,8 @@ class UiRobolectricTest {
                     onRequestStoragePermission = {},
                     onOpenDriveSheet = { openedSheet = true },
                     onOpenWebGuide = { openedWebGuide = true },
-                    onSyncPair = { syncedPairId = it },
+                    onDownloadPair = { downloadedPairId = it },
+                    onUploadPair = { uploadedPairId = it },
                     onDeleteSelectedPairs = { deletedPairs = it },
                     onAddPairClick = {}
                 )
@@ -110,9 +112,11 @@ class UiRobolectricTest {
         composeRule.onNodeWithTag("pair_provider_badge_7", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("/storage/emulated/0/Documents/GitHub/Petapikir/panduan", useUnmergedTree = true).assertDoesNotExist()
 
-        // Per-folder sync button works directly
-        composeRule.onNodeWithTag("pair_sync_button_7").assertIsDisplayed().performClick()
-        assertEquals(7L, syncedPairId)
+        // Per-pair download and upload buttons work directly
+        composeRule.onNodeWithTag("pair_download_button_7").assertIsDisplayed().performClick()
+        assertEquals(7L, downloadedPairId)
+        composeRule.onNodeWithTag("pair_upload_button_7").assertIsDisplayed().performClick()
+        assertEquals(7L, uploadedPairId)
         composeRule.onNodeWithTag("pair_syncing_notice_7", useUnmergedTree = true).assertDoesNotExist()
 
         // Scroll to Drive pair card with error: shows error icon, not verbose error text
@@ -152,7 +156,8 @@ class UiRobolectricTest {
                     onRequestStoragePermission = {},
                     onOpenDriveSheet = {},
                     onOpenWebGuide = {},
-                    onSyncPair = {},
+                    onDownloadPair = {},
+                    onUploadPair = {},
                     onDeleteSelectedPairs = {},
                     onAddPairClick = {}
                 )
@@ -161,7 +166,8 @@ class UiRobolectricTest {
 
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home_pair_list").performScrollToKey(9L)
-        composeRule.onNodeWithTag("pair_sync_button_9").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithTag("pair_download_button_9").assertIsDisplayed().assertIsNotEnabled()
+        composeRule.onNodeWithTag("pair_upload_button_9").assertIsDisplayed().assertIsNotEnabled()
         composeRule.onNodeWithTag("pair_syncing_notice_9", useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNodeWithText("Tunggu hingga selesai agar sinkronisasi berhasil", useUnmergedTree = true)
             .assertDoesNotExist()
@@ -371,7 +377,7 @@ class UiRobolectricTest {
         assertNotNull(savedPair)
         assertEquals("Petapikir/panduan", savedPair?.name)
         assertEquals("panduan", savedPair?.githubSubfolder)
-        assertEquals("/storage/emulated/0/Documents/GitHub/Petapikir/panduan", savedPair?.localPath)
+        assertEquals("/storage/emulated/0/Documents/GitHub chucklebytes482/Petapikir/panduan", savedPair?.localPath)
         assertTrue(savedPair?.githubEnabled == true)
         assertEquals("", savedPair?.driveFolderId)
     }
