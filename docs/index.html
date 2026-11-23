@@ -431,7 +431,7 @@
         <a
           class="btn btn-primary"
           id="apk-download-btn"
-          href="https://github.com/chucklebytes482/lotura/releases/latest/download/lotura-latest-arm64-v8a.apk"
+          href="/api/apk/latest"
         >
           Unduh Aplikasi (APK)
         </a>
@@ -582,40 +582,5 @@
       Lotura • Sinkronisasi Android ↔ Google Drive &amp; GitHub
     </footer>
   </main>
-  <script>
-    (function () {
-      var metaEl = document.getElementById("release-meta");
-      var btnEl = document.getElementById("apk-download-btn");
-      if (!metaEl || !window.fetch) return;
-      fetch("https://api.github.com/repos/chucklebytes482/lotura/releases/latest", {
-        headers: { "Accept": "application/vnd.github+json" }
-      })
-        .then(function (res) { return res.ok ? res.json() : null; })
-        .then(function (data) {
-          if (!data || !data.tag_name) return;
-          var parts = ["Versi " + data.tag_name];
-          if (data.published_at) {
-            var dt = new Date(data.published_at);
-            if (!isNaN(dt.getTime())) {
-              var pad2 = function (n) { return n < 10 ? "0" + n : String(n); };
-              var dateStr = dt.toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric"
-              });
-              var timeStr = pad2(dt.getHours()) + ":" + pad2(dt.getMinutes());
-              parts.push("Diperbarui " + dateStr + ", " + timeStr);
-            }
-          }
-          metaEl.textContent = parts.join(" • ");
-          if (btnEl) {
-            btnEl.textContent = "Unduh Lotura " + data.tag_name;
-          }
-        })
-        .catch(function () {
-          // Biarkan teks bawaan jika tidak dapat memuat info versi
-        });
-    })();
-  </script>
 </body>
 </html>
