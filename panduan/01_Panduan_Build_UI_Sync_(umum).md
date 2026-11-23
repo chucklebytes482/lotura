@@ -9,8 +9,8 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 - Beri izin **Akses Semua File** saat diminta di Beranda. Tanpa izin ini Lotura tidak bisa membaca atau menulis folder lokal.
 - Pastikan ponsel terhubung internet saat memuat pohon, mengunduh, atau mengunggah.
 - Lokasi folder di perangkat:
-  - Google Drive: `/storage/emulated/0/google drive/<email>/`
-  - GitHub: `/storage/emulated/0/github/<username>/<repo>/`
+  - Google Drive: `/storage/emulated/0/google drive <email>/`
+  - GitHub: `/storage/emulated/0/github <username>/<repo>/`
 
 ## 2. Hubungkan akun
 
