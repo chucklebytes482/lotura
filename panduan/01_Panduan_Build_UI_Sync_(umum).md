@@ -25,9 +25,11 @@ Aturan inti pembuatan aplikasi Android (**Kotlin + Jetpack Compose + Material 3 
 ## 2. Kontrak Skema Data & Sinkronisasi Otomatis Perangkat
 
 - **Berkas tunggal:** `/storage/emulated/0/Documents/<NamaApp>/<slug>_data.json` (tulis langsung; fallback Android 10+ via `MediaStore` mode `"wt"` agar tidak membuat duplikat `(1)`).
-- **Field wajib tiap entri JSON:** `id`, `updatedAtMillis` (epoch ms), `deleted` (boolean). Resolusi konflik: **Last-Write-Wins** berdasarkan `updatedAtMillis`.
-- **Saat ada ubah/hapus data atau folder di app:** langsung timpa berkas perangkat (agar folder/entri yang dihapus tidak muncul kembali), dengan pagar jika belum pernah sinkron dan berkas perangkat punya entri aktif lebih banyak.
-- **Saat app dibuka:** cek berkas perangkat otomatis dengan pagar **anti-timpa file kosong & prioritas entri aktif terbanyak** (pulihkan penuh bila lokal kosong atau file perangkat lebih baru dengan entri ≥ lokal; gabung aman bila file perangkat lebih sedikit).
+- **Field entri JSON:** `id`, `value`, `folder`, `updatedAtMillis`, `deleted` (sesuai skema saat ini; tidak dipakai untuk memutuskan sinkronisasi).
+- **Sinkronisasi dua langkah, tanpa aturan konflik:**
+  1. **↓ Download:** setiap berkas sumber (Drive/GitHub) **menimpa** berkas lokal bernama sama.
+  2. **↑ Upload:** setiap berkas lokal **menimpa** berkas sumber bernama sama.
+- **Dilarang:** pengecekan waktu ubah, hash, Last-Write-Wins, berkas salinan konflik, dan penghapusan 2 arah/pagar penghapusan.
 - **Tanpa:** login cloud (kecuali diminta), `WorkManager`, layanan latar belakang, atau file backup bertanggal ganda.
 
 ---

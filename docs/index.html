@@ -312,8 +312,6 @@
 
     .legend-icon.upload { color: var(--drive); }
     .legend-icon.download { color: var(--ok); }
-    .legend-icon.deleted { color: var(--warn); }
-    .legend-icon.conflict { color: var(--err); }
     .legend-icon.sync { color: var(--accent); }
     .legend-icon.error { color: var(--err); }
     .legend-icon.check { color: var(--github); }
@@ -513,25 +511,7 @@
           </div>
         </div>
 
-        <div class="legend-item">
-          <span class="legend-icon deleted" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM8 9h8v10H8V9zm7.5-5l-1-1h-5l-1 1H5v2h14V4h-3.5z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>File Dihapus (Tempat Sampah)</strong>
-            <span>Jumlah berkas yang ikut dihapus saat menyelaraskan penghapusan 2 arah.</span>
-          </div>
-        </div>
 
-        <div class="legend-item">
-          <span class="legend-icon conflict" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-          </span>
-          <div class="legend-text">
-            <strong>Konflik (Segitiga Peringatan)</strong>
-            <span>Jumlah berkas yang berubah bersamaan di kedua sisi. Salinan konflik disimpan terpisah agar tidak hilang.</span>
-          </div>
-        </div>
 
         <div class="legend-item">
           <span class="legend-icon sync" aria-hidden="true">
@@ -644,8 +624,8 @@
           di bilah bawah layar hingga proses selesai.
         </li>
         <li>
-          Setelah selesai, angka di samping ikon <strong>Unggah</strong>, <strong>Unduh</strong>,
-          <strong>Dihapus</strong>, dan <strong>Konflik</strong> langsung diperbarui sesuai hasil terbaru.
+          Setelah selesai, angka di samping ikon <strong>Unggah</strong> dan <strong>Unduh</strong>
+          langsung diperbarui sesuai hasil terbaru.
         </li>
       </ul>
       <div class="notice">
