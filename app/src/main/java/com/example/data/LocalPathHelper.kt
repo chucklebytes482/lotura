@@ -4,13 +4,13 @@ import java.io.File
 
 /**
  * Folder lokal hasil koneksi akun.
- *  Drive:  /storage/emulated/0/google drive/<email>
- *  GitHub: /storage/emulated/0/github/<username>/<repo>
+ *  Drive:  /storage/emulated/0/google drive <email>
+ *  GitHub: /storage/emulated/0/github <username>/<repo>
  */
 object LocalPathHelper {
     const val BASE_DIR = "/storage/emulated/0"
-    const val DRIVE_DIR = "google drive"
-    const val GITHUB_DIR = "github"
+    const val DRIVE_PREFIX = "google drive"
+    const val GITHUB_PREFIX = "github"
 
     private val illegalCharsRegex = Regex("""[/\\:*?"<>|]""")
 
@@ -20,8 +20,8 @@ object LocalPathHelper {
     }
 
     fun driveRoot(email: String): File =
-        File(File(BASE_DIR, DRIVE_DIR), sanitize(email))
+        File(BASE_DIR, "$DRIVE_PREFIX ${sanitize(email)}")
 
     fun githubRoot(username: String, repo: String): File =
-        File(File(File(BASE_DIR, GITHUB_DIR), sanitize(username)), sanitize(repo))
+        File(File(BASE_DIR, "$GITHUB_PREFIX ${sanitize(username)}"), sanitize(repo))
 }

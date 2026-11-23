@@ -9,7 +9,7 @@ class LocalPathHelperTest {
     @Test
     fun driveRoot_usesEmailUnderGoogleDriveFolder() {
         assertEquals(
-            "/storage/emulated/0/google drive/user@gmail.com",
+            "/storage/emulated/0/google drive user@gmail.com",
             LocalPathHelper.driveRoot("user@gmail.com").path
         )
     }
@@ -17,7 +17,7 @@ class LocalPathHelperTest {
     @Test
     fun githubRoot_usesUsernameAndRepo() {
         assertEquals(
-            "/storage/emulated/0/github/chucklebytes482/lotura",
+            "/storage/emulated/0/github chucklebytes482/lotura",
             LocalPathHelper.githubRoot("chucklebytes482", "lotura").path
         )
     }

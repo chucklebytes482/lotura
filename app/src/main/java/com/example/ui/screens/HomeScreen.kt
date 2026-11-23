@@ -119,7 +119,7 @@ fun HomeScreen(
             }
 
             // ---------- Google Drive ----------
-            item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_DIR}/<email>/") }
+            item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
             item {
                 Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
                     Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")
@@ -157,7 +157,7 @@ fun HomeScreen(
 
             // ---------- GitHub ----------
             item { Spacer(Modifier.height(8.dp)) }
-            item { SectionTitle("GitHub", "Setiap repo jadi folder sendiri: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.GITHUB_DIR}/<username>/<repo>/") }
+            item { SectionTitle("GitHub", "Setiap repo jadi folder sendiri: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.GITHUB_PREFIX} <username>/<repo>/") }
             item {
                 Button(onClick = { showAddGithub = true }) {
                     Icon(Icons.Filled.Add, contentDescription = null)
