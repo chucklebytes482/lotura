@@ -1,30 +1,30 @@
 {
   "title": "Alur Pembuatan & Build APK Android (Umum)",
   "layoutMode": "top-down",
-  "nodeCount": 21,
+  "nodeCount": 22,
   "outline": [
     "Alur Pembuatan & Build APK Android (Umum)",
     "  - 1. Identitas & Skema Data",
     "    - 1 kata Euskara 3 suku kata (com.aistudio.<kata>) & ikon adaptif kustom",
     "    - Kotlin + Jetpack Compose + Material 3 dengan tema otomatis sistem",
     "    - Skema data JSON seragam (id, updatedAtMillis, deleted)",
-    "    - Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (GitHub Pages)",
+    "    - Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (Panduan & Arti Ikon)",
     "  - 2. Sinkronisasi Otomatis Perangkat",
     "    - Langsung timpa berkas perangkat saat ada perubahan/hapus folder di aplikasi + sinkron otomatis saat aplikasi dibuka",
     "    - 1 berkas tunggal di /storage/emulated/0/Documents/<NamaApp>/ dengan pengaman anti-timpa file kosong & entri terbanyak",
     "    - 100% luring: tanpa izin INTERNET, tanpa akun/login cloud, tanpa layanan latar belakang",
-    "  - 3. UI Ringkas & Target Ukuran < 10 MB",
-    "    - Hapus fitur opsional, pemilih tema, dan dependensi berat tak terpakai (Firebase/Auth/OkHttp)",
-    "    - Seluruh keterangan rinci hanya di GitHub Pages (docs/index.html, wajib ramah HP tanpa teks/kode keluar jalur)",
+    "  - 3. UI Minimalis Berbasis Ikon & Target < 10 MB",
+    "    - Hapus fitur opsional, pemilih tema, teks redundan di samping ikon, & dependensi berat tak terpakai",
+    "    - Gunakan ikon lebih besar dengan jarak renggang; legenda arti ikon & penjelasan rinci hanya di situs publik (docs/index.html)",
     "    - Sediakan bilah pencarian cepat & mode pilih dengan BackHandler",
-    "  - 4. Pengujian & Build R8",
-    "    - Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first",
-    "    - Aktifkan R8, shrinkResources, & ABI arm64-v8a (< 10 MB)",
-    "    - Verifikasi tanda tangan apksigner dan SHA-256 checksum",
-    "  - 5. Rilis & Keamanan Secret",
-    "    - Sediakan kontainer .hc dalam 1 file HTML di root (<slug_app>_secrets_download.html, hapus setelah diunduh)",
-    "    - Publikasi APK via GitHub Actions ke GitHub Releases (tanpa APK di repo)",
-    "    - Zona folder bersih: panduan/ (dokumen), docs/ (khusus GitHub Pages), hapus file HTML secret setelah unduh"
+    "  - 4. Pengujian Cepat, Anti-429, & Build R8",
+    "    - Optimalkan gradle.properties (parallel, caching, configuration-cache, in-process) & mirror Google Maven Central di settings.gradle.kts",
+    "    - Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first + actions/cache & pre-fetch mirror CI (kompatibel Gradle 9)",
+    "    - Aktifkan R8, shrinkResources, ABI arm64-v8a (< 10 MB), lalu verifikasi apksigner & SHA-256",
+    "  - 5. Rilis Dual-Repo (Privat -> <slug>-site) & Keamanan Secret",
+    "    - Jaga repo kode utama Private; publikasikan docs/ & APK terbaru (<slug>-latest-arm64-v8a.apk) otomatis ke repo publik <slug>-site via PUBLIC_DIST_TOKEN",
+    "    - Sediakan workflow ringan publish-site.yml untuk pembaruan cepat docs/ dan retention-days: 7 untuk hemat kuota artefak repo privat",
+    "    - Situs publik non-teknis ramah HP (tombol unduh langsung + legenda ikon, tanpa tautan halaman rilis GitHub) & hapus HTML kontainer .hc setelah diunduh"
   ],
   "tree": {
     "id": "a1b2c3d4-0000-4000-8000-000000000001",
@@ -53,7 +53,7 @@
           },
           {
             "id": "a1b2c3d4-1400-4000-8000-000000000001",
-            "title": "Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (GitHub Pages)",
+            "title": "Prioritas Beranda: #1 Cadangan Perangkat dan #2 Web Panduan (Panduan & Arti Ikon)",
             "color": "teal"
           }
         ]
@@ -82,17 +82,17 @@
       },
       {
         "id": "a1b2c3d4-3000-4000-8000-000000000001",
-        "title": "3. UI Ringkas & Target Ukuran < 10 MB",
+        "title": "3. UI Minimalis Berbasis Ikon & Target < 10 MB",
         "color": "sage",
         "children": [
           {
             "id": "a1b2c3d4-3100-4000-8000-000000000001",
-            "title": "Hapus fitur opsional, pemilih tema, dan dependensi berat tak terpakai (Firebase/Auth/OkHttp)",
+            "title": "Hapus fitur opsional, pemilih tema, teks redundan di samping ikon, & dependensi berat tak terpakai",
             "color": "sage"
           },
           {
             "id": "a1b2c3d4-3200-4000-8000-000000000001",
-            "title": "Seluruh keterangan rinci hanya di GitHub Pages (docs/index.html, wajib ramah HP tanpa teks/kode keluar jalur)",
+            "title": "Gunakan ikon lebih besar dengan jarak renggang; legenda arti ikon & penjelasan rinci hanya di situs publik (docs/index.html)",
             "color": "sage"
           },
           {
@@ -104,44 +104,44 @@
       },
       {
         "id": "a1b2c3d4-4000-4000-8000-000000000001",
-        "title": "4. Pengujian & Build R8",
+        "title": "4. Pengujian Cepat, Anti-429, & Build R8",
         "color": "coral",
         "children": [
           {
             "id": "a1b2c3d4-4100-4000-8000-000000000001",
-            "title": "Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first",
+            "title": "Optimalkan gradle.properties (parallel, caching, configuration-cache, in-process) & mirror Google Maven Central di settings.gradle.kts",
             "color": "coral"
           },
           {
             "id": "a1b2c3d4-4200-4000-8000-000000000001",
-            "title": "Aktifkan R8, shrinkResources, & ABI arm64-v8a (< 10 MB)",
+            "title": "Unit Test & Robolectric UI Test lulus 100% via cache lokal offline-first + actions/cache & pre-fetch mirror CI (kompatibel Gradle 9)",
             "color": "coral"
           },
           {
             "id": "a1b2c3d4-4300-4000-8000-000000000001",
-            "title": "Verifikasi tanda tangan apksigner dan SHA-256 checksum",
+            "title": "Aktifkan R8, shrinkResources, ABI arm64-v8a (< 10 MB), lalu verifikasi apksigner & SHA-256",
             "color": "coral"
           }
         ]
       },
       {
         "id": "a1b2c3d4-5000-4000-8000-000000000001",
-        "title": "5. Rilis & Keamanan Secret",
+        "title": "5. Rilis Dual-Repo (Privat -> <slug>-site) & Keamanan Secret",
         "color": "plum",
         "children": [
           {
             "id": "a1b2c3d4-5100-4000-8000-000000000001",
-            "title": "Sediakan kontainer .hc dalam 1 file HTML di root (<slug_app>_secrets_download.html, hapus setelah diunduh)",
+            "title": "Jaga repo kode utama Private; publikasikan docs/ & APK terbaru (<slug>-latest-arm64-v8a.apk) otomatis ke repo publik <slug>-site via PUBLIC_DIST_TOKEN",
             "color": "plum"
           },
           {
             "id": "a1b2c3d4-5200-4000-8000-000000000001",
-            "title": "Publikasi APK via GitHub Actions ke GitHub Releases (tanpa APK di repo)",
+            "title": "Sediakan workflow ringan publish-site.yml untuk pembaruan cepat docs/ dan retention-days: 7 untuk hemat kuota artefak repo privat",
             "color": "plum"
           },
           {
             "id": "a1b2c3d4-5300-4000-8000-000000000001",
-            "title": "Zona folder bersih: panduan/ (dokumen), docs/ (khusus GitHub Pages), hapus file HTML secret setelah unduh",
+            "title": "Situs publik non-teknis ramah HP (tombol unduh langsung + legenda ikon, tanpa tautan halaman rilis GitHub) & hapus HTML kontainer .hc setelah diunduh",
             "link": "https://docs.github.com/en/pages",
             "color": "plum"
           }

@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Search
@@ -40,9 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import com.example.drive.DriveMimeTypes
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -88,7 +84,6 @@ fun CompactSearchBar(
 fun SelectionActionBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
-    onMoveSelected: (() -> Unit)? = null,
     onDeleteSelected: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -133,21 +128,6 @@ fun SelectionActionBar(
                 Spacer(Modifier.width(4.dp))
                 Text("Semua")
             }
-            if (onMoveSelected != null) {
-                IconButton(
-                    onClick = onMoveSelected,
-                    enabled = selectedCount > 0,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("move_selected_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                        contentDescription = "Pindahkan item terpilih",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
             IconButton(
                 onClick = onDeleteSelected,
                 enabled = selectedCount > 0,
@@ -157,7 +137,7 @@ fun SelectionActionBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Hapus item terpilih",
+                    contentDescription = "Hapus pasangan terpilih",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -208,13 +188,15 @@ fun formatRelativeTime(timestampMillis: Long): String {
     }
 }
 
-fun formatFileSize(bytes: Long): String {
-    if (bytes < 1024L) return "$bytes B"
-    val kb = bytes / 1024.0
-    if (kb < 1024.0) return String.format(Locale.US, "%.1f KB", kb)
-    val mb = kb / 1024.0
-    if (mb < 1024.0) return String.format(Locale.US, "%.1f MB", mb)
-    return String.format(Locale.US, "%.2f GB", mb / 1024.0)
+fun formatCompactRelativeTime(timestampMillis: Long): String {
+    if (timestampMillis <= 0L) return "—"
+    val diffSec = ((System.currentTimeMillis() - timestampMillis) / 1000L).coerceAtLeast(0L)
+    return when {
+        diffSec < 60L -> "Baru"
+        diffSec < 3600L -> "${diffSec / 60}m"
+        diffSec < 86400L -> "${diffSec / 3600}j"
+        else -> SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(timestampMillis))
+    }
 }
 
 object StoragePermissionHelper {
@@ -235,38 +217,6 @@ object StoragePermissionHelper {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.parse("package:${context.packageName}")
             }
-        }
-    }
-}
-
-object ExternalFileOpener {
-    /**
-     * Opens a local file with full Read+Write URI permission via FileProvider so third-party
-     * editors like Pilcrow (Markdown) or Google Docs (.docx) can edit the file in place.
-     */
-    fun openInExternalEditor(context: Context, file: File): Result<Unit> {
-        return runCatching {
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
-            val mime = DriveMimeTypes.guessMimeType(file.name)
-            val editIntent = Intent(Intent.ACTION_EDIT).apply {
-                setDataAndType(uri, mime)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            }
-            val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mime)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-            }
-            val chooser = if (editIntent.resolveActivity(context.packageManager) != null) {
-                Intent.createChooser(editIntent, "Edit ${file.name} dengan...")
-            } else {
-                Intent.createChooser(viewIntent, "Buka ${file.name} dengan...")
-            }
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(chooser)
         }
     }
 }

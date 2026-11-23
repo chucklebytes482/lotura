@@ -223,10 +223,44 @@ fun LazyListScope.standardHomePriorityCards(
         StandardMenuCard(
             icon = guideIcon,
             title = "Web Panduan",
-            subtitle = "GitHub Pages",
+            subtitle = "Panduan & Arti Ikon",
             trailingIcon = openExternalIcon,
             onClick = onOpenWebGuide,
             testTag = "home_web_guide_card"
+        )
+    }
+}
+
+/**
+ * Pola kartu minimalis berbasis ikon (icon-first):
+ * Jika ikon sudah jelas mewakili sumber/metrik/status, tampilkan ikon berukuran lega (20.dp–28.dp)
+ * dengan jarak renggang (18.dp) tanpa label teks berulang. Penjelasan lengkap tiap ikon diletakkan
+ * di Web Panduan (<slug>-site), sementara TalkBack tetap terdukung lewat contentDescription.
+ */
+@Composable
+fun MinimalMetricIconItem(
+    icon: ImageVector,
+    count: Int,
+    contentDescription: String,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = tint
         )
     }
 }
@@ -452,7 +486,7 @@ fun SelectionActionBar(
 
 ## 5. Template Unit Test & Robolectric (`AppVerificationTest.kt`)
 
-Jalankan `gradle :app:testDebugUnitTest --no-daemon` dengan cache lokal Robolectric offline-first (`apk_Release_Setup_Guide_(umum).md`) pada manifest 100% luring (tanpa izin `INTERNET`).
+Jalankan `gradle :app:testDebugUnitTest --no-daemon` dengan cache lokal Robolectric offline-first + mirror Google Maven Central (`apk_Release_Setup_Guide_(umum).md`).
 
 ```kotlin
 package com.contoh.aplikasi

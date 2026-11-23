@@ -71,11 +71,10 @@ fun PairEditorScreen(
     driveBrowser: DriveBrowserUiState,
     githubBrowser: GithubBrowserUiState,
     githubFolderBrowser: GithubFolderBrowserUiState,
-    onOpenDriveFolder: (parentId: String, folderName: String?) -> Unit,
+    onLoadDriveRootFolders: () -> Unit,
     onCreateDriveFolder: (String) -> Unit,
     onLoadGithubRepos: (Long) -> Unit,
     onLoadGithubFolders: (accountId: Long, owner: String, repo: String, branch: String) -> Unit,
-    onOpenGithubFolderPath: (String) -> Unit,
     onSavePair: (SyncPairEntity) -> Unit,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -119,7 +118,7 @@ fun PairEditorScreen(
                     it.githubRepo.equals(normRepo, ignoreCase = true) &&
                     it.githubBranch.trim().ifBlank { "main" }.equals(normBranch, ignoreCase = true)
             }
-            .map { PairPathHelper.normalizeGithubFolderPath(it.githubSubfolder) }
+            .map { PairPathHelper.rootGithubFolderName(it.githubSubfolder) }
             .filter { it.isNotBlank() }
             .toSet()
     }
@@ -240,7 +239,7 @@ fun PairEditorScreen(
 
                     OutlinedButton(
                         onClick = {
-                            onOpenDriveFolder("root", "Drive Saya")
+                            onLoadDriveRootFolders()
                             showDrivePicker = true
                         },
                         border = BorderStroke(1.dp, driveBrand.accent),
@@ -416,7 +415,7 @@ fun PairEditorScreen(
                         !isDrive && cleanSubfolder.isBlank() -> {
                             validationError = "Pilih 1 folder di dalam repositori GitHub."
                         }
-                        !isDrive && cleanSubfolder in pairedGithubPathsForRepo -> {
+                        !isDrive && PairPathHelper.rootGithubFolderName(cleanSubfolder) in pairedGithubPathsForRepo -> {
                             validationError = "Folder GitHub ini sudah dipasangkan."
                         }
                         resolvedLocalPath.isBlank() -> {
@@ -475,9 +474,8 @@ fun PairEditorScreen(
             DriveFolderPickerSheet(
                 state = driveBrowser,
                 pairedDriveFolderIds = pairedDriveFolderIds,
-                onOpenFolder = onOpenDriveFolder,
                 onCreateFolder = onCreateDriveFolder,
-                onSelectCurrent = { id, folderName ->
+                onSelectFolder = { id, folderName ->
                     driveFolderId = id
                     driveFolderName = folderName
                     validationError = null
@@ -515,8 +513,7 @@ fun PairEditorScreen(
         ) {
             GithubFolderPickerSheet(
                 state = githubFolderBrowser,
-                pairedGithubPaths = pairedGithubPathsForRepo,
-                onOpenPath = onOpenGithubFolderPath,
+                pairedGithubRootFolders = pairedGithubPathsForRepo,
                 onSelectFolder = { chosenFolder ->
                     githubSubfolder = chosenFolder
                     validationError = null

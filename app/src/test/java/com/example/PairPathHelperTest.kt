@@ -32,6 +32,13 @@ class PairPathHelperTest {
     }
 
     @Test
+    fun rootGithubFolderName_extractsTopLevelFolderSegment() {
+        assertEquals("docs", PairPathHelper.rootGithubFolderName("/docs/guides/"))
+        assertEquals("panduan", PairPathHelper.rootGithubFolderName("panduan"))
+        assertEquals("", PairPathHelper.rootGithubFolderName(" / "))
+    }
+
+    @Test
     fun pairNameForGithub_combinesRepoAndSubfolder() {
         assertEquals("lotura/docs", PairPathHelper.pairNameForGithub("lotura", "docs"))
         assertEquals("lotura/docs/guides", PairPathHelper.pairNameForGithub("lotura", "/docs/guides/"))
@@ -50,25 +57,29 @@ class PairPathHelperTest {
     }
 
     @Test
-    fun resolveDefaultLocalPathForDrive_usesDriveFolderName() {
+    fun resolveDefaultLocalPathForDrive_usesGoogleDriveSourceFolder() {
         assertEquals(
-            "/storage/emulated/0/Documents/Catatan Kerja",
+            "/storage/emulated/0/Documents/Google Drive/Catatan Kerja",
             PairPathHelper.resolveDefaultLocalPathForDrive("Catatan Kerja")
+        )
+        assertEquals(
+            "/storage/emulated/0/Documents/Google Drive",
+            PairPathHelper.resolveDefaultLocalPathForDrive("")
         )
     }
 
     @Test
-    fun resolveDefaultLocalPathForGithub_nestsRepoAndSubfolderSegments() {
+    fun resolveDefaultLocalPathForGithub_nestsGithubSourceRepoAndFolderSegments() {
         assertEquals(
-            "/storage/emulated/0/Documents/Petapikir/panduan",
+            "/storage/emulated/0/Documents/GitHub/Petapikir/panduan",
             PairPathHelper.resolveDefaultLocalPathForGithub("Petapikir", "panduan")
         )
         assertEquals(
-            "/storage/emulated/0/Documents/Petapikir/docs/guides",
+            "/storage/emulated/0/Documents/GitHub/Petapikir/docs/guides",
             PairPathHelper.resolveDefaultLocalPathForGithub("Petapikir", "/docs/guides/")
         )
         assertEquals(
-            "/storage/emulated/0/Documents/Repo_A/sub_1/folder_2",
+            "/storage/emulated/0/Documents/GitHub/Repo_A/sub_1/folder_2",
             PairPathHelper.resolveDefaultLocalPathForGithub("Repo:A", "sub*1/folder?2")
         )
     }

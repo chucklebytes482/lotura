@@ -21,6 +21,7 @@
       --github-border: #5b328a;
       --ok: #4ade80;
       --warn: #fbbf24;
+      --err: #f87171;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
@@ -42,6 +43,7 @@
         --github-border: #c4b5fd;
         --ok: #15803d;
         --warn: #b45309;
+        --err: #dc2626;
       }
     }
 
@@ -123,7 +125,7 @@
       font-weight: 700;
       text-decoration: none;
       border: 1px solid transparent;
-      transition: opacity 0.15s ease, border-color 0.15s ease;
+      transition: opacity 0.15s ease;
     }
 
     .btn-primary {
@@ -192,7 +194,7 @@
     }
 
     section.card h3 {
-      margin: 14px 0 6px;
+      margin: 16px 0 8px;
       font-size: 1rem;
       overflow-wrap: anywhere;
     }
@@ -237,38 +239,113 @@
       border-left: 5px solid var(--github);
     }
 
-    .pill {
-      display: inline-block;
-      font-size: 0.78rem;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 999px;
-      margin-bottom: 6px;
+    .provider-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
     }
 
-    .pill.drive {
+    .icon-box {
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .icon-box.drive {
       background: var(--drive-bg);
       color: var(--drive);
       border: 1px solid var(--drive-border);
     }
 
-    .pill.github {
+    .icon-box.github {
       background: var(--github-bg);
       color: var(--github);
       border: 1px solid var(--github-border);
+    }
+
+    .icon-box svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .legend-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    .legend-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .legend-icon.upload { color: var(--drive); }
+    .legend-icon.download { color: var(--ok); }
+    .legend-icon.deleted { color: var(--warn); }
+    .legend-icon.conflict { color: var(--err); }
+    .legend-icon.sync { color: var(--accent); }
+    .legend-icon.error { color: var(--err); }
+    .legend-icon.check { color: var(--github); }
+
+    .legend-text {
+      min-width: 0;
+    }
+
+    .legend-text strong {
+      display: block;
+      font-size: 0.92rem;
+      margin-bottom: 2px;
+    }
+
+    .legend-text span {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.45;
     }
 
     .code-box {
       width: 100%;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      background: var(--surface-alt);
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 14px;
-      margin: 10px 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin: 10px 0 0;
       font-family: var(--mono);
-      font-size: 0.84rem;
+      font-size: 0.82rem;
       line-height: 1.5;
     }
 
@@ -364,36 +441,126 @@
 
     <nav class="toc" aria-label="Navigasi Panduan">
       <a href="#unduh">Unduh APK</a>
-      <a href="#identitas">Identitas Kartu</a>
+      <a href="#ikon">Arti Ikon</a>
       <a href="#akun">Hubungkan Akun</a>
       <a href="#pasangan">Tambah Pasangan</a>
       <a href="#sinkron">Sinkronisasi</a>
-      <a href="#detail">Detail &amp; File</a>
+      <a href="#kelola">Lokasi &amp; Hapus</a>
       <a href="#keamanan">Keamanan</a>
     </nav>
 
-    <section id="identitas" class="card">
-      <h2>1. Pembeda Visual Google Drive vs GitHub</h2>
+    <section id="ikon" class="card">
+      <h2>1. Arti Ikon &amp; Warna Kartu Pasangan</h2>
       <p>
-        Setiap kartu pasangan di Beranda, layar Tambah Pasangan, dan layar Detail dirancang dengan warna
-        aksen serta ikon khusus agar langsung dikenali dalam sekejap:
+        Kartu pasangan di Beranda Lotura dibuat ringkas tanpa keterangan teks berlebih. Warna, garis tepi kiri,
+        dan ikon besar langsung menunjukkan sumber beserta hasil sinkronisasi terakhir:
       </p>
+
+      <h3>Pembeda Sumber (Google Drive vs GitHub)</h3>
       <div class="provider-grid">
         <div class="provider-card drive">
-          <span class="pill drive">Google Drive</span>
+          <div class="provider-head">
+            <span class="icon-box drive" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8.5 3.5h7l6.5 11.25h-7L8.5 3.5zm-1.15 2l3.5 6.05-3.5 6.05H2l5.35-12.1zm1.35 10.25h13.3l-3.45 5.25H5.25l3.45-5.25z"/></svg>
+            </span>
+            <strong>Google Drive (Biru-Cyan)</strong>
+          </div>
           <p>
-            Aksen <strong>Biru-Cyan</strong> dengan ikon segitiga pita Drive. Cocok untuk folder catatan
-            harian atau arsip dokumen pribadi.
+            Garis sisi kiri dan ikon pita segitiga berwarna <strong>Biru-Cyan</strong> menandakan folder yang
+            terhubung ke Google Drive Anda.
           </p>
-          <div class="code-box"><code>/storage/emulated/0/Documents/&lt;FolderDrive&gt;</code></div>
+          <div class="code-box"><code>Documents/Google Drive/&lt;NamaFolder&gt;</code></div>
         </div>
+
         <div class="provider-card github">
-          <span class="pill github">GitHub</span>
+          <div class="provider-head">
+            <span class="icon-box github" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49 0-.24-.01-.88-.01-1.72-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.38 9.38 0 0 1 12 6.84c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.59.69.49A10.27 10.27 0 0 0 22 12.25C22 6.59 17.52 2 12 2z"/></svg>
+            </span>
+            <strong>GitHub (Ungu-Violet)</strong>
+          </div>
           <p>
-            Aksen <strong>Ungu-Violet</strong> dengan ikon khas GitHub. Jalur perangkat menyertakan nama
-            repositori agar folder bernama sama antar repo tidak saling menimpa.
+            Garis sisi kiri dan ikon khas GitHub berwarna <strong>Ungu-Violet</strong> menandakan folder dari
+            repositori GitHub Anda.
           </p>
-          <div class="code-box"><code>/storage/emulated/0/Documents/&lt;NamaRepo&gt;/&lt;Folder&gt;</code></div>
+          <div class="code-box"><code>Documents/GitHub/&lt;NamaRepo&gt;/&lt;NamaFolder&gt;</code></div>
+        </div>
+      </div>
+
+      <h3>Legenda Ikon Baris Status &amp; Aksi</h3>
+      <p>
+        Angka di samping setiap ikon menunjukkan jumlah berkas pada sinkronisasi terakhir. Warna ikon akan
+        menyala tegas bila angkanya lebih dari <strong>0</strong>, dan redup bila <strong>0</strong>.
+      </p>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <span class="legend-icon upload" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Unggah (Awan Panah Atas)</strong>
+            <span>Jumlah berkas dari perangkat Anda yang diunggah ke Google Drive atau GitHub.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon download" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Unduh (Awan Panah Bawah)</strong>
+            <span>Jumlah berkas yang diunduh (termasuk dokumen yang diekspor) ke folder perangkat Anda.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon deleted" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM8 9h8v10H8V9zm7.5-5l-1-1h-5l-1 1H5v2h14V4h-3.5z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>File Dihapus (Tempat Sampah)</strong>
+            <span>Jumlah berkas yang ikut dihapus saat menyelaraskan penghapusan 2 arah.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon conflict" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Konflik (Segitiga Peringatan)</strong>
+            <span>Jumlah berkas yang berubah bersamaan di kedua sisi. Salinan konflik disimpan terpisah agar tidak hilang.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon sync" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Tombol Sinkron</strong>
+            <span>Ketuk untuk memulai sinkronisasi 2 arah pada folder tersebut. Ikon berputar saat proses berjalan.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon error" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Galat Sinkronisasi (Tanda Seru Merah)</strong>
+            <span>Muncul di samping waktu bila sinkronisasi terakhir gagal. Buka tab <strong>Log</strong> untuk rinciannya.</span>
+          </div>
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-icon check" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          </span>
+          <div class="legend-text">
+            <strong>Mode Pilih (Ikon Centang)</strong>
+            <span>Muncul saat kartu <strong>ditekan tahan</strong> untuk memilih satu atau beberapa pasangan yang ingin dihapus.</span>
+          </div>
         </div>
       </div>
     </section>
@@ -403,36 +570,38 @@
       <ol>
         <li>
           <strong>Izin Akses Semua File:</strong> Ketuk tombol <em>Aktifkan</em> pada spanduk di Beranda agar
-          Lotura dapat membaca dan menyimpan berkas di dalam <code>Documents/</code>.
+          Lotura dapat membaca dan menyimpan berkas di dalam folder <code>Documents/</code> perangkat Anda.
         </li>
         <li>
           <strong>Akun Google Drive:</strong> Ketuk kartu <em>Google Drive</em> di Beranda atau buka tab
           <strong>Akun</strong>, lalu masuk dengan akun Google Anda.
         </li>
         <li>
-          <strong>Akun GitHub (Fine-Grained PAT):</strong> Buka tab <strong>Akun</strong> → ketuk
-          <em>Tambah Akun GitHub</em>, lalu tempel <em>Fine-Grained Personal Access Token</em> dengan izin
-          <strong>Contents (Read and write)</strong> serta <strong>Metadata (Read-only)</strong>. Nama akun
-          terdeteksi otomatis dari profil GitHub Anda.
+          <strong>Akun GitHub:</strong> Buka tab <strong>Akun</strong> → ketuk <em>Tambah Akun GitHub</em>, lalu
+          tempel token akses pribadi (<em>Fine-Grained Personal Access Token</em>) dengan izin baca &amp; tulis isi
+          repositori. Nama akun terdeteksi otomatis.
         </li>
       </ol>
     </section>
 
     <section id="pasangan" class="card">
-      <h2>3. Menambah Pasangan Folder &amp; Anti-Duplikat</h2>
+      <h2>3. Menambah Pasangan Folder (Folder Utama &amp; Anti-Duplikat)</h2>
       <ol>
         <li>Tekan tombol <strong>+</strong> di kanan bawah Beranda.</li>
         <li>Pilih sumber <strong>Google Drive</strong> atau <strong>GitHub</strong>.</li>
         <li>
-          Untuk Google Drive, pilih 1 folder tujuan (atau buat folder baru langsung dari pemilih). Untuk
-          GitHub, pilih akun, pilih repositori, lalu pilih <strong>1 folder</strong> di dalam repositori tersebut.
+          Pilih <strong>1 folder utama</strong> (tingkat teratas) di Drive Saya atau di dalam repositori GitHub.
+          Anda tidak perlu memilih subfolder satu per satu karena <strong>seluruh subfolder di dalamnya otomatis
+          ikut disinkronkan</strong>.
         </li>
         <li>
-          Folder yang sudah pernah dipasangkan otomatis ditandai lencana <strong>Terpasang</strong> dan
-          tidak dapat dipilih ulang (Anda tetap bisa membuka ke dalamnya jika ingin memasangkan subfolder lain
-          yang belum terpasang).
+          Folder yang sudah pernah dipasangkan otomatis ditandai <strong>Terpasang</strong> dan dikunci agar tidak
+          terpilih dua kali.
         </li>
-        <li>Ketuk <strong>Simpan Pasangan Folder</strong>. Folder lokal di <code>Documents/</code> dibuat otomatis.</li>
+        <li>
+          Ketuk <strong>Simpan Pasangan Folder</strong>. Folder perangkat di dalam <code>Documents/</code> akan
+          dibuat otomatis mengikuti struktur sumbernya.
+        </li>
       </ol>
 
       <div class="table-wrap">
@@ -440,21 +609,21 @@
           <thead>
             <tr>
               <th>Contoh Sumber</th>
-              <th>Folder Perangkat Otomatis</th>
+              <th>Lokasi Folder di Perangkat</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Google Drive: <code>Catatan Kerja</code></td>
-              <td><code>/storage/emulated/0/Documents/Catatan Kerja</code></td>
+              <td><code>/storage/emulated/0/Documents/Google Drive/Catatan Kerja</code></td>
             </tr>
             <tr>
-              <td>GitHub: <code>akun-anda/Catatan@main / panduan</code></td>
-              <td><code>/storage/emulated/0/Documents/Catatan/panduan</code></td>
+              <td>GitHub: <code>akun-anda/Catatan / panduan</code></td>
+              <td><code>/storage/emulated/0/Documents/GitHub/Catatan/panduan</code></td>
             </tr>
             <tr>
-              <td>GitHub: <code>akun-anda/Catatan@main / arsip/kerja</code></td>
-              <td><code>/storage/emulated/0/Documents/Catatan/arsip/kerja</code></td>
+              <td>GitHub: <code>akun-anda/Catatan / arsip</code></td>
+              <td><code>/storage/emulated/0/Documents/GitHub/Catatan/arsip</code></td>
             </tr>
           </tbody>
         </table>
@@ -464,18 +633,18 @@
     <section id="sinkron" class="card">
       <h2>4. Sinkronisasi 2 Arah Manual per Folder</h2>
       <p>
-        Lotura tidak menjalankan jadwal latar belakang tersembunyi. Anda memegang kendali penuh kapan
-        setiap folder disinkronkan:
+        Lotura tidak menjalankan sinkronisasi latar belakang secara diam-diam. Anda memegang kendali penuh kapan
+        setiap folder diselaraskan:
       </p>
       <ul>
         <li>Ketuk tombol <strong>Sinkron</strong> di sisi kanan kartu pasangan pada Beranda.</li>
         <li>
-          Saat sinkronisasi berlangsung, banner keterangan <em>"Tunggu hingga selesai agar sinkronisasi
-          berhasil"</em> tampil pada kartu pasangan hingga proses tuntas.
+          Saat sinkronisasi berjalan, pemberitahuan <em>"Tunggu hingga selesai agar sinkronisasi berhasil"</em>
+          tampil pada kartu hingga selesai.
         </li>
         <li>
-          Perubahan tambah, ubah, dan hapus di perangkat maupun di cloud/GitHub akan diselaraskan secara
-          2 arah. Jika terjadi konflik suntingan bersamaan, versi konflik diamankan agar tidak hilang.
+          Setelah selesai, angka di samping ikon <strong>Unggah</strong>, <strong>Unduh</strong>,
+          <strong>Dihapus</strong>, dan <strong>Konflik</strong> langsung diperbarui sesuai hasil terbaru.
         </li>
       </ul>
       <div class="notice">
@@ -484,30 +653,24 @@
       </div>
     </section>
 
-    <section id="detail" class="card">
-      <h2>5. Layar Detail Terpadu &amp; Penjelajah File Langsung</h2>
-      <p>
-        Mengetuk kartu pasangan di Beranda langsung membuka layar <strong>Detail</strong> yang menggabungkan
-        ringkasan pasangan dan penjelajah berkas dalam satu halaman:
-      </p>
+    <section id="kelola" class="card">
+      <h2>5. Mengakses Berkas &amp; Menghapus Pasangan</h2>
       <ul>
         <li>
-          <strong>Ringkasan di Bagian Atas:</strong> Menampilkan identitas penyedia, sumber Google Drive atau
-          GitHub, lokasi lengkap <em>Folder Perangkat</em>, jumlah berkas, waktu sinkron terakhir, serta tombol
-          <strong>Hapus Pasangan</strong>.
+          <strong>Membuka &amp; Mengedit Berkas:</strong> Buka langsung folder <code>Documents/Google Drive/</code>
+          atau <code>Documents/GitHub/&lt;NamaRepo&gt;/</code> melalui aplikasi manajer berkas ponsel maupun editor
+          pilihan Anda (seperti aplikasi catatan Markdown atau dokumen). Setelah selesai menyunting, buka Lotura dan
+          ketuk tombol <strong>Sinkron</strong>.
         </li>
         <li>
-          <strong>Penjelajah File Langsung:</strong> Ketuk folder untuk masuk ke subfolder, ketuk berkas untuk
-          langsung membukanya di aplikasi editor pilihan Anda (seperti Pilcrow MD atau Google Docs).
+          <strong>Menghapus Pasangan Folder:</strong> <strong>Tekan tahan</strong> kartu pasangan di Beranda hingga
+          muncul tanda centang dan bilah pilihan di bagian atas, pilih kartu lain bila perlu, lalu ketuk ikon
+          <strong>Hapus</strong> di pojok kanan bilah pilihan.
         </li>
         <li>
-          <strong>Aksi Cepat &amp; Pilih Banyak:</strong> Gunakan tombol <em>Catatan .md</em> dan
-          <em>Folder Baru</em> untuk membuat item baru, bilah pencarian untuk menyaring nama berkas, atau
-          <strong>tekan tahan</strong> berkas/folder untuk memindah maupun menghapus banyak item sekaligus.
-        </li>
-        <li>
-          <strong>Riwayat Log:</strong> Seluruh riwayat aktivitas sinkronisasi dan penyaringan galat/konflik
-          tersedia di tab <strong>Log</strong> pada bilah navigasi bawah.
+          <strong>Melihat Riwayat &amp; Galat:</strong> Buka tab <strong>Log</strong> pada bilah navigasi bawah
+          untuk melihat daftar berkas yang baru disinkronkan atau memeriksa rincian apabila muncul ikon tanda seru
+          merah.
         </li>
       </ul>
     </section>
@@ -516,16 +679,16 @@
       <h2>6. Privasi &amp; Keamanan</h2>
       <ul>
         <li>
-          Seluruh sinkronisasi terhubung langsung dari ponsel Anda ke layanan Google Drive dan GitHub
-          tanpa server perantara.
+          Seluruh sinkronisasi terhubung langsung dari ponsel Anda ke layanan Google Drive dan GitHub tanpa server
+          perantara.
         </li>
         <li>
-          Kunci akses akun Google Drive dan GitHub Anda disimpan secara terenkripsi di dalam keamanan
-          perangkat Anda sendiri.
+          Kunci akses akun Google Drive dan GitHub Anda disimpan secara terenkripsi di dalam keamanan perangkat Anda
+          sendiri.
         </li>
         <li>
-          Menghapus pasangan dari Lotura hanya memutuskan tautan sinkronisasi dari daftar aplikasi dan
-          tidak menghapus berkas asli Anda di perangkat maupun di cloud.
+          Menghapus pasangan dari Lotura hanya memutuskan tautan sinkronisasi dari daftar aplikasi dan tidak
+          menghapus berkas asli Anda di perangkat maupun di cloud.
         </li>
       </ul>
     </section>

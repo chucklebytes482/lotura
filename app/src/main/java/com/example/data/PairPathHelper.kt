@@ -5,6 +5,8 @@ import java.io.File
 object PairPathHelper {
 
     const val DEFAULT_LOCAL_BASE_DIR = "/storage/emulated/0/Documents"
+    const val DRIVE_SOURCE_DIR = "Google Drive"
+    const val GITHUB_SOURCE_DIR = "GitHub"
 
     private val illegalCharsRegex = Regex("""[/\\:*?"<>|]""")
 
@@ -21,6 +23,12 @@ object PairPathHelper {
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .joinToString("/")
+    }
+
+    fun rootGithubFolderName(raw: String): String {
+        val cleanPath = normalizeGithubFolderPath(raw)
+        if (cleanPath.isEmpty()) return ""
+        return cleanPath.substringBefore('/')
     }
 
     fun sourceFolderNameForDrive(driveFolderName: String): String {
@@ -52,14 +60,23 @@ object PairPathHelper {
         return resolveLocalTargetPath(DEFAULT_LOCAL_BASE_DIR, sourceFolderName)
     }
 
+    /**
+     * Resolves a source-scoped device directory for a Google Drive pair:
+     * `/storage/emulated/0/Documents/Google Drive/<FolderName>`.
+     */
     fun resolveDefaultLocalPathForDrive(driveFolderName: String): String {
         val cleanFolder = sourceFolderNameForDrive(driveFolderName)
-        return resolveLocalTargetPath(DEFAULT_LOCAL_BASE_DIR, cleanFolder)
+        val sourceRoot = File(DEFAULT_LOCAL_BASE_DIR, DRIVE_SOURCE_DIR)
+        return if (cleanFolder.isEmpty()) {
+            sourceRoot.path
+        } else {
+            File(sourceRoot, cleanFolder).path
+        }
     }
 
     /**
-     * Resolves a nested device directory for a GitHub pair so repositories with identically named
-     * folders never collide: `/storage/emulated/0/Documents/<RepoName>/<SubfolderPath>`.
+     * Resolves a source- and repo-scoped device directory for a GitHub pair:
+     * `/storage/emulated/0/Documents/GitHub/<RepoName>/<FolderPath>`.
      */
     fun resolveDefaultLocalPathForGithub(repoName: String, githubSubfolder: String): String {
         val cleanRepo = sanitizeFolderName(repoName)
@@ -68,7 +85,7 @@ object PairPathHelper {
             .map { sanitizeFolderName(it) }
             .filter { it.isNotEmpty() }
 
-        var current = File(DEFAULT_LOCAL_BASE_DIR)
+        var current = File(DEFAULT_LOCAL_BASE_DIR, GITHUB_SOURCE_DIR)
         if (cleanRepo.isNotEmpty()) {
             current = File(current, cleanRepo)
         }

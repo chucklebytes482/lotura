@@ -52,12 +52,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.ui.SyncViewModel
@@ -66,7 +64,6 @@ import com.example.ui.screens.AccountsScreen
 import com.example.ui.screens.DriveSyncConnectedSheetContent
 import com.example.ui.screens.DriveSyncUnauthenticatedSheetContent
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.PairDetailScreen
 import com.example.ui.screens.PairEditorScreen
 import com.example.ui.screens.SyncLogScreen
 import com.example.ui.theme.SyncBebasTheme
@@ -76,9 +73,6 @@ object Routes {
     const val ACCOUNTS = "accounts"
     const val LOGS = "logs"
     const val PAIR_CREATE = "pair_editor"
-    const val PAIR_DETAIL = "pair_detail/{pairId}"
-
-    fun pairDetail(pairId: Long) = "pair_detail/$pairId"
 }
 
 class MainActivity : ComponentActivity() {
@@ -160,12 +154,11 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val currentRoute = navBackStackEntry?.destination?.route ?: Routes.HOME
     val isTopLevel = currentRoute in setOf(Routes.HOME, Routes.ACCOUNTS, Routes.LOGS)
 
-    val topBarTitle = when {
-        currentRoute == Routes.HOME -> "Lotura"
-        currentRoute == Routes.ACCOUNTS -> "Akun"
-        currentRoute == Routes.LOGS -> "Log"
-        currentRoute == Routes.PAIR_CREATE -> "Tambah Pasangan"
-        currentRoute.startsWith("pair_detail/") -> "Detail"
+    val topBarTitle = when (currentRoute) {
+        Routes.HOME -> "Lotura"
+        Routes.ACCOUNTS -> "Akun"
+        Routes.LOGS -> "Log"
+        Routes.PAIR_CREATE -> "Tambah Pasangan"
         else -> "Lotura"
     }
 
@@ -304,7 +297,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                             viewModel.showMessage("Gagal membuka browser.")
                         }
                     },
-                    onOpenPairDetail = { id -> navController.navigate(Routes.pairDetail(id)) },
                     onSyncPair = { id -> viewModel.syncPairNow(id) },
                     onDeleteSelectedPairs = { selected -> selected.forEach { viewModel.deletePair(it) } },
                     onAddPairClick = { navController.navigate(Routes.PAIR_CREATE) }
@@ -340,38 +332,17 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     driveBrowser = uiState.driveBrowser,
                     githubBrowser = uiState.githubBrowser,
                     githubFolderBrowser = uiState.githubFolderBrowser,
-                    onOpenDriveFolder = { id, name -> viewModel.openDriveFolder(id, name) },
+                    onLoadDriveRootFolders = { viewModel.loadDriveRootFolders() },
                     onCreateDriveFolder = { name -> viewModel.createDriveFolder(name) },
                     onLoadGithubRepos = { accId -> viewModel.loadGithubReposForAccount(accId) },
                     onLoadGithubFolders = { accId, owner, repo, branch ->
                         viewModel.loadGithubFolders(accId, owner, repo, branch)
                     },
-                    onOpenGithubFolderPath = { path -> viewModel.openGithubFolderPath(path) },
                     onSavePair = { pair ->
                         viewModel.savePair(pair) {
                             navController.popBackStack()
                         }
                     },
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(
-                route = Routes.PAIR_DETAIL,
-                arguments = listOf(navArgument("pairId") { type = NavType.LongType })
-            ) { entry ->
-                val pairId = entry.arguments?.getLong("pairId") ?: 0L
-                val pair by viewModel.observePair(pairId).collectAsStateWithLifecycle(initialValue = null)
-                val trackedFiles by viewModel.observeFileStates(pairId).collectAsStateWithLifecycle(initialValue = emptyList())
-                PairDetailScreen(
-                    pair = pair,
-                    trackedFiles = trackedFiles,
-                    onDeletePair = { target ->
-                        viewModel.deletePair(target) {
-                            navController.popBackStack()
-                        }
-                    },
-                    onShowMessage = { viewModel.showMessage(it) },
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
