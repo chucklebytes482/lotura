@@ -104,6 +104,58 @@
       overflow-wrap: anywhere;
     }
 
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-size: 0.94rem;
+      font-weight: 700;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: opacity 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #06131a;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .btn-primary {
+        color: #ffffff;
+      }
+    }
+
+    .btn-secondary {
+      background: var(--surface-alt);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn:hover, .btn:focus-visible {
+      opacity: 0.92;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .release-meta {
+      margin: 10px 0 0;
+      font-size: 0.84rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
     nav.toc {
       display: flex;
       flex-wrap: wrap;
@@ -295,16 +347,37 @@
 </head>
 <body>
   <main class="container">
-    <header class="hero">
-      <span class="hero-badge">Panduan Resmi Lotura</span>
+    <header class="hero" id="unduh">
+      <span class="hero-badge">Panduan &amp; Unduhan Resmi Lotura</span>
       <h1>Sinkronisasi Folder Android ↔ Google Drive &amp; GitHub</h1>
       <p class="lead">
         Kelola dan sinkronkan folder catatan, dokumen Markdown, maupun repositori Anda secara 2 arah
         langsung dari penyimpanan perangkat Android tanpa server perantara.
       </p>
+      <div class="cta-group">
+        <a
+          class="btn btn-primary"
+          id="apk-download-btn"
+          href="https://github.com/chucklebytes482/lotura-site/releases/latest/download/lotura-latest-arm64-v8a.apk"
+        >
+          Unduh APK Terbaru (arm64-v8a)
+        </a>
+        <a
+          class="btn btn-secondary"
+          href="https://github.com/chucklebytes482/lotura-site/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Semua Rilis &amp; Checksum
+        </a>
+      </div>
+      <p class="release-meta" id="release-meta">
+        Rilis stabil • Android 7.0+ (arm64-v8a) • Ditandatangani &amp; disertai SHA-256
+      </p>
     </header>
 
     <nav class="toc" aria-label="Navigasi Panduan">
+      <a href="#unduh">Unduh APK</a>
       <a href="#identitas">Identitas Kartu</a>
       <a href="#akun">Hubungkan Akun</a>
       <a href="#pasangan">Tambah Pasangan</a>
@@ -475,5 +548,38 @@
       Lotura • Aplikasi Sinkronisasi Folder Android (Google Drive &amp; GitHub)
     </footer>
   </main>
+  <script>
+    (function () {
+      var metaEl = document.getElementById("release-meta");
+      var btnEl = document.getElementById("apk-download-btn");
+      if (!metaEl || !window.fetch) return;
+      fetch("https://api.github.com/repos/chucklebytes482/lotura-site/releases/latest", {
+        headers: { "Accept": "application/vnd.github+json" }
+      })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (!data || !data.tag_name) return;
+          var parts = ["Versi terbaru: " + data.tag_name];
+          if (data.published_at) {
+            var dt = new Date(data.published_at);
+            if (!isNaN(dt.getTime())) {
+              parts.push("Diperbarui " + dt.toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric"
+              }));
+            }
+          }
+          parts.push("Android 7.0+ (arm64-v8a)");
+          metaEl.textContent = parts.join(" • ");
+          if (btnEl) {
+            btnEl.textContent = "Unduh APK " + data.tag_name + " (arm64-v8a)";
+          }
+        })
+        .catch(function () {
+          // Biarkan teks fallback statis jika offline atau terkena batas API
+        });
+    })();
+  </script>
 </body>
 </html>
