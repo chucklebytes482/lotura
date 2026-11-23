@@ -75,46 +75,48 @@ fun providerBrandColors(isGithub: Boolean): BrandVisualColors {
     return if (isGithub) palette.github else palette.drive
 }
 
-private val PrecisionSlateDarkScheme = darkColorScheme(
-    primary = CyanAccent,
-    onPrimary = CyanOnAccent,
-    primaryContainer = CyanContainer,
-    onPrimaryContainer = CyanOnContainer,
-    secondary = MintSynced,
-    onSecondary = SlateVoid,
-    secondaryContainer = SlateCardElevated,
-    onSecondaryContainer = TextPrimaryDark,
-    tertiary = AmberPending,
-    background = SlateVoid,
-    onBackground = TextPrimaryDark,
-    surface = SlateSurface,
-    onSurface = TextPrimaryDark,
-    surfaceVariant = SlateSurfaceVariant,
-    onSurfaceVariant = TextSecondaryDark,
-    outline = SlateOutline,
-    error = CoralAlert,
-    onError = CoralOnAlert
+private val GoogleDarkScheme = darkColorScheme(
+    primary = DarkPrimary,
+    onPrimary = Color(0xFF062E6F),
+    primaryContainer = DarkPrimaryContainer,
+    onPrimaryContainer = DarkOnPrimaryContainer,
+    secondary = SyncedDark,
+    onSecondary = Color(0xFF0D3B1E),
+    secondaryContainer = Color(0xFF1E4D2B),
+    onSecondaryContainer = Color(0xFFCEEAD6),
+    tertiary = PendingColor,
+    onTertiary = Color(0xFF3B2F00),
+    background = DarkBackground,
+    onBackground = DarkText,
+    surface = DarkSurface,
+    onSurface = DarkText,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = DarkOutline,
+    error = AlertDark,
+    onError = Color(0xFF601410)
 )
 
-private val PrecisionSlateLightScheme = lightColorScheme(
-    primary = TealPrimaryLight,
-    onPrimary = LightSurface,
-    primaryContainer = TealContainerLight,
-    onPrimaryContainer = TealOnContainerLight,
-    secondary = MintSyncedLight,
-    onSecondary = LightSurface,
-    secondaryContainer = LightSurfaceVariant,
-    onSecondaryContainer = TextPrimaryLight,
-    tertiary = AmberPending,
-    background = LightBg,
-    onBackground = TextPrimaryLight,
+private val GoogleLightScheme = lightColorScheme(
+    primary = GoogleBlue,
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = LightPrimaryContainer,
+    onPrimaryContainer = LightOnPrimaryContainer,
+    secondary = GoogleGreen,
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFE6F4EA),
+    onSecondaryContainer = Color(0xFF0D652D),
+    tertiary = PendingColor,
+    onTertiary = Color(0xFF3B2F00),
+    background = LightBackground,
+    onBackground = LightText,
     surface = LightSurface,
-    onSurface = TextPrimaryLight,
+    onSurface = LightText,
     surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = TextSecondaryLight,
+    onSurfaceVariant = LightTextSecondary,
     outline = LightOutline,
-    error = CoralAlertLight,
-    onError = LightSurface
+    error = AlertLight,
+    onError = Color(0xFFFFFFFF)
 )
 
 val SyncBebasShapes = Shapes(
@@ -129,7 +131,7 @@ fun SyncBebasTheme(
     content: @Composable () -> Unit
 ) {
     val darkTheme = isSystemInDarkTheme()
-    val colorScheme = if (darkTheme) PrecisionSlateDarkScheme else PrecisionSlateLightScheme
+    val colorScheme = if (darkTheme) GoogleDarkScheme else GoogleLightScheme
     val brandPalette = if (darkTheme) DarkBrandPalette else LightBrandPalette
 
     CompositionLocalProvider(LocalBrandPalette provides brandPalette) {
