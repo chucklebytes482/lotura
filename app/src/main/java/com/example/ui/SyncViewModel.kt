@@ -108,6 +108,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isConnectingDrive = true, driveAuthError = null) }
     }
 
+    /** Dipanggil saat user menutup pemilih akun tanpa memilih. Tombol kembali aktif. */
+    fun onDriveConnectingCancelled() {
+        _uiState.update { it.copy(isConnectingDrive = false) }
+    }
+
     fun onDriveAuthError(message: String) {
         _uiState.update { it.copy(isConnectingDrive = false, driveAuthError = message) }
     }

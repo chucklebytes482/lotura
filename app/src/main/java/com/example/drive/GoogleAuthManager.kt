@@ -1,6 +1,7 @@
 package com.example.drive
 
 import android.accounts.Account
+import android.accounts.AccountManager
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -37,17 +38,32 @@ object GoogleAuthManager {
     }
 
     /**
-     * Requests Google Drive OAuth access token via Play Services AuthorizationClient.
-     * If user consent is needed, launches the PendingIntent via [resolutionLauncher].
+     * Pemilih akun Google di perangkat. Selalu ditampilkan, supaya user bisa memilih akun
+     * lain walaupun sudah ada akun yang terhubung. Nama akun ada di KEY_ACCOUNT_NAME.
+     */
+    fun buildAccountPickerIntent(): Intent =
+        AccountManager.newChooseAccountIntent(
+            null, null, arrayOf(GOOGLE_ACCOUNT_TYPE), true, null, null, null, null
+        )
+
+    /** Nama akun yang dipilih di pemilih, atau null jika user membatalkan. */
+    fun emailFromPickerResult(data: Intent?): String? =
+        data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)?.takeIf { it.isNotBlank() }
+
+    /**
+     * Requests Google Drive OAuth access token via Play Services AuthorizationClient untuk
+     * akun [email]. Tanpa akun eksplisit, Play Services memakai akun default dan tidak
+     * menampilkan pilihan akun. Jika perlu persetujuan, PendingIntent dijalankan lewat [resolutionLauncher].
      */
     fun authorizeDriveInteractive(
         activity: Activity,
         resolutionLauncher: ActivityResultLauncher<IntentSenderRequest>,
+        email: String,
         onAccessToken: (String) -> Unit,
         onError: (String) -> Unit
     ) {
         Identity.getAuthorizationClient(activity)
-            .authorize(buildDriveAuthRequest())
+            .authorize(buildDriveAuthRequest(email))
             .addOnSuccessListener { result ->
                 if (result.hasResolution()) {
                     val pendingIntent = result.pendingIntent

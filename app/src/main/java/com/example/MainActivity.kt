@@ -115,18 +115,30 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             }
     }
 
-    val startDriveAuth: () -> Unit = {
+    val accountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { activityResult ->
+        val email = GoogleAuthManager.emailFromPickerResult(activityResult.data)
         val activity = context.findActivity()
-        if (activity == null) {
-            viewModel.onDriveAuthError("Activity tidak tersedia untuk otorisasi Google.")
-        } else {
-            viewModel.onDriveConnectingStarted()
-            GoogleAuthManager.authorizeDriveInteractive(
+        when {
+            email == null -> viewModel.onDriveConnectingCancelled()
+            activity == null -> viewModel.onDriveAuthError("Activity tidak tersedia untuk otorisasi Google.")
+            else -> GoogleAuthManager.authorizeDriveInteractive(
                 activity = activity,
                 resolutionLauncher = driveAuthResolutionLauncher,
+                email = email,
                 onAccessToken = { token -> viewModel.onDriveAccessTokenReceived(token) },
                 onError = { err -> viewModel.onDriveAuthError(err) }
             )
+        }
+    }
+
+    val startDriveAuth: () -> Unit = {
+        if (context.findActivity() == null) {
+            viewModel.onDriveAuthError("Activity tidak tersedia untuk otorisasi Google.")
+        } else {
+            viewModel.onDriveConnectingStarted()
+            accountPickerLauncher.launch(GoogleAuthManager.buildAccountPickerIntent())
         }
     }
 
