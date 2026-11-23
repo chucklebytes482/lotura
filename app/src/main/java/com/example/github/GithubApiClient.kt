@@ -135,7 +135,7 @@ class GithubApiClient(
             val item = treeArr.optJSONObject(i) ?: continue
             if (item.optString("type") != "tree") continue
             val path = item.optString("path", "").trim().trim('/')
-            if (path.isNotEmpty() && !path.startsWith(".")) {
+            if (path.isNotEmpty() && !com.example.sync.isHiddenPath(path)) {
                 folders.add(path)
             }
         }

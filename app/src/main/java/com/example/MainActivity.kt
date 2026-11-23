@@ -249,7 +249,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     trees = uiState.trees,
                     loading = uiState.loading,
                     expanded = uiState.expanded,
-                    selected = uiState.selected,
                     busySources = uiState.busySources,
                     isConnectingDrive = uiState.isConnectingDrive,
                     driveAuthError = uiState.driveAuthError,
@@ -280,11 +279,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
                     onToggleRepo = { repo -> viewModel.toggleRepoExpand(repo) },
                     onReloadRepo = { repo -> viewModel.reloadRepo(repo) },
-                    onToggleFolder = { item -> viewModel.toggleFolder(item) },
-                    onToggleSelect = { item -> viewModel.toggleSelect(item) },
-                    onDownload = { viewModel.downloadSelected() },
-                    onUpload = { viewModel.uploadSelected() },
-                    onClearSelection = { viewModel.clearSelection() }
+                    onSyncFolder = { item, upload -> viewModel.syncFolder(item, upload) },
+                    onSyncRepo = { repo, upload -> viewModel.syncRepo(repo, upload) }
                 )
             }
 

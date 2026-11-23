@@ -25,7 +25,6 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -56,10 +55,11 @@ import com.example.data.db.GithubRepoEntity
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.ui.components.StoragePermissionHelper
+import com.example.ui.tree.rootVisibleItems
 
 /**
- * Beranda: setiap akun (Drive atau GitHub) tampil sebagai pohon yang bisa dibuka.
- * Centang file/folder, lalu pakai Download atau Upload di bawah.
+ * Beranda: setiap akun (Drive atau GitHub) menampilkan folder dasarnya.
+ * Ikon download/unggah di tiap folder dasar (dan di tiap repo) langsung menjalankan sinkron.
  */
 @Composable
 fun HomeScreen(
@@ -69,7 +69,6 @@ fun HomeScreen(
     trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
     expanded: Set<String>,
-    selected: Set<String>,
     busySources: Set<String>,
     isConnectingDrive: Boolean,
     driveAuthError: String?,
@@ -87,11 +86,8 @@ fun HomeScreen(
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
     onToggleRepo: (GithubRepoEntity) -> Unit,
     onReloadRepo: (GithubRepoEntity) -> Unit,
-    onToggleFolder: (TreeItem) -> Unit,
-    onToggleSelect: (TreeItem) -> Unit,
-    onDownload: () -> Unit,
-    onUpload: () -> Unit,
-    onClearSelection: () -> Unit
+    onSyncFolder: (TreeItem, Boolean) -> Unit,
+    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     var showAddGithub by remember { mutableStateOf(false) }
     val busy = busySources.isNotEmpty()
@@ -141,15 +137,13 @@ fun HomeScreen(
                         isLoading = sourceKey in loading
                     )
                 }
-                visibleTreeItems(trees[sourceKey].orEmpty(), expanded).forEach { treeItem ->
-                    item(key = treeItem.key) {
-                        TreeRow(
-                            item = treeItem,
-                            selected = treeItem.key in selected,
-                            isLoading = treeItem.key in loading,
-                            isExpanded = treeItem.key in expanded,
-                            onToggleFolder = { onToggleFolder(treeItem) },
-                            onToggleSelect = { onToggleSelect(treeItem) }
+                rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
+                    item(key = folder.key) {
+                        FolderRow(
+                            item = folder,
+                            enabled = !busy,
+                            onDownload = { onSyncFolder(folder, false) },
+                            onUpload = { onSyncFolder(folder, true) }
                         )
                     }
                 }
@@ -190,26 +184,17 @@ fun HomeScreen(
                         trees = trees,
                         loading = loading,
                         expanded = expanded,
-                        selected = selected,
+                        busy = busy,
                         onToggleRepo = onToggleRepo,
                         onReloadRepo = onReloadRepo,
-                        onToggleFolder = onToggleFolder,
-                        onToggleSelect = onToggleSelect
+                        onSyncFolder = onSyncFolder,
+                        onSyncRepo = onSyncRepo
                     )
                 }
             }
             item { Spacer(Modifier.height(8.dp)) }
         }
 
-        if (selected.isNotEmpty()) {
-            ActionBar(
-                count = selected.size,
-                enabled = !busy,
-                onDownload = onDownload,
-                onUpload = onUpload,
-                onClear = onClearSelection
-            )
-        }
     }
 
     if (showAddGithub) {
@@ -231,11 +216,11 @@ private fun LazyListScope.repoSection(
     trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
     expanded: Set<String>,
-    selected: Set<String>,
+    busy: Boolean,
     onToggleRepo: (GithubRepoEntity) -> Unit,
     onReloadRepo: (GithubRepoEntity) -> Unit,
-    onToggleFolder: (TreeItem) -> Unit,
-    onToggleSelect: (TreeItem) -> Unit
+    onSyncFolder: (TreeItem, Boolean) -> Unit,
+    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     val sourceKey = SourceKeys.github(repo.fullName)
     val isOpen = sourceKey in expanded
@@ -249,6 +234,11 @@ private fun LazyListScope.repoSection(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                SyncIcons(
+                    enabled = !busy,
+                    onDownload = { onSyncRepo(repo, false) },
+                    onUpload = { onSyncRepo(repo, true) }
+                )
                 Icon(
                     imageVector = if (isOpen) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null
@@ -290,15 +280,13 @@ private fun LazyListScope.repoSection(
         }
     }
     if (isOpen) {
-        visibleTreeItems(trees[sourceKey].orEmpty(), expanded).forEach { treeItem ->
-            item(key = treeItem.key) {
-                TreeRow(
-                    item = treeItem,
-                    selected = treeItem.key in selected,
-                    isLoading = treeItem.key in loading,
-                    isExpanded = treeItem.key in expanded,
-                    onToggleFolder = { onToggleFolder(treeItem) },
-                    onToggleSelect = { onToggleSelect(treeItem) }
+        rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
+            item(key = folder.key) {
+                FolderRow(
+                    item = folder,
+                    enabled = !busy,
+                    onDownload = { onSyncFolder(folder, false) },
+                    onUpload = { onSyncFolder(folder, true) }
                 )
             }
         }
@@ -306,23 +294,6 @@ private fun LazyListScope.repoSection(
 }
 
 // ---------- Komponen ----------
-
-/** Baris pohon yang terlihat: anak folder hanya muncul kalau induknya terbuka. */
-private fun visibleTreeItems(items: List<TreeItem>, expanded: Set<String>): List<TreeItem> {
-    if (items.isEmpty()) return emptyList()
-    val byParent = items.groupBy { it.path.substringBeforeLast('/', "") }
-    val out = mutableListOf<TreeItem>()
-    fun walk(parentPath: String) {
-        val children = byParent[parentPath].orEmpty()
-            .sortedWith(compareByDescending<TreeItem> { it.isFolder }.thenBy { it.name.lowercase() })
-        for (child in children) {
-            out += child
-            if (child.isFolder && child.key in expanded) walk(child.path)
-        }
-    }
-    walk("")
-    return out
-}
 
 @Composable
 private fun SectionTitle(title: String, hint: String) {
@@ -372,71 +343,54 @@ private fun AccountHeader(
 }
 
 @Composable
-private fun TreeRow(
-    item: TreeItem,
-    selected: Boolean,
-    isLoading: Boolean,
-    isExpanded: Boolean,
-    onToggleFolder: () -> Unit,
-    onToggleSelect: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = (item.depth * 16).dp)
-            .clickable { if (item.isFolder) onToggleFolder() else onToggleSelect() }
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(checked = selected, onCheckedChange = { onToggleSelect() })
-        if (item.isFolder) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-        } else {
-            Spacer(Modifier.width(18.dp))
+private fun SyncIcons(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onDownload, enabled = enabled) {
+            Icon(Icons.Rounded.CloudDownload, contentDescription = "Download")
         }
-        Column(Modifier.weight(1f).padding(start = 6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = item.name,
-                    fontSize = 14.sp,
-                    fontWeight = if (item.isFolder) FontWeight.Medium else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                if (item.archived && item.depth == 0) {
-                    Spacer(Modifier.width(6.dp))
-                    Tag("Archived")
-                }
-            }
-            Text(
-                text = rowSubtitle(item),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (isLoading) {
-            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        IconButton(onClick = onUpload, enabled = enabled) {
+            Icon(Icons.Rounded.CloudUpload, contentDescription = "Unggah")
         }
     }
-    HorizontalDivider(modifier = Modifier.padding(start = (item.depth * 16).dp))
 }
 
-private fun rowSubtitle(item: TreeItem): String = when {
-    item.isFolder -> "Folder"
-    item.nativeMime != null || item.size == null -> "Dokumen Google · selalu ditransfer"
-    else -> formatBytes(item.size)
-}
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
-    bytes < 1024L * 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
-    else -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+@Composable
+private fun FolderRow(
+    item: TreeItem,
+    enabled: Boolean,
+    onDownload: () -> Unit,
+    onUpload: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SyncIcons(enabled = enabled, onDownload = onDownload, onUpload = onUpload)
+            Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.name,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (item.archived) {
+                        Spacer(Modifier.width(6.dp))
+                        Tag("Archived")
+                    }
+                }
+                Text(
+                    text = "Folder",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+    HorizontalDivider()
 }
 
 @Composable
@@ -448,37 +402,6 @@ private fun Tag(label: String) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
-    }
-}
-
-@Composable
-private fun ActionBar(
-    count: Int,
-    enabled: Boolean,
-    onDownload: () -> Unit,
-    onUpload: () -> Unit,
-    onClear: () -> Unit
-) {
-    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-            Text("$count item dicentang", fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(onClick = onDownload, enabled = enabled, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.CloudDownload, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Download")
-                }
-                OutlinedButton(onClick = onUpload, enabled = enabled, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.CloudUpload, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Upload")
-                }
-                TextButton(onClick = onClear, enabled = enabled) { Text("Batal") }
-            }
-        }
     }
 }
 
