@@ -16,10 +16,11 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LocalPathHelper
+import com.example.data.SyncSummary
+import com.example.data.SyncStatus
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
@@ -68,7 +71,7 @@ fun HomeScreen(
     repos: List<GithubRepoEntity>,
     trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
-    expanded: Set<String>,
+    summaries: Map<String, SyncSummary>,
     busySources: Set<String>,
     isConnectingDrive: Boolean,
     driveAuthError: String?,
@@ -84,8 +87,8 @@ fun HomeScreen(
     onAddGithubAccount: (String, () -> Unit) -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onToggleRepo: (GithubRepoEntity) -> Unit,
-    onReloadRepo: (GithubRepoEntity) -> Unit,
+    onOpenDriveFolder: (TreeItem) -> Unit,
+    onOpenRepo: (GithubRepoEntity) -> Unit,
     onSyncFolder: (TreeItem, Boolean) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
@@ -141,7 +144,9 @@ fun HomeScreen(
                     item(key = folder.key) {
                         FolderRow(
                             item = folder,
+                            summary = summaries[folder.key],
                             enabled = !busy,
+                            onOpen = { onOpenDriveFolder(folder) },
                             onDownload = { onSyncFolder(folder, false) },
                             onUpload = { onSyncFolder(folder, true) }
                         )
@@ -151,7 +156,7 @@ fun HomeScreen(
 
             // ---------- GitHub ----------
             item { Spacer(Modifier.height(8.dp)) }
-            item { SectionTitle("GitHub", "Setiap repo jadi folder sendiri: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.GITHUB_PREFIX} <username>/<repo>/") }
+            item { SectionTitle("GitHub", null) }
             item {
                 Button(onClick = { showAddGithub = true }) {
                     Icon(Icons.Filled.Add, contentDescription = null)
@@ -164,14 +169,14 @@ fun HomeScreen(
             }
             githubAccounts.forEach { account ->
                 item(key = "gh-head:${account.id}") {
-                    AccountHeader(
-                        title = account.label,
-                        subtitle = "@${account.username}",
-                        path = null,
-                        onReload = { onRefreshRepos(account) },
-                        onRemove = { onDeleteGithubAccount(account) },
-                        isLoading = false
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        IconButton(onClick = { onRefreshRepos(account) }) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang daftar repo")
+                        }
+                        IconButton(onClick = { onDeleteGithubAccount(account) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Hapus akun GitHub")
+                        }
+                    }
                 }
                 val accountRepos = repos.filter { it.accountId == account.id }
                     .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
@@ -179,15 +184,12 @@ fun HomeScreen(
                     item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
                 }
                 accountRepos.forEach { repo ->
-                    repoSection(
+                    repoCard(
                         repo = repo,
-                        trees = trees,
                         loading = loading,
-                        expanded = expanded,
+                        summary = summaries[SourceKeys.github(repo.fullName)],
                         busy = busy,
-                        onToggleRepo = onToggleRepo,
-                        onReloadRepo = onReloadRepo,
-                        onSyncFolder = onSyncFolder,
+                        onOpenRepo = onOpenRepo,
                         onSyncRepo = onSyncRepo
                     )
                 }
@@ -211,22 +213,18 @@ fun HomeScreen(
 
 // ---------- Bagian repo GitHub ----------
 
-private fun LazyListScope.repoSection(
+private fun LazyListScope.repoCard(
     repo: GithubRepoEntity,
-    trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
-    expanded: Set<String>,
+    summary: SyncSummary?,
     busy: Boolean,
-    onToggleRepo: (GithubRepoEntity) -> Unit,
-    onReloadRepo: (GithubRepoEntity) -> Unit,
-    onSyncFolder: (TreeItem, Boolean) -> Unit,
+    onOpenRepo: (GithubRepoEntity) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     val sourceKey = SourceKeys.github(repo.fullName)
-    val isOpen = sourceKey in expanded
     item(key = "repo:${repo.fullName}") {
         Surface(
-            modifier = Modifier.fillMaxWidth().clickable { onToggleRepo(repo) },
+            modifier = Modifier.fillMaxWidth().clickable { onOpenRepo(repo) },
             shape = RoundedCornerShape(10.dp),
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
@@ -239,55 +237,31 @@ private fun LazyListScope.repoSection(
                     onDownload = { onSyncRepo(repo, false) },
                     onUpload = { onSyncRepo(repo, true) }
                 )
-                Icon(
-                    imageVector = if (isOpen) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
-                )
-                Column(Modifier.weight(1f).padding(start = 6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = repo.name,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        if (repo.archived) {
-                            Spacer(Modifier.width(6.dp))
-                            Tag("Archived")
-                        }
-                        if (repo.isPrivate) {
-                            Spacer(Modifier.width(6.dp))
-                            Tag("Private")
-                        }
-                    }
+                Row(
+                    modifier = Modifier.weight(1f).padding(start = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = LocalPathHelper.githubRoot(repo.owner, repo.name).absolutePath,
-                        fontSize = 11.sp,
+                        text = repo.name,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (repo.archived) {
+                        Spacer(Modifier.width(6.dp))
+                        Tag("Archived")
+                    }
+                    if (repo.isPrivate) {
+                        Spacer(Modifier.width(6.dp))
+                        Tag("Private")
+                    }
                 }
                 if (sourceKey in loading) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else if (isOpen) {
-                    IconButton(onClick = { onReloadRepo(repo) }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang repo")
-                    }
+                } else {
+                    StatusIcon(summary)
                 }
-            }
-        }
-    }
-    if (isOpen) {
-        rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
-            item(key = folder.key) {
-                FolderRow(
-                    item = folder,
-                    enabled = !busy,
-                    onDownload = { onSyncFolder(folder, false) },
-                    onUpload = { onSyncFolder(folder, true) }
-                )
             }
         }
     }
@@ -296,10 +270,10 @@ private fun LazyListScope.repoSection(
 // ---------- Komponen ----------
 
 @Composable
-private fun SectionTitle(title: String, hint: String) {
+private fun SectionTitle(title: String, hint: String?) {
     Column(Modifier.padding(top = 8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        hint?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -354,40 +328,51 @@ private fun SyncIcons(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> 
     }
 }
 
+/** Ikon status sync terakhir: centang (OK), peringatan (SEBAGIAN), silang (GAGAL). Kosong jika belum pernah sync. */
+@Composable
+private fun StatusIcon(summary: SyncSummary?) {
+    if (summary == null) return
+    val (icon, tint, desc) = when (summary.status) {
+        SyncStatus.OK -> Triple(Icons.Filled.Check, MaterialTheme.colorScheme.primary, "Sync terakhir OK")
+        SyncStatus.SEBAGIAN -> Triple(Icons.Filled.Warning, MaterialTheme.colorScheme.tertiary, "Sync terakhir sebagian")
+        SyncStatus.GAGAL -> Triple(Icons.Filled.Close, MaterialTheme.colorScheme.error, "Sync terakhir gagal")
+    }
+    Icon(icon, contentDescription = desc, tint = tint, modifier = Modifier.padding(end = 6.dp))
+}
+
 @Composable
 private fun FolderRow(
     item: TreeItem,
+    summary: SyncSummary?,
     enabled: Boolean,
+    onOpen: () -> Unit,
     onDownload: () -> Unit,
     onUpload: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             SyncIcons(enabled = enabled, onDownload = onDownload, onUpload = onUpload)
-            Column(Modifier.weight(1f).padding(start = 6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = item.name,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (item.archived) {
-                        Spacer(Modifier.width(6.dp))
-                        Tag("Archived")
-                    }
-                }
+            Row(
+                modifier = Modifier.weight(1f).padding(start = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "Folder",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = item.name,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+                if (item.archived) {
+                    Spacer(Modifier.width(6.dp))
+                    Tag("Archived")
+                }
             }
+            StatusIcon(summary)
         }
     }
     HorizontalDivider()

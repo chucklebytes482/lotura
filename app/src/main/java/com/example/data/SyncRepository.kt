@@ -4,7 +4,6 @@ import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.SyncDatabase
-import com.example.data.db.SyncLogEntity
 import com.example.data.secure.SecureTokenStore
 import kotlinx.coroutines.flow.Flow
 
@@ -15,7 +14,6 @@ class SyncRepository(
     val driveAccounts: Flow<List<DriveAccountEntity>> = db.driveAccountDao().observeAll()
     val githubAccounts: Flow<List<GithubAccountEntity>> = db.githubAccountDao().observeAll()
     val githubRepos: Flow<List<GithubRepoEntity>> = db.githubRepoDao().observeAll()
-    val recentLogs: Flow<List<SyncLogEntity>> = db.syncLogDao().observeRecent()
 
     suspend fun getDriveAccounts(): List<DriveAccountEntity> = db.driveAccountDao().getAll()
 
@@ -57,27 +55,4 @@ class SyncRepository(
     suspend fun replaceGithubRepos(accountId: Long, repos: List<GithubRepoEntity>) {
         db.githubRepoDao().replaceForAccount(accountId, repos)
     }
-
-    suspend fun addLog(
-        sourceLabel: String = "Sistem",
-        target: String,
-        action: String,
-        relativePath: String = "",
-        status: String,
-        message: String
-    ) {
-        db.syncLogDao().insert(
-            SyncLogEntity(
-                sourceLabel = sourceLabel,
-                target = target,
-                action = action,
-                relativePath = relativePath,
-                status = status,
-                message = message
-            )
-        )
-        db.syncLogDao().pruneOld()
-    }
-
-    suspend fun clearLogs() = db.syncLogDao().clearAll()
 }
