@@ -35,8 +35,8 @@ import androidx.compose.ui.unit.dp
 import com.example.data.db.SyncLogEntity
 import com.example.ui.components.StatusPill
 import com.example.ui.components.formatRelativeTime
-import com.example.ui.theme.AmberPending
-import com.example.ui.theme.JetBrainsMonoFamily
+import com.example.ui.theme.PendingColor
+import com.example.ui.theme.RobotoMonoFamily
 
 @Composable
 fun SyncLogScreen(
@@ -137,7 +137,7 @@ fun SyncLogScreen(
 fun LogEntryRow(log: SyncLogEntity, modifier: Modifier = Modifier) {
     val badgeColor = when (log.status) {
         "OK" -> MaterialTheme.colorScheme.secondary
-        "CONFLICT" -> AmberPending
+        "CONFLICT" -> PendingColor
         "ERROR" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -178,7 +178,7 @@ fun LogEntryRow(log: SyncLogEntity, modifier: Modifier = Modifier) {
             if (log.relativePath.isNotBlank()) {
                 Text(
                     text = log.relativePath,
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFamily),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = RobotoMonoFamily),
                     color = MaterialTheme.colorScheme.primary
                 )
             }
