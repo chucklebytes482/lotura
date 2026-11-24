@@ -13,7 +13,7 @@ class GithubAutoSyncDecideTest {
     fun localDeleted() {
         assertEquals(Action.NONE, decide(null, null, null))
         assertEquals(Action.DELETE, decide(null, "r", "r"))
-        assertEquals(Action.CONFLICT, decide(null, "r", null))
+        assertEquals(Action.PULL, decide(null, "r", null))
         assertEquals(Action.CONFLICT, decide(null, "r", "b"))
     }
 
@@ -22,8 +22,9 @@ class GithubAutoSyncDecideTest {
         assertEquals(Action.NONE, decide("l", "l", "b"))
         assertEquals(Action.PUSH, decide("l", null, null))
         assertEquals(Action.CONFLICT, decide("l", null, "b"))
+        assertEquals(Action.PULL_DELETE, decide("l", null, "l"))
         assertEquals(Action.PUSH, decide("l", "b", "b"))
-        assertEquals(Action.NONE, decide("l", "r", "l"))
+        assertEquals(Action.PULL, decide("l", "r", "l"))
         assertEquals(Action.CONFLICT, decide("l", "r", "b"))
     }
 }

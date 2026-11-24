@@ -26,3 +26,11 @@ data class GithubTreeChange(
     val repoPath: String,
     val blobSha: String? // null means delete file in Git tree
 )
+
+data class GithubCommitEntry(
+    val sha: String,
+    val message: String,
+    val dateIso: String
+) {
+    val shortSha: String get() = sha.take(7)
+}

@@ -14,6 +14,7 @@ import com.example.data.SyncSummaryStore
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.github.GithubCommitEntry
 import com.example.github.GithubTreeBlob
 import com.example.sync.IgnoreRules
 import com.example.sync.OpResult
@@ -83,7 +84,21 @@ data class EditorState(
     val file: File,
     val initialText: String,
     val status: SaveStatus = SaveStatus.IDLE,
-    val error: String? = null
+    val error: String? = null,
+    /** Naik setiap kali isi diganti dari luar (pulihkan versi), supaya editor dibangun ulang. */
+    val revision: Int = 0
+)
+
+/** Riwayat commit satu berkas di GitHub, beserta pratinjau versi yang dipilih. [path] relatif terhadap akar repo. */
+data class HistoryState(
+    val path: String,
+    val loading: Boolean = false,
+    val commits: List<GithubCommitEntry> = emptyList(),
+    val error: String? = null,
+    val selected: GithubCommitEntry? = null,
+    val previewLoading: Boolean = false,
+    val previewText: String? = null,
+    val previewError: String? = null
 )
 
 /** Penjelajah file untuk satu repo GitHub. [root] adalah akar repo lokal, [dir] folder yang sedang dibuka. */
@@ -92,7 +107,9 @@ data class BrowseState(
     val root: File,
     val dir: File,
     val entries: List<LocalFileOps.Entry>,
-    val editor: EditorState? = null
+    val editor: EditorState? = null,
+    val repo: GithubRepoEntity? = null,
+    val history: HistoryState? = null
 )
 
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
@@ -141,6 +158,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             autoSync.messages.collect { msg -> _uiState.update { it.copy(snackbarMessage = msg) } }
         }
+        // Berkas yang sedang dibuka di editor tidak ditimpa oleh pull; pull-nya ditunda ke siklus berikutnya.
+        autoSync.isEditing = { file -> _browse.value?.editor?.file?.absolutePath == file.absolutePath }
         // Setiap akun Drive yang belum dimuat (baru atau setelah restart) langsung dimuat 3 level.
         viewModelScope.launch {
             repository.driveAccounts.collect { accounts ->
@@ -607,7 +626,105 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeEditor() {
-        _browse.update { it?.copy(editor = null) }
+        _browse.update { it?.copy(editor = null, history = null) }
+    }
+
+    private fun relativePath(root: File, file: File): String =
+        file.absolutePath.removePrefix(root.absolutePath).trimStart('/')
+
+    /** Memuat riwayat commit berkas yang sedang diedit dari GitHub. */
+    fun openHistory() {
+        val b = _browse.value ?: return
+        val editor = b.editor ?: return
+        val repo = b.repo ?: return
+        val path = relativePath(b.root, editor.file)
+        _browse.update { it?.copy(history = HistoryState(path = path, loading = true)) }
+        viewModelScope.launch {
+            val result = runCatching {
+                val pat = repository.getGithubPat(repo.accountId) ?: error("PAT tidak ada, tambahkan ulang akun.")
+                githubApi.listCommitsForPath(pat, repo.owner, repo.name, repo.defaultBranch, path)
+            }
+            _browse.update { cur ->
+                val h = cur?.history
+                if (cur == null || h == null || h.path != path) cur
+                else cur.copy(
+                    history = h.copy(
+                        loading = false,
+                        commits = result.getOrDefault(emptyList()),
+                        error = result.exceptionOrNull()?.let { e -> e.message ?: "Gagal memuat riwayat" }
+                    )
+                )
+            }
+        }
+    }
+
+    /** Mengambil isi berkas pada commit tertentu untuk dipratinjau. */
+    fun previewVersion(commit: GithubCommitEntry) {
+        val b = _browse.value ?: return
+        val repo = b.repo ?: return
+        val h = b.history ?: return
+        _browse.update {
+            it?.copy(history = h.copy(selected = commit, previewLoading = true, previewText = null, previewError = null))
+        }
+        viewModelScope.launch {
+            val result = runCatching {
+                val pat = repository.getGithubPat(repo.accountId) ?: error("PAT tidak ada, tambahkan ulang akun.")
+                githubApi.readFileAtCommit(pat, repo.owner, repo.name, commit.sha, h.path)
+            }
+            _browse.update { cur ->
+                val ch = cur?.history
+                if (cur == null || ch == null || ch.selected?.sha != commit.sha) cur
+                else cur.copy(
+                    history = ch.copy(
+                        previewLoading = false,
+                        previewText = result.getOrNull(),
+                        previewError = result.exceptionOrNull()?.let { e -> e.message ?: "Gagal memuat versi" }
+                    )
+                )
+            }
+        }
+    }
+
+    /** Kembali dari pratinjau ke daftar commit. */
+    fun closeVersion() {
+        _browse.update {
+            it?.copy(history = it.history?.copy(selected = null, previewLoading = false, previewText = null, previewError = null))
+        }
+    }
+
+    fun closeHistory() {
+        _browse.update { it?.copy(history = null) }
+    }
+
+    /** Memulihkan isi editor dari versi yang dipratinjau. Ditulis ke disk, lalu auto-sync mendorongnya. */
+    fun restoreVersion() {
+        val b = _browse.value ?: return
+        val editor = b.editor ?: return
+        val text = b.history?.previewText ?: return
+        viewModelScope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching { LocalFileOps.writeText(editor.file, text) }.exceptionOrNull()
+            }
+            if (error != null) {
+                showMessage("Gagal memulihkan: ${error.message ?: "tidak diketahui"}")
+                return@launch
+            }
+            _browse.update { cur ->
+                val current = cur?.editor
+                if (cur == null || current == null) cur
+                else cur.copy(
+                    editor = EditorState(
+                        file = current.file,
+                        initialText = text,
+                        status = SaveStatus.SAVED,
+                        revision = current.revision + 1
+                    ),
+                    history = null
+                )
+            }
+            autoSync.notifyChanged()
+            showMessage("Versi dipulihkan.")
+        }
     }
 
     /**
@@ -664,7 +781,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun refreshBrowse() {
         val dir = _browse.value?.dir ?: return
-        val entries = withContext(Dispatchers.IO) { LocalFileOps.list(dir) }
+        val result = withContext(Dispatchers.IO) { runCatching { LocalFileOps.list(dir) } }
+        result.onFailure { showMessage("Gagal membaca folder: ${it.message ?: "tidak diketahui"}") }
+        val entries = result.getOrDefault(emptyList())
         _browse.update { b -> if (b != null && b.dir.absolutePath == dir.absolutePath) b.copy(entries = entries) else b }
     }
 

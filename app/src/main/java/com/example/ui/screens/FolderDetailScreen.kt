@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.SyncStatus
 import com.example.data.SyncSummary
 import com.example.ui.FolderDetail
+import com.example.ui.FolderStats
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,7 +46,9 @@ fun FolderDetailScreen(
     busy: Boolean,
     onDownload: () -> Unit,
     onUpload: () -> Unit,
-    onOpenFiles: (() -> Unit)? = null
+    stats: FolderStats = FolderStats(),
+    onOpenFiles: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -71,6 +74,27 @@ fun FolderDetailScreen(
             OutlinedButton(onClick = onOpenFiles, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                 Text("Jelajahi file")
+            }
+        }
+
+        HorizontalDivider()
+
+        Text("Isi", fontWeight = FontWeight.SemiBold)
+        when {
+            stats.loading -> NoteText("Memuat isi...")
+            stats.error != null -> {
+                Text(
+                    "Gagal memuat isi: ${stats.error}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+                if (onRetry != null) {
+                    OutlinedButton(onClick = onRetry, enabled = !busy) { Text("Coba lagi") }
+                }
+            }
+            else -> {
+                InfoLine("Jumlah file", stats.fileCount.toString())
+                InfoLine("Total ukuran", formatBytes(stats.totalBytes))
             }
         }
 
@@ -114,6 +138,12 @@ private fun statusText(status: SyncStatus): String = when (status) {
     SyncStatus.OK -> "OK"
     SyncStatus.SEBAGIAN -> "Sebagian"
     SyncStatus.GAGAL -> "Gagal"
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+    else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
 }
 
 private fun formatTime(millis: Long): String =

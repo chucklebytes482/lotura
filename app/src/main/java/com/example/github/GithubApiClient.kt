@@ -26,6 +26,14 @@ interface GithubRemote {
     ): List<GithubTreeBlob>
     suspend fun downloadBlobToFile(pat: String, owner: String, repo: String, blobSha: String, destFile: File)
     suspend fun createBlobFromFile(pat: String, owner: String, repo: String, file: File): String
+    suspend fun listCommitsForPath(
+        pat: String,
+        owner: String,
+        repo: String,
+        branch: String,
+        path: String
+    ): List<GithubCommitEntry>
+    suspend fun readFileAtCommit(pat: String, owner: String, repo: String, commitSha: String, path: String): String
     suspend fun createAtomicCommit(
         pat: String,
         owner: String,
@@ -284,6 +292,45 @@ class GithubApiClient(
         executeString(refReq)
         newCommitSha
     }
+
+    override suspend fun listCommitsForPath(
+        pat: String,
+        owner: String,
+        repo: String,
+        branch: String,
+        path: String
+    ): List<GithubCommitEntry> = withContext(Dispatchers.IO) {
+        val url = "$BASE_URL/repos/$owner/$repo/commits?sha=${urlEnc(branch)}&path=${urlEnc(path)}&per_page=30"
+        val arr = JSONArray(executeString(baseRequest(pat, url).get().build()))
+        (0 until arr.length()).mapNotNull { i ->
+            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+            val commit = obj.optJSONObject("commit") ?: return@mapNotNull null
+            GithubCommitEntry(
+                sha = obj.optString("sha", ""),
+                message = commit.optString("message", "").lineSequence().firstOrNull().orEmpty(),
+                dateIso = commit.optJSONObject("committer")?.optString("date", "").orEmpty()
+            )
+        }.filter { it.sha.isNotEmpty() }
+    }
+
+    override suspend fun readFileAtCommit(
+        pat: String,
+        owner: String,
+        repo: String,
+        commitSha: String,
+        path: String
+    ): String = withContext(Dispatchers.IO) {
+        val encodedPath = path.split('/').joinToString("/") { urlEnc(it) }
+        val url = "$BASE_URL/repos/$owner/$repo/contents/$encodedPath?ref=${urlEnc(commitSha)}"
+        val req = baseRequest(pat, url)
+            .header("Accept", "application/vnd.github.raw+json")
+            .get()
+            .build()
+        executeString(req)
+    }
+
+    private fun urlEnc(value: String): String =
+        java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
     private fun baseRequest(pat: String, url: String): Request.Builder {
         return Request.Builder()

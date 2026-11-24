@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -36,17 +39,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LocalFileOps
+import com.example.github.GithubCommitEntry
 import com.example.ui.BrowseState
 import com.example.ui.EditorState
+import com.example.ui.HistoryState
 import com.example.ui.SaveStatus
 import kotlinx.coroutines.delay
 import java.io.File
 
 private const val AUTOSAVE_DELAY_MS = 800L
 
+/** Batas tampilan pratinjau versi; isi penuh tetap dipakai saat dipulihkan. */
+private const val PREVIEW_MAX_CHARS = 20_000
+
 /**
  * Penjelajah file untuk repo GitHub lokal: buat, ganti nama, hapus, dan edit berkas teks.
  * Setiap perubahan disimpan ke disk, lalu auto-sync mendorongnya ke GitHub.
+ * Dari editor, riwayat commit berkas bisa dibuka untuk melihat dan memulihkan versi lama.
  */
 @Composable
 fun FileBrowserScreen(
@@ -56,12 +65,27 @@ fun FileBrowserScreen(
     onCloseEditor: () -> Unit,
     onCreate: (String, Boolean) -> Unit,
     onRename: (LocalFileOps.Entry, String) -> Unit,
-    onDelete: (LocalFileOps.Entry) -> Unit
+    onDelete: (LocalFileOps.Entry) -> Unit,
+    onOpenHistory: () -> Unit,
+    onPreviewVersion: (GithubCommitEntry) -> Unit,
+    onCloseVersion: () -> Unit,
+    onCloseHistory: () -> Unit,
+    onRestoreVersion: () -> Unit
 ) {
     val editor = browse.editor
     if (editor != null) {
-        key(editor.file.absolutePath) {
-            EditorPane(editor = editor, onSave = onSave, onClose = onCloseEditor)
+        key(editor.file.absolutePath, editor.revision) {
+            EditorPane(
+                editor = editor,
+                history = browse.history,
+                onSave = onSave,
+                onClose = onCloseEditor,
+                onOpenHistory = onOpenHistory,
+                onPreviewVersion = onPreviewVersion,
+                onCloseVersion = onCloseVersion,
+                onCloseHistory = onCloseHistory,
+                onRestoreVersion = onRestoreVersion
+            )
         }
         return
     }
@@ -223,8 +247,14 @@ private fun EntryRow(
 @Composable
 private fun EditorPane(
     editor: EditorState,
+    history: HistoryState?,
     onSave: (File, String) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onPreviewVersion: (GithubCommitEntry) -> Unit,
+    onCloseVersion: () -> Unit,
+    onCloseHistory: () -> Unit,
+    onRestoreVersion: () -> Unit
 ) {
     var text by remember { mutableStateOf(editor.initialText) }
     var dirty by remember { mutableStateOf(false) }
@@ -264,7 +294,10 @@ private fun EditorPane(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = onClose) { Text("Tutup") }
+            Row {
+                TextButton(onClick = onClose) { Text("Tutup") }
+                TextButton(onClick = onOpenHistory) { Text("Riwayat") }
+            }
             Text(
                 text = statusText,
                 style = MaterialTheme.typography.bodySmall,
@@ -287,6 +320,104 @@ private fun EditorPane(
             textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp)
         )
     }
+
+    history?.let { h ->
+        HistoryDialog(
+            history = h,
+            onSelect = onPreviewVersion,
+            onBack = onCloseVersion,
+            onClose = onCloseHistory,
+            onRestore = {
+                // Matikan dirty dulu, supaya auto-save saat editor dibongkar tidak menimpa hasil pulihkan.
+                dirty = false
+                onRestoreVersion()
+            }
+        )
+    }
+}
+
+@Composable
+private fun HistoryDialog(
+    history: HistoryState,
+    onSelect: (GithubCommitEntry) -> Unit,
+    onBack: () -> Unit,
+    onClose: () -> Unit,
+    onRestore: () -> Unit
+) {
+    val selected = history.selected
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = {
+            Text(
+                if (selected == null) "Riwayat ${history.path.substringAfterLast('/')}"
+                else "Versi ${selected.shortSha}"
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (selected == null) {
+                    when {
+                        history.loading -> Text("Memuat riwayat...")
+                        history.error != null -> Text("Gagal memuat riwayat: ${history.error}")
+                        history.commits.isEmpty() -> Text("Belum ada riwayat commit untuk berkas ini.")
+                        else -> history.commits.forEach { commit ->
+                            TextButton(onClick = { onSelect(commit) }, modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = commit.message.lineSequence().firstOrNull().orEmpty(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "${commit.shortSha} · ${commit.dateIso}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    when {
+                        history.previewLoading -> Text("Memuat versi...")
+                        history.previewError != null -> Text("Gagal memuat versi: ${history.previewError}")
+                        history.previewText != null -> {
+                            val full = history.previewText ?: ""
+                            val shown = if (full.length > PREVIEW_MAX_CHARS) {
+                                full.take(PREVIEW_MAX_CHARS) + "\n\n... (dipotong untuk pratinjau, pemulihan memakai isi penuh)"
+                            } else {
+                                full
+                            }
+                            Text(
+                                text = shown,
+                                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (selected != null) {
+                TextButton(
+                    onClick = onRestore,
+                    enabled = history.previewText != null && !history.previewLoading
+                ) { Text("Pulihkan") }
+            }
+        },
+        dismissButton = {
+            if (selected != null) {
+                TextButton(onClick = onBack) { Text("Kembali") }
+            } else {
+                TextButton(onClick = onClose) { Text("Tutup") }
+            }
+        }
+    )
 }
 
 @Composable

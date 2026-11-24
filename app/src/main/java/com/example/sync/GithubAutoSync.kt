@@ -22,16 +22,18 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Mendorong perubahan lokal ke GitHub secara otomatis.
+ * Sinkron otomatis dua arah dengan GitHub.
  *
  * Cara kerja:
  *  - Setiap repo punya "snapshot" sidik jari file (ukuran + waktu ubah) dari siklus terakhir.
- *  - Siklus dipicu oleh [notifyChanged] (debounce) dan polling berkala. Remote hanya diambil
- *    kalau ada file yang berubah atau hilang.
+ *  - Siklus dipicu oleh [notifyChanged] (debounce) dan polling berkala. Setiap siklus mengambil
+ *    daftar file remote, lalu memproses kandidat: file yang berubah di perangkat, dan file yang
+ *    remote-nya berbeda dengan base.
  *  - "Base" = sha blob yang diketahui sama di perangkat dan GitHub pada sinkron terakhir.
  *    Base disimpan per repo di SharedPreferences.
- *  - Perubahan hanya didorong kalau base cocok dengan remote. Jika keduanya berubah,
- *    file dilaporkan sebagai konflik dan tidak ditimpa. Remote tidak pernah ditarik otomatis.
+ *  - Hanya perubahan sepihak yang diterapkan: perangkat saja didorong, GitHub saja ditarik.
+ *    Jika keduanya berubah, file dilaporkan sebagai konflik dan tidak ditimpa.
+ *  - File yang sedang dibuka di editor tidak ditarik dulu; ditarik setelah editor ditutup.
  *  - Hanya berjalan selama proses aplikasi hidup.
  */
 class GithubAutoSync(
@@ -40,7 +42,11 @@ class GithubAutoSync(
     private val github: GithubRemote,
     private val scope: CoroutineScope
 ) {
-    enum class Action { NONE, PUSH, DELETE, CONFLICT }
+    enum class Action { NONE, PUSH, DELETE, PULL, PULL_DELETE, CONFLICT }
+
+    /** Dijawab oleh ViewModel: apakah berkas ini sedang dibuka di editor. Berkas seperti itu tidak ditarik. */
+    @Volatile
+    var isEditing: (File) -> Boolean = { false }
 
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -112,17 +118,13 @@ class GithubAutoSync(
         val local = LocalScanner.scanFiles(root, ignoreRules)
         val current = local.mapValues { (_, file) -> fingerprint(file) }
 
+        // Siklus pertama sejak proses hidup: perubahan lokal hanya dicatat, tidak didorong.
         val previous = snapshots[key]
-        if (previous == null) {
-            // Siklus pertama sejak proses hidup: catat keadaan tanpa mendorong apa pun.
-            snapshots[key] = current
-            return@withRepoLock
-        }
-
         val changed = LinkedHashSet<String>()
-        current.forEach { (path, fp) -> if (previous[path] != fp) changed += path }
-        previous.keys.forEach { path -> if (path !in current) changed += path }
-        if (changed.isEmpty()) return@withRepoLock
+        if (previous != null) {
+            current.forEach { (path, fp) -> if (previous[path] != fp) changed += path }
+            previous.keys.forEach { path -> if (path !in current) changed += path }
+        }
 
         val pat = repository.getGithubPat(repo.accountId)
             ?: throw IllegalStateException("PAT tidak ada, tambahkan ulang akun.")
@@ -132,16 +134,28 @@ class GithubAutoSync(
             .associate { it.repoPath to it.sha }
 
         val bases = loadBases(key).toMutableMap()
-        val snap = previous.toMutableMap()
+        // Kandidat: berubah di perangkat, atau remote-nya beda dengan base (berubah di GitHub).
+        val candidates = LinkedHashSet<String>(changed)
+        (remote.keys + bases.keys).forEach { path ->
+            if (remote[path] != bases[path]) candidates += path
+        }
+        if (candidates.isEmpty()) {
+            snapshots[key] = current
+            lastError.remove(key)
+            return@withRepoLock
+        }
+
+        val snap = (previous ?: current).toMutableMap()
         val changes = mutableListOf<GithubTreeChange>()
         // Path yang hasil keputusannya pasti dan sudah bisa dianggap selesai.
         val settled = mutableListOf<String>()
         val pushes = mutableListOf<Pair<String, String>>() // path -> sha blob baru
+        val pulled = mutableListOf<String>()
         val conflicts = mutableListOf<String>()
         val skipped = mutableListOf<String>()
         val adoptedShas = mutableMapOf<String, String>()
 
-        for (path in changed) {
+        for (path in candidates) {
             val file = local[path]
             if (file != null && file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
                 skipped += path
@@ -149,7 +163,12 @@ class GithubAutoSync(
                 continue
             }
             val localSha = file?.let { LocalFileOps.gitBlobSha(it) }
-            when (decide(localSha, remote[path], bases[path])) {
+            val action = decide(localSha, remote[path], bases[path])
+            val target = File(root, path)
+            if ((action == Action.PULL || action == Action.PULL_DELETE) && isEditing(target)) {
+                continue // sedang diedit; ditarik setelah editor ditutup
+            }
+            when (action) {
                 Action.NONE -> {
                     if (localSha != null && localSha == remote[path]) adoptedShas[path] = localSha
                     if (localSha == null && remote[path] == null) bases.remove(path)
@@ -167,6 +186,19 @@ class GithubAutoSync(
                 Action.DELETE -> {
                     changes += GithubTreeChange(repoPath = path, blobSha = null)
                     pushes += path to ""
+                }
+                Action.PULL -> {
+                    val remoteSha = remote.getValue(path)
+                    github.downloadBlobToFile(pat, repo.owner, repo.name, remoteSha, target)
+                    adoptedShas[path] = remoteSha
+                    pulled += path
+                    settled += path
+                }
+                Action.PULL_DELETE -> {
+                    target.delete()
+                    bases.remove(path)
+                    pulled += path
+                    settled += path
                 }
                 Action.CONFLICT -> {
                     conflicts += path
@@ -200,9 +232,15 @@ class GithubAutoSync(
 
         // Berhasil: catat base dan majukan snapshot untuk path yang selesai.
         adoptedShas.forEach { (path, sha) -> bases[path] = sha }
+        val pulledSet = pulled.toSet()
         for (path in settled.distinct()) {
-            val fp = current[path]
-            if (fp != null) snap[path] = fp else snap.remove(path)
+            if (path in pulledSet) {
+                val f = File(root, path)
+                if (f.isFile) snap[path] = fingerprint(f) else snap.remove(path)
+            } else {
+                val fp = current[path]
+                if (fp != null) snap[path] = fp else snap.remove(path)
+            }
         }
         snapshots[key] = snap
         saveBases(key, bases)
@@ -210,6 +248,9 @@ class GithubAutoSync(
 
         if (pushes.isNotEmpty()) {
             _messages.tryEmit("Tersimpan ke GitHub ${repo.name}: ${pushes.size} perubahan")
+        }
+        if (pulled.isNotEmpty()) {
+            _messages.tryEmit("Diambil dari GitHub ${repo.name}: ${pulled.size} perubahan")
         }
         if (skipped.isNotEmpty()) {
             _messages.tryEmit("Tidak di-push (lebih dari 45 MB): ${skipped.take(3).joinToString()}")
@@ -250,24 +291,32 @@ class GithubAutoSync(
         const val POLL_INTERVAL_MS = 60_000L
 
         /**
-         * Aturan keputusan untuk satu path.
+         * Aturan keputusan untuk satu path. Hanya perubahan sepihak yang diterapkan.
          * @param local sha blob lokal, null jika berkas sudah tidak ada
          * @param remote sha blob di GitHub, null jika tidak ada
          * @param base sha yang diketahui sama pada sinkron terakhir, null jika belum pernah
          */
         fun decide(local: String?, remote: String?, base: String?): Action {
+            if (local == remote) return Action.NONE
             if (local == null) {
-                return when {
-                    remote == null -> Action.NONE
-                    base == remote -> Action.DELETE
-                    else -> Action.CONFLICT
+                // Remote ada, lokal tidak ada.
+                return when (base) {
+                    remote -> Action.DELETE // dihapus di perangkat, GitHub tidak berubah
+                    null -> Action.PULL // file baru di GitHub
+                    else -> Action.CONFLICT // dihapus di perangkat, diubah di GitHub
+                }
+            }
+            if (remote == null) {
+                // Lokal ada, remote tidak ada.
+                return when (base) {
+                    null -> Action.PUSH // file baru di perangkat
+                    local -> Action.PULL_DELETE // dihapus di GitHub, perangkat tidak berubah
+                    else -> Action.CONFLICT // diubah di perangkat, dihapus di GitHub
                 }
             }
             return when {
-                remote == local -> Action.NONE
-                remote == null -> if (base == null) Action.PUSH else Action.CONFLICT
-                base == remote -> Action.PUSH
-                base == local -> Action.NONE // hanya remote yang berubah; tidak ditarik otomatis
+                base == remote -> Action.PUSH // hanya perangkat yang berubah
+                base == local -> Action.PULL // hanya GitHub yang berubah
                 else -> Action.CONFLICT
             }
         }

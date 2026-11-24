@@ -53,6 +53,7 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
   - membuat file atau folder baru,
   - mengganti nama,
   - menghapus (folder ikut terhapus beserta isinya).
+- **Riwayat**: di editor, ketuk **Riwayat** untuk melihat commit yang pernah mengubah berkas itu. Ketuk satu versi untuk melihat isinya, lalu **Pulihkan** untuk menjadikannya isi berkas sekarang. Pemulihan ikut ter-push ke GitHub sebagai perubahan baru.
 - Berkas berukuran di atas 2 MB atau berkas biner (gambar, APK, dan sejenisnya) tidak bisa dibuka di editor.
 - Berkas dan folder berawalan titik ditandai *tidak ikut sinkron*.
 
@@ -60,7 +61,7 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 - Setiap perubahan di repo itu di-push otomatis ke branch `main` di GitHub. Tidak ada tombol simpan atau unggah.
 - Perubahan dikumpulkan dulu selama sekitar 3 detik, lalu dikirim sebagai satu commit.
-- Lotura juga memeriksa GitHub tiap 60 detik. Jika ada perubahan di GitHub yang belum ada di HP, perubahan itu tidak ditarik otomatis. Gunakan ikon download di kartu Beranda untuk menarik.
+- Lotura juga memeriksa GitHub tiap 60 detik. Perubahan dari GitHub otomatis ditarik ke HP. Berkas yang sedang dibuka di editor ditarik setelah editor ditutup.
 - Jika file yang sama berubah di HP dan di GitHub, Lotura melaporkan konflik dan tidak menimpa salah satunya. Selesaikan dengan download atau unggah manual.
 - File di atas 45 MB dilewati dan dilaporkan.
 - Auto-sync hanya berjalan selama aplikasi terbuka atau masih aktif di latar belakang. Perubahan yang dibuat saat aplikasi sudah ditutup baru terdeteksi lewat sync manual.
