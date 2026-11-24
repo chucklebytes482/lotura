@@ -1,21 +1,17 @@
 # 04 — Standar UI: Tema Google (Umum)
 
-Acuan tampilan Android berbasis Material 3 dengan palet Google dan font Roboto. Ganti `<slug_app>` dan `<package>` sesuai proyek.
-
----
+Acuan Android Material 3, palet Google, font Roboto. Ganti `<slug_app>` dan `<package>` sesuai proyek.
 
 ## 1. Prinsip
 
-- **Netral dan bersih.** Latar putih atau abu-hitam. Warna aksen hanya untuk aksi dan status.
-- **Empat warna Google punya makna.** Biru untuk aksi utama, hijau untuk sukses, kuning untuk menunggu, merah untuk galat.
-- **Satu keluarga font: Roboto.** Roboto Mono hanya untuk log dan nilai teknis.
-- **Mode terang dan gelap wajib.** Pilih lewat `isSystemInDarkTheme()`.
+- Netral: latar putih atau abu-hitam. Aksen hanya untuk aksi dan status.
+- Empat warna Google punya makna: biru aksi utama, hijau sukses, kuning menunggu, merah galat.
+- Satu keluarga font: Roboto. Roboto Mono hanya untuk log dan nilai teknis.
+- Wajib mode terang dan gelap (`isSystemInDarkTheme()`).
 
----
+## 2. Token warna
 
-## 2. Token Warna
-
-Definisikan di `app/src/main/java/<package>/ui/theme/Color.kt`.
+Definisi di `app/src/main/java/<package>/ui/theme/Color.kt`.
 
 | Token | Terang | Gelap | Pakai untuk |
 |---|---|---|---|
@@ -30,13 +26,9 @@ Definisikan di `app/src/main/java/<package>/ui/theme/Color.kt`.
 | Text | `#202124` | `#E8EAED` | Teks utama |
 | Text secondary | `#5F6368` | `#9AA0A6` | Teks pendukung |
 
-Kuning dan merah jangan dipakai sebagai dekorasi.
-
----
+Kuning dan merah bukan dekorasi.
 
 ## 3. Skema Material 3
-
-Di `Theme.kt`, buat dua skema lalu pilih sesuai mode sistem.
 
 ```kotlin
 private val GoogleLightScheme = lightColorScheme(
@@ -63,11 +55,9 @@ fun AppTheme(content: @Composable () -> Unit) {
 }
 ```
 
-Warna khusus penyedia (misalnya Drive dan GitHub) disimpan dalam `BrandVisualColors` (`accent`, `onAccent`, `container`, `onContainer`, `cardSurface`, `border`) lewat `CompositionLocal`. Jangan hardcode warna di layar.
+Warna khusus penyedia (Drive, GitHub) lewat `BrandVisualColors` (`accent`, `onAccent`, `container`, `onContainer`, `cardSurface`, `border`) via `CompositionLocal`. Jangan hardcode warna di layar.
 
----
-
-## 4. Font dan Tipografi
+## 4. Font dan tipografi
 
 Berkas di `app/src/main/res/font/`: `roboto_regular.ttf`, `roboto_medium.ttf`, `roboto_bold.ttf`, `roboto_mono_regular.ttf`, `roboto_mono_medium.ttf`.
 
@@ -93,38 +83,25 @@ val AppTypography = Typography(
 )
 ```
 
-Judul tidak memakai bold penuh. Pakai `Normal` atau `Medium`.
+Judul tidak bold penuh. Pakai `Normal` atau `Medium`.
 
----
-
-## 5. Bentuk dan Jarak
+## 5. Bentuk dan jarak
 
 - Sudut: kartu 16dp, tombol pill atau 8dp, dialog 28dp.
-- Jarak mengikuti kelipatan 4dp: 8, 12, 16, 24. Margin layar 16dp.
+- Kelipatan 4dp (8, 12, 16, 24). Margin layar 16dp.
 - Kartu tanpa bayangan tebal. Cukup garis `outline` 1dp.
 
----
+## 6. Pola komponen
 
-## 6. Pola Komponen
+- Tombol utama: satu per layar, `Button` primary.
+- Sekunder: `OutlinedButton`. Hapus: teks warna `error`.
+- Status: ikon plus warna plus label. Jangan hanya warna. Di daftar padat cukup ikon; teks lengkap ada di log sumber.
+- Aksi berulang di daftar: ikon (download, unggah, muat ulang, hapus), bukan teks. Beri `contentDescription`.
+- Nilai teknis (path, ID, angka): `labelSmall` (Roboto Mono) dalam `SelectionContainer`.
 
-- **Tombol utama:** satu per layar, `Button` dengan warna primary.
-- **Tombol sekunder:** `OutlinedButton`. Tombol hapus memakai warna `error` sebagai teks.
-- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ada di lembar log sumber.
-- **Aksi berulang di daftar:** pakai ikon (misalnya download, unggah, muat ulang, hapus), bukan teks. Beri `contentDescription` agar tetap terbaca oleh pembaca layar.
-- **Nilai teknis (path, ID, angka hasil):** `labelSmall` (Roboto Mono) di dalam `SelectionContainer` agar bisa disalin.
+## 7. Ikon launcher adaptif
 
----
-
-## 7. Ikon Launcher Adaptif
-
-Tiga berkas di `res/`: latar, depan, dan monokrom. Dirujuk dari `mipmap-anydpi-v26/ic_launcher.xml`.
-
-```xml
-<!-- res/drawable/ic_launcher_background.xml -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/launcher_background" />
-</shape>
-```
+Tiga berkas di `res/`: latar, depan, monokrom. Dirujuk `mipmap-anydpi-v26/ic_launcher.xml`.
 
 ```xml
 <!-- res/mipmap-anydpi-v26/ic_launcher.xml -->
@@ -135,25 +112,20 @@ Tiga berkas di `res/`: latar, depan, dan monokrom. Dirujuk dari `mipmap-anydpi-v
 </adaptive-icon>
 ```
 
-Kanvas 108dp, area aman 72dp di tengah. Logo di luar area ini terpotong pada bentuk lingkaran atau squircle.
+Kanvas 108dp, area aman 72dp di tengah. Di luar itu terpotong pada lingkaran atau squircle.
+PNG lama (`mipmap-*dpi/`): render dari SVG dengan `rsvg-convert`, ukuran 48, 72, 96, 144, 192 px.
 
-Untuk PNG lama (`mipmap-*dpi/`), render dari SVG sumber dengan `rsvg-convert`, ukuran 48, 72, 96, 144, dan 192 px.
+## 8. Checklist rilis
 
----
-
-## 8. Checklist Sebelum Rilis
-
-- [ ] Mode terang dan gelap sama-sama terbaca.
+- [ ] Mode terang dan gelap terbaca.
 - [ ] Tidak ada warna hardcode di layar.
-- [ ] `res/font/` hanya berisi Roboto dan Roboto Mono.
-- [ ] Tidak ada berkas sisa generator (jpg, metadata.json, konfigurasi Firebase lama).
-- [ ] Ikon adaptif benar di bentuk lingkaran dan squircle.
-- [ ] Teks besar (font scale 200%) tidak terpotong.
-- [ ] Unit test lolos. Jika repo tidak punya wrapper, pakai `gradle testDebugUnitTest`.
+- [ ] `res/font/` hanya Roboto dan Roboto Mono.
+- [ ] Tidak ada berkas sisa generator.
+- [ ] Ikon adaptif benar di lingkaran dan squircle.
+- [ ] Font scale 200% tidak memotong teks.
+- [ ] Unit test lolos (`gradle testDebugUnitTest` bila tanpa wrapper).
 
----
-
-## 9. Tataletak Tab
+## 9. Tataletak tab
 
 - Tiga tab tetap: Google Drive, GitHub, Panduan. Geser kiri atau kanan, atau ketuk nama tab.
 - Judul sumber (akun Drive atau kartu repo) membuka log sumber itu di lembar bawah.

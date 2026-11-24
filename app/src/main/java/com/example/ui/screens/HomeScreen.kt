@@ -64,7 +64,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.LocalPathHelper
 import com.example.data.SyncLogEntry
 import com.example.data.SyncLogStore
 import com.example.data.SyncStatus
@@ -279,7 +278,7 @@ private fun LazyListScope.driveSection(
     onCancelSync: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
-    item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
+    item { SectionTitle("Google Drive", null) }
     item {
         Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
             Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")

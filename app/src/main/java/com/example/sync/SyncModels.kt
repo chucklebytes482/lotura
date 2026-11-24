@@ -15,23 +15,11 @@ object SourceKeys {
 /** Path yang punya segmen tersembunyi (diawali '.'), di level mana pun. Dilewati saat sinkron. */
 fun isHiddenPath(path: String): Boolean = path.split('/').any { it.startsWith(".") }
 
-/** Folder di root repo yang seluruh isinya ikut disinkronkan. */
-val TRACKED_ROOT_FOLDERS: Set<String> = setOf("panduan", "doc", "docs")
-
 /**
- * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan:
- *  - semua berkas .md di mana pun (termasuk README.md),
- *  - berkas bernama README* di mana pun,
- *  - seluruh isi folder root `panduan`, `doc`, `docs`.
- * Selain itu diabaikan, baik saat tampil, download/unggah, maupun auto-sync.
+ * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan: hanya berkas .md di mana pun di repo.
+ * Selain itu, dan semua path tersembunyi, diabaikan saat tampil, download/unggah, maupun auto-sync.
  */
-fun isTrackedRepoPath(path: String): Boolean {
-    if (isHiddenPath(path)) return false
-    val parts = path.split('/')
-    val name = parts.last().lowercase()
-    if (parts.size > 1 && parts[0].lowercase() in TRACKED_ROOT_FOLDERS) return true
-    return name.endsWith(".md") || name.startsWith("readme")
-}
+fun isTrackedRepoPath(path: String): Boolean = !isHiddenPath(path) && path.endsWith(".md")
 
 /** Semua folder (relatif, memakai '/') yang berisi setidaknya satu path yang dilacak. */
 fun trackedDirPaths(trackedFilePaths: Collection<String>): Set<String> {
