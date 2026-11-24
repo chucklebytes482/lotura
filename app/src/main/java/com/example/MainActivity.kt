@@ -38,6 +38,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.ui.SyncViewModel
+import com.example.ui.update.ApkUpdateViewModel
+import com.example.update.ApkUpdate
 import com.example.ui.components.StoragePermissionHelper
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.SyncBebasTheme
@@ -67,6 +69,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val repos by viewModel.repos.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val apkViewModel: ApkUpdateViewModel = viewModel()
+    val apkState by apkViewModel.state.collectAsStateWithLifecycle()
 
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
 
@@ -163,6 +167,18 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             githubAccountError = uiState.githubAccountError,
             hasStoragePermission = hasStoragePermission,
             isOnline = uiState.isOnline,
+            apkState = apkState,
+            onDownloadApk = { apkViewModel.download() },
+            onRetryApkInstall = { apkViewModel.retryInstall() },
+            onOpenUnknownSourcesSettings = {
+                runCatching {
+                    context.startActivity(ApkUpdate.unknownSourcesIntent(context))
+                }.onFailure {
+                    viewModel.showMessage("Buka Pengaturan Android -> Aplikasi -> Akses khusus -> Pasang aplikasi tidak dikenal.")
+                }
+            },
+            onDismissApkPrompt = { apkViewModel.dismissPermissionPrompt() },
+            onDismissApkError = { apkViewModel.dismissError() },
             onRequestStoragePermission = {
                 runCatching {
                     context.startActivity(StoragePermissionHelper.buildAllFilesSettingsIntent(context))

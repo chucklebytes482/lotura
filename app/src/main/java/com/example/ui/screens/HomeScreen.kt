@@ -1,7 +1,11 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class
+)
 
 package com.example.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,9 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -36,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -52,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +75,7 @@ import com.example.sync.SkipDetail
 import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
+import com.example.update.ApkState
 import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -77,7 +85,7 @@ import java.util.Locale
 private enum class HomeTab(val title: String) {
     DRIVE("Google Drive"),
     GITHUB("GitHub"),
-    LOG("Log standar")
+    PANDUAN("Panduan")
 }
 
 /** Keadaan satu sumber: menunggu giliran, sedang sync, atau sedang memuat pohon. */
@@ -92,9 +100,10 @@ private fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Stri
     }
 
 /**
- * Beranda dengan tiga tab: Google Drive, GitHub, dan Log standar (semua sumber).
+ * Beranda dengan tiga tab: Google Drive, GitHub, dan Panduan.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
- * Ikon ↓ (download) dan ↑ (unggah) di tiap folder dasar dan tiap repo langsung menjalankan sinkron.
+ * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
+ * Ikon ↓ (download) dan ↑ (unggah) langsung menjalankan sinkron.
  * Sync berjalan satu per satu; sumber yang sedang antre atau berjalan bisa dibatalkan.
  */
 @Composable
@@ -114,8 +123,14 @@ fun HomeScreen(
     githubAccountError: String?,
     hasStoragePermission: Boolean,
     isOnline: Boolean,
+    apkState: ApkState,
     onRequestStoragePermission: () -> Unit,
     onOpenWebGuide: () -> Unit,
+    onDownloadApk: () -> Unit,
+    onRetryApkInstall: () -> Unit,
+    onOpenUnknownSourcesSettings: () -> Unit,
+    onDismissApkPrompt: () -> Unit,
+    onDismissApkError: () -> Unit,
     onConnectDrive: () -> Unit,
     onRemoveDrive: (String) -> Unit,
     onReloadDrive: (String) -> Unit,
@@ -128,9 +143,13 @@ fun HomeScreen(
 ) {
     // Disimpan saat rotasi. PAT sengaja tidak disimpan di state yang tersimpan.
     var showAddGithub by rememberSaveable { mutableStateOf(false) }
+    // sourceKey sumber yang log-nya sedang dibuka di lembar bawah; null bila tertutup.
+    var logSheetKey by rememberSaveable { mutableStateOf<String?>(null) }
     val busy = busySources.isNotEmpty()
     val pagerState = rememberPagerState(pageCount = { HomeTab.entries.size })
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val guideBlocks = remember { loadGuideBlocks(context) }
 
     Column(modifier.fillMaxSize()) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -157,8 +176,7 @@ fun HomeScreen(
                 noticeItems(
                     isOnline = isOnline,
                     hasStoragePermission = hasStoragePermission,
-                    onRequestStoragePermission = onRequestStoragePermission,
-                    onOpenWebGuide = onOpenWebGuide
+                    onRequestStoragePermission = onRequestStoragePermission
                 )
 
                 when (HomeTab.entries[page]) {
@@ -174,7 +192,8 @@ fun HomeScreen(
                         onReloadDrive = onReloadDrive,
                         onRemoveDrive = onRemoveDrive,
                         onSyncFolder = onSyncFolder,
-                        onCancelSync = onCancelSync
+                        onCancelSync = onCancelSync,
+                        onOpenLog = { key -> logSheetKey = key }
                     )
                     HomeTab.GITHUB -> githubSection(
                         githubAccounts = githubAccounts,
@@ -186,11 +205,30 @@ fun HomeScreen(
                         onRefreshRepos = onRefreshRepos,
                         onDeleteGithubAccount = onDeleteGithubAccount,
                         onSyncRepo = onSyncRepo,
-                        onCancelSync = onCancelSync
+                        onCancelSync = onCancelSync,
+                        onOpenLog = { key -> logSheetKey = key }
                     )
-                    HomeTab.LOG -> logSection(logs)
+                    HomeTab.PANDUAN -> guideSection(
+                        blocks = guideBlocks,
+                        apkState = apkState,
+                        onDownloadApk = onDownloadApk,
+                        onRetryInstall = onRetryApkInstall,
+                        onOpenUnknownSourcesSettings = onOpenUnknownSourcesSettings,
+                        onDismissPermissionPrompt = onDismissApkPrompt,
+                        onDismissApkError = onDismissApkError,
+                        onOpenWebGuide = onOpenWebGuide
+                    )
                 }
             }
+        }
+    }
+
+    logSheetKey?.let { key ->
+        ModalBottomSheet(onDismissRequest = { logSheetKey = null }) {
+            LogSheetContent(
+                title = key.substringAfter(':'),
+                logs = logs.filter { it.sourceKey == key }
+            )
         }
     }
 
@@ -206,12 +244,11 @@ fun HomeScreen(
     }
 }
 
-/** Pemberitahuan di atas setiap tab: offline, izin, dan tombol panduan. */
+/** Pemberitahuan di atas setiap tab: offline dan izin. */
 private fun LazyListScope.noticeItems(
     isOnline: Boolean,
     hasStoragePermission: Boolean,
-    onRequestStoragePermission: () -> Unit,
-    onOpenWebGuide: () -> Unit
+    onRequestStoragePermission: () -> Unit
 ) {
     if (!isOnline) {
         item { Notice("Tidak ada koneksi internet.") }
@@ -222,9 +259,6 @@ private fun LazyListScope.noticeItems(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onRequestStoragePermission) { Text("Beri izin") }
         }
-    }
-    item {
-        TextButton(onClick = onOpenWebGuide) { Text("Buka panduan") }
     }
 }
 
@@ -242,7 +276,8 @@ private fun LazyListScope.driveSection(
     onReloadDrive: (String) -> Unit,
     onRemoveDrive: (String) -> Unit,
     onSyncFolder: (TreeItem, Boolean) -> Unit,
-    onCancelSync: (String) -> Unit
+    onCancelSync: (String) -> Unit,
+    onOpenLog: (String) -> Unit
 ) {
     item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
     item {
@@ -263,7 +298,8 @@ private fun LazyListScope.driveSection(
                 activity = activity,
                 onReload = { onReloadDrive(account.email) },
                 onRemove = { onRemoveDrive(account.email) },
-                onCancel = { onCancelSync(sourceKey) }
+                onCancel = { onCancelSync(sourceKey) },
+                onOpenLog = { onOpenLog(sourceKey) }
             )
         }
         rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
@@ -290,7 +326,8 @@ private fun LazyListScope.githubSection(
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit,
-    onCancelSync: (String) -> Unit
+    onCancelSync: (String) -> Unit,
+    onOpenLog: (String) -> Unit
 ) {
     item { SectionTitle("GitHub", null) }
     item {
@@ -310,7 +347,8 @@ private fun LazyListScope.githubSection(
                 activity = RowActivity.IDLE,
                 onReload = { onRefreshRepos(account) },
                 onRemove = { onDeleteGithubAccount(account) },
-                onCancel = {}
+                onCancel = {},
+                onOpenLog = null
             )
         }
         val accountRepos = repos.filter { it.accountId == account.id }
@@ -325,26 +363,34 @@ private fun LazyListScope.githubSection(
                     repo = repo,
                     activity = activityOf(sourceKey, loading, queuedSources, busySources),
                     onSync = { upload -> onSyncRepo(repo, upload) },
-                    onCancel = { onCancelSync(sourceKey) }
+                    onCancel = { onCancelSync(sourceKey) },
+                    onOpenLog = { onOpenLog(sourceKey) }
                 )
             }
         }
     }
 }
 
-// ---------- Tab Log standar ----------
+// ---------- Lembar log per sumber ----------
 
-private fun LazyListScope.logSection(logs: List<SyncLogEntry>) {
-    item {
+@Composable
+private fun LogSheetContent(title: String, logs: List<SyncLogEntry>) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         SectionTitle(
-            "Log standar",
-            "Semua sumber, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir. Ketuk entri untuk melihat item yang dilewati."
+            title,
+            "Log sync sumber ini, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir."
         )
+        if (logs.isEmpty()) {
+            EmptyText("Belum ada aktivitas sync untuk sumber ini.")
+        }
+        logs.forEach { entry -> LogRow(entry) }
     }
-    if (logs.isEmpty()) {
-        item { EmptyText("Belum ada aktivitas sync.") }
-    }
-    items(logs) { entry -> LogRow(entry) }
 }
 
 @Composable
@@ -441,7 +487,8 @@ private fun RepoCard(
     repo: GithubRepoEntity,
     activity: RowActivity,
     onSync: (Boolean) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onOpenLog: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -453,7 +500,9 @@ private fun RepoCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpenLog),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -497,7 +546,8 @@ private fun AccountHeader(
     activity: RowActivity,
     onReload: () -> Unit,
     onRemove: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onOpenLog: (() -> Unit)?
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -513,7 +563,9 @@ private fun AccountHeader(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .then(if (onOpenLog != null) Modifier.clickable(onClick = onOpenLog) else Modifier)
             )
             if (activity == RowActivity.IDLE) {
                 IconButton(onClick = onReload) {

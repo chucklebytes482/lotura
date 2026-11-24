@@ -319,6 +319,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val entry = SyncLogEntry(
             atMillis = System.currentTimeMillis(),
+            sourceKey = sourceKey,
             source = sourceLabel(sourceKey),
             label = label,
             upload = upload,

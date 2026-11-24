@@ -109,7 +109,7 @@ Judul tidak memakai bold penuh. Pakai `Normal` atau `Medium`.
 
 - **Tombol utama:** satu per layar, `Button` dengan warna primary.
 - **Tombol sekunder:** `OutlinedButton`. Tombol hapus memakai warna `error` sebagai teks.
-- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ada di tab Log standar.
+- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ada di lembar log sumber.
 - **Aksi berulang di daftar:** pakai ikon (misalnya download, unggah, muat ulang, hapus), bukan teks. Beri `contentDescription` agar tetap terbaca oleh pembaca layar.
 - **Nilai teknis (path, ID, angka hasil):** `labelSmall` (Roboto Mono) di dalam `SelectionContainer` agar bisa disalin.
 
@@ -150,3 +150,13 @@ Untuk PNG lama (`mipmap-*dpi/`), render dari SVG sumber dengan `rsvg-convert`, u
 - [ ] Ikon adaptif benar di bentuk lingkaran dan squircle.
 - [ ] Teks besar (font scale 200%) tidak terpotong.
 - [ ] Unit test lolos. Jika repo tidak punya wrapper, pakai `gradle testDebugUnitTest`.
+
+---
+
+## 9. Tataletak Tab
+
+- Tiga tab tetap: Google Drive, GitHub, Panduan. Geser kiri atau kanan, atau ketuk nama tab.
+- Judul sumber (akun Drive atau kartu repo) membuka log sumber itu di lembar bawah.
+- Ikon aksi (↓, ↑, muat ulang, hapus, batal) berdiri sendiri dan tidak membuka log.
+- Jarak layar 16 dp, jarak antarkartu 10 dp, sudut kartu 10 sampai 12 dp.
+- Teks isi 14 sp, keterangan 11 sampai 12 sp. Status sync ditampilkan di kartu sumbernya.

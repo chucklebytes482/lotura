@@ -27,6 +27,16 @@ class RobolectricDepsArgProvider(
   }
 }
 
+// Panduan pengguna dibaca dari assets (tab Panduan, tanpa internet). Hanya file ini yang ikut APK.
+val panduanAssetsDir = layout.buildDirectory.dir("generated/panduan/assets")
+val copyPanduanAssets by tasks.registering(Copy::class) {
+  from(rootProject.file("panduan/pribadi")) {
+    include("01_Panduan_Lotura.md")
+    into("panduan")
+  }
+  into(panduanAssetsDir)
+}
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -192,4 +202,12 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
+}
+
+android.sourceSets.getByName("main") {
+  assets.srcDir(panduanAssetsDir)
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+  dependsOn(copyPanduanAssets)
 }

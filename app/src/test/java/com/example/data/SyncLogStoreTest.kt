@@ -84,4 +84,33 @@ class SyncLogStoreTest {
         assertTrue(e.skipCounts.isEmpty())
         assertEquals(SyncStatus.OK, e.status)
     }
+
+    @Test
+    fun sourceKey_roundTripsAndFiltersPerSource() {
+        val store = SyncLogStore(context)
+        store.append(entry(1).copy(sourceKey = "drive:a@b.c"))
+        store.append(entry(2).copy(sourceKey = "github:o/r"))
+        store.append(entry(3).copy(sourceKey = "drive:a@b.c"))
+
+        val drive = SyncLogStore(context).loadFor("drive:a@b.c")
+        assertEquals(listOf(3L, 1L), drive.map { it.atMillis })
+        assertEquals(listOf("drive:a@b.c", "drive:a@b.c"), drive.map { it.sourceKey })
+        assertEquals(1, SyncLogStore(context).loadFor("github:o/r").size)
+        assertTrue(SyncLogStore(context).loadFor("github:lain/repo").isEmpty())
+    }
+
+    @Test
+    fun fromJson_oldEntryWithoutSourceKey_isEmpty() {
+        val old = JSONObject()
+            .put("at", 5L)
+            .put("source", "Drive · a@b.c")
+            .put("label", "f")
+            .put("upload", false)
+            .put("status", "OK")
+            .put("transferred", 1)
+            .put("skipped", 0)
+            .put("failed", 0)
+            .put("error", JSONObject.NULL)
+        assertEquals("", SyncLogEntry.fromJson(old).sourceKey)
+    }
 }

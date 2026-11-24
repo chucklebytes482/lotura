@@ -22,15 +22,15 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 ## 3. Beranda
 
-Beranda punya tiga tab. Geser layar ke kiri atau kanan untuk pindah tab, atau ketuk nama tabnya.
+Beranda punya tiga tab: *Google Drive*, *GitHub*, dan *Panduan*. Geser layar ke kiri atau kanan untuk pindah tab, atau ketuk nama tabnya.
 
 - **Google Drive:** folder root tiap akun Drive, masing-masing sebagai baris dengan ikon **↓** dan **↑**.
 - **GitHub:** repo tiap akun GitHub, masing-masing sebagai kartu dengan ikon **↓** dan **↑**. Baris akun punya dua ikon: *muat ulang* (mengambil daftar repo terbaru) dan *hapus* (memutus akun).
-- **Log standar:** riwayat semua sync dari Drive dan GitHub, terbaru di atas. Tiap entri menampilkan arah (↓ download atau ↑ unggah), sumber, nama folder atau repo, waktu, status (OK, Sebagian, Gagal), dan jumlah ditransfer, dilewati, serta gagal. Log menyimpan 200 entri terakhir. Ketuk entri yang punya angka *dilewati* untuk melihat daftar file dan alasannya: *ukuran sama*, *tidak ada di perangkat*, *lebih dari 45 MB*, atau *tersembunyi*. Entri yang dibatalkan berstatus *Dibatalkan*.
+- **Panduan:** isi panduan ini, tombol unduh aplikasi, dan referensi tataletak. Tab ini tidak butuh internet, kecuali saat mengunduh aplikasi.
 
-Ketuk kartu atau baris tidak melakukan apa pun. Sync hanya jalan lewat ikon ↓ dan ↑.
+**Melihat log.** Ketuk judul akun Drive atau nama repo GitHub. Lembar bawah terbuka berisi log sumber itu. Untuk akun Drive, log memuat semua folder di akun itu. Tiap entri menampilkan arah (↓ download atau ↑ unggah), nama folder atau repo, waktu, status (OK, Sebagian, Gagal, Dibatalkan), dan jumlah ditransfer, dilewati, serta gagal. Ketuk entri yang punya angka *dilewati* untuk melihat daftar file dan alasannya: *ukuran sama*, *tidak ada di perangkat*, *lebih dari 45 MB*, atau *tersembunyi*. Log menyimpan 200 entri terakhir per aplikasi. Ikon di kartu (↓, ↑, muat ulang, hapus, batal) tidak membuka log.
 
-Satu sumber hanya boleh punya satu sync dalam antrean atau yang berjalan. Sync berikutnya antre dan jalan satu per satu. Saat sync berjalan atau antre, baris sumber itu menampilkan spinner dan tombol *Batalkan sync*. Sync yang dibatalkan tetap tercatat di log.
+Sync hanya jalan lewat ikon ↓ dan ↑. Satu sumber hanya boleh punya satu sync dalam antrean atau yang berjalan. Sync berikutnya antre dan jalan satu per satu. Saat sync berjalan atau antre, baris sumber itu menampilkan spinner dan tombol *Batalkan sync*. Sync yang dibatalkan tetap tercatat di log.
 
 ## 4. Download dan Unggah
 
@@ -63,5 +63,7 @@ Satu sumber hanya boleh punya satu sync dalam antrean atau yang berjalan. Sync b
 
 ## 8. Rilis
 
-- APK terbaru tersedia di halaman unduhan Lotura.
+- Tab *Panduan* punya tombol **Unduh dan pasang**. Tombol ini mengunduh APK terbaru dari rilis GitHub, lalu membuka installer Android. Butuh internet.
+- Jika Android meminta izin *pasang aplikasi tidak dikenal*, aktifkan izin itu untuk Lotura di pengaturan, lalu kembali ke Lotura dan ketuk *Sudah diizinkan*.
+- Android bisa menolak APK yang versinya lebih rendah dari yang terpasang. Pesan dari Android ditampilkan apa adanya.
 - Langkah CI dan keystore ada di `../umum/02_Setup_Rilis_CI.md`.

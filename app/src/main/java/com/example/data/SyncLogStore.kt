@@ -25,7 +25,9 @@ data class SyncLogEntry(
     /** Alasan per item yang dilewati. Dibatasi [SyncLogStore.MAX_SKIP_DETAILS] saat disimpan. */
     val skipDetails: List<SkipDetail> = emptyList(),
     /** Jumlah item yang dilewati per alasan. Dipakai untuk ringkasan di log. */
-    val skipCounts: Map<SkipReason, Int> = emptyMap()
+    val skipCounts: Map<SkipReason, Int> = emptyMap(),
+    /** Kunci sumber, mis. "drive:email" atau "github:owner/repo". Kosong untuk log lama. */
+    val sourceKey: String = ""
 ) {
     fun toJson(): JSONObject {
         val details = JSONArray()
@@ -34,6 +36,7 @@ data class SyncLogEntry(
         }
         return JSONObject()
             .put("at", atMillis)
+            .put("sourceKey", sourceKey)
             .put("source", source)
             .put("label", label)
             .put("upload", upload)
@@ -54,6 +57,7 @@ data class SyncLogEntry(
             val details = o.optJSONArray("skipDetails") ?: JSONArray()
             return SyncLogEntry(
                 atMillis = o.getLong("at"),
+                sourceKey = o.optString("sourceKey", ""),
                 source = o.getString("source"),
                 label = o.getString("label"),
                 upload = o.getBoolean("upload"),
@@ -94,6 +98,9 @@ class SyncLogStore(context: Context) {
             (0 until arr.length()).map { SyncLogEntry.fromJson(arr.getJSONObject(it)) }
         }.getOrDefault(emptyList())
     }
+
+    /** Entri untuk satu sumber saja, terbaru di depan. */
+    fun loadFor(sourceKey: String): List<SyncLogEntry> = loadAll().filter { it.sourceKey == sourceKey }
 
     /** Menambah entri baru di depan, membuang yang melewati batas, lalu mengembalikan daftar terbaru. */
     fun append(entry: SyncLogEntry): List<SyncLogEntry> {
