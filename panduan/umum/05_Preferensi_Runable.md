@@ -42,8 +42,8 @@ Referensi personal: cara pemilik proyek ingin Runable bekerja. Baca ini sebelum 
 
 ## 6. Sinkronisasi repo di aplikasi
 
-- Auto-sync ke GitHub adalah perilaku yang diinginkan: perubahan lokal otomatis di-commit dan di-push, tanpa tombol manual.
-- Perubahan dari GitHub ditarik otomatis saat aman. Jika file yang sama berubah di dua tempat, laporkan konflik dan jangan menimpa diam-diam.
+- Tidak ada auto-sync. Sinkron hanya manual lewat ikon ↓ (unduh) dan ↑ (unggah) di kartu repo atau folder.
+- Jika file yang sama berubah di dua tempat, laporkan konflik dan jangan menimpa diam-diam.
 - Item yang tidak dilacak tidak boleh memicu penghapusan di sisi mana pun.
 
 ## 7. Yang perlu ditanyakan jika belum jelas

@@ -48,28 +48,26 @@ Aksi download dan unggah hanya ada di layar detail, bukan di Beranda.
 
 ## 6. Jelajahi dan edit file GitHub
 
-- Repo GitHub hanya menampilkan dan menyinkronkan file yang sering Anda edit: semua berkas `.md` (termasuk `README.md`), berkas `README*`, dan seluruh isi folder `panduan`, `doc`, dan `docs` di root repo. File lain di repo tidak tampil dan tidak ikut download, unggah, atau auto-sync.
+- Repo GitHub hanya menampilkan dan menyinkronkan file yang sering Anda edit: semua berkas `.md` (termasuk `README.md`), berkas `README*`, dan seluruh isi folder `panduan`, `doc`, dan `docs` di root repo. File lain di repo tidak tampil dan tidak ikut download atau unggah.
 
 - Di layar detail repo GitHub atau folder Drive, ketuk **Jelajahi file**. Isi repo lokal tampil sebagai daftar: folder dulu, lalu file.
 - Ketuk folder untuk masuk. Tombol kembali naik satu folder, dan kembali ke detail saat sudah di folder paling atas.
-- Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan otomatis ke HP setelah berhenti mengetik.
+- Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan ke HP setelah berhenti mengetik. Ke GitHub hanya lewat ↑.
 - Dari daftar file, Anda bisa:
   - membuat file atau folder baru,
   - mengganti nama,
   - menghapus (folder ikut terhapus beserta isinya).
-- **Riwayat**: di editor, ketuk **Riwayat** untuk melihat commit yang pernah mengubah berkas itu. Ketuk satu versi untuk melihat isinya, lalu **Pulihkan** untuk menjadikannya isi berkas sekarang. Pemulihan ikut ter-push ke GitHub sebagai perubahan baru.
+- **Riwayat**: di editor, ketuk **Riwayat** untuk melihat commit yang pernah mengubah berkas itu. Ketuk satu versi untuk melihat isinya, lalu **Pulihkan** untuk menjadikannya isi berkas sekarang. Pemulihan hanya mengubah berkas di HP. Unggah dengan ↑ untuk mengirimnya ke GitHub.
 - Berkas berukuran di atas 2 MB atau berkas biner (gambar, APK, dan sejenisnya) tidak bisa dibuka di editor.
 - Berkas dan folder berawalan titik ditandai *tidak ikut sinkron*.
 
-### Auto-sync ke GitHub
+### Sinkron manual
 
-- Setiap perubahan di repo itu di-push otomatis ke branch `main` di GitHub. Tidak ada tombol simpan atau unggah.
-- Perubahan dikumpulkan dulu selama sekitar 3 detik, lalu dikirim sebagai satu commit.
-- Lotura juga memeriksa GitHub tiap 60 detik. Perubahan dari GitHub otomatis ditarik ke HP. Berkas yang sedang dibuka di editor ditarik setelah editor ditutup.
-- Jika file yang sama berubah di HP dan di GitHub, Lotura melaporkan konflik dan tidak menimpa salah satunya. Selesaikan dengan download atau unggah manual.
+- Tidak ada auto-sync. Perubahan di HP tidak dikirim ke GitHub, dan perubahan di GitHub tidak ditarik, sampai Anda menekan tombol sync.
+- Di kartu repo GitHub atau folder Drive, ikon **↓** mengunduh dari sumber ke HP, dan ikon **↑** mengunggah dari HP ke sumber.
+- Lotura tidak menghapus apa pun di sisi tujuan saat sync. Berkas yang hanya ada di satu tempat dibiarkan.
+- Jika file yang sama berubah di HP dan di GitHub, Lotura tidak menimpa salah satunya. Pilih arah ↓ atau ↑ sesuai versi yang ingin dipertahankan.
 - File di atas 45 MB dilewati dan dilaporkan.
-- Auto-sync hanya berjalan selama aplikasi terbuka atau masih aktif di latar belakang. Perubahan yang dibuat saat aplikasi sudah ditutup baru terdeteksi lewat sync manual.
-- Auto-sync hanya untuk GitHub. Folder Google Drive tidak ikut.
 - Repo yang diarsipkan dilewati.
 
 ## 7. Hapus akun

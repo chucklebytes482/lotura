@@ -114,7 +114,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = app.syncEngine
     private val summaryStore = SyncSummaryStore(application)
     private val ignoreRules = IgnoreRules(IgnoreRules.DEFAULT_PATTERNS)
-    private val autoSync = app.autoSync
 
     val driveAccounts: StateFlow<List<DriveAccountEntity>> = repository.driveAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -140,12 +139,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     val browse: StateFlow<BrowseState?> = _browse.asStateFlow()
 
     init {
-        // Pesan dari auto-sync (konflik, gagal push, sukses push) tampil sebagai snackbar.
-        viewModelScope.launch {
-            autoSync.messages.collect { msg -> _uiState.update { it.copy(snackbarMessage = msg) } }
-        }
-        // Berkas yang sedang dibuka di editor tidak ditimpa oleh pull; pull-nya ditunda ke siklus berikutnya.
-        autoSync.isEditing = { file -> _browse.value?.editor?.file?.absolutePath == file.absolutePath }
         // Setiap akun Drive yang belum dimuat (baru atau setelah restart) langsung dimuat 3 level.
         viewModelScope.launch {
             repository.driveAccounts.collect { accounts ->
@@ -463,23 +456,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val pat = repository.getGithubPat(repo.accountId)
             ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
         val root = File(repo.localPath)
-        // Sha yang sama di perangkat dan GitHub dicatat sebagai base, supaya auto-sync tahu titik awalnya.
-        val shas = linkedMapOf<String, String>()
-        val result = autoSync.withRepoLock(repo.fullName) {
-            if (upload) {
-                engine.uploadGithub(
-                    pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items,
-                    onSynced = { path, sha -> shas[path] = sha }
-                )
-            } else {
-                engine.downloadGithub(
-                    pat, repo.owner, repo.name, repo.defaultBranch, root, items,
-                    onSynced = { path, sha -> shas[path] = sha }
-                )
-            }
+        return if (upload) {
+            engine.uploadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items)
+        } else {
+            engine.downloadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, items)
         }
-        autoSync.recordBases(repo.fullName, shas)
-        return result
     }
 
     // ---------- Penjelajah file & editor (repo GitHub) ----------
@@ -651,7 +632,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     history = null
                 )
             }
-            autoSync.notifyChanged()
             showMessage("Versi dipulihkan.")
         }
     }
@@ -668,7 +648,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (error == null) {
                 setEditorStatus(file, SaveStatus.SAVED, null)
-                autoSync.notifyChanged()
             } else {
                 setEditorStatus(file, SaveStatus.ERROR, error.message ?: "Gagal menyimpan")
             }
@@ -704,7 +683,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             result.onFailure { showMessage(it.message ?: "Operasi gagal") }
             result.onSuccess { success?.let { showMessage(it) } }
             refreshBrowse()
-            autoSync.notifyChanged()
         }
     }
 
