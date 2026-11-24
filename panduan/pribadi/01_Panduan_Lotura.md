@@ -38,15 +38,16 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 ## 5. Detail kartu
 
 - Ketuk kartu folder root Drive atau repo GitHub untuk membuka layar detail.
-- Layar detail hanya menampilkan:
-  - tombol **Jelajahi file** (khusus repo GitHub),
+- Layar detail menampilkan:
+  - tombol **Download** dan **Unggah** untuk seluruh isi folder atau repo,
+  - tombol **Jelajahi file** untuk repo GitHub dan folder Drive,
   - status sync terakhir: waktu, status (OK, Sebagian, Gagal), jumlah berhasil atau sudah sama, jumlah gagal, dan jumlah item tersembunyi yang dilewati.
-- Layar detail tidak punya ikon download dan unggah. Pakai ikon di kartu Beranda untuk itu.
+- Beranda tidak punya tombol download dan unggah. Semua aksi itu ada di layar detail.
 - Tombol kembali di top bar kembali ke Beranda.
 
 ## 6. Jelajahi dan edit file GitHub
 
-- Di layar detail repo GitHub, ketuk **Jelajahi file**. Isi repo lokal tampil sebagai daftar: folder dulu, lalu file.
+- Di layar detail repo GitHub atau folder Drive, ketuk **Jelajahi file**. Isi repo lokal tampil sebagai daftar: folder dulu, lalu file.
 - Ketuk folder untuk masuk. Tombol kembali naik satu folder, dan kembali ke detail saat sudah di folder paling atas.
 - Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan otomatis ke HP setelah berhenti mengetik.
 - Dari daftar file, Anda bisa:

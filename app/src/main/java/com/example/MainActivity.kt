@@ -88,7 +88,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val browse by viewModel.browse.collectAsStateWithLifecycle()
-    val detailStats by viewModel.detailStats.collectAsStateWithLifecycle()
 
     var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
 
@@ -261,22 +260,13 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                 } else {
                     FolderDetailScreen(
-                        detail = current,
                         summary = summaries[current.summaryKey],
                         busy = uiState.busySources.contains(current.sourceKey),
                         onDownload = { viewModel.syncDetail(upload = false) },
                         onUpload = { viewModel.syncDetail(upload = true) },
-                        stats = detailStats,
-                        onOpenFiles = current.repo?.let { repo ->
-                            val open: () -> Unit = {
-                                viewModel.openFiles(repo)
-                                navController.navigate(Routes.FILES)
-                            }
-                            open
-                        },
-                        onRetry = {
-                            current.repo?.let { viewModel.openRepo(it) }
-                            current.driveItem?.let { viewModel.openDriveFolder(it) }
+                        onOpenFiles = {
+                            viewModel.openLocalFolder(current.title, current.localPath)
+                            navController.navigate(Routes.FILES)
                         }
                     )
                 }

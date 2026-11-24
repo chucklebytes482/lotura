@@ -22,7 +22,6 @@ import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,17 +63,6 @@ data class FolderDetail(
     val summaryKey: String,
     val driveItem: TreeItem? = null,
     val repo: GithubRepoEntity? = null
-)
-
-data class FolderStats(
-    val loading: Boolean = false,
-    val fileCount: Int = 0,
-    val totalBytes: Long = 0,
-    /** File yang ukurannya tidak diketahui (dokumen Google native). Tidak ikut total byte. */
-    val unknownSizeCount: Int = 0,
-    /** true jika hitung Drive berhenti di batas panggilan API. */
-    val partial: Boolean = false,
-    val error: String? = null
 )
 
 enum class SaveStatus { IDLE, SAVING, SAVED, ERROR }
@@ -142,16 +130,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val _detail = MutableStateFlow<FolderDetail?>(null)
     val detail: StateFlow<FolderDetail?> = _detail.asStateFlow()
 
-    private val _detailStats = MutableStateFlow(FolderStats())
-    val detailStats: StateFlow<FolderStats> = _detailStats.asStateFlow()
-
     private val _browse = MutableStateFlow<BrowseState?>(null)
     /** Penjelajah file yang sedang dibuka, null jika tidak ada. */
     val browse: StateFlow<BrowseState?> = _browse.asStateFlow()
-
-    private var statsJob: Job? = null
-    /** Hasil hitung Drive per summaryKey, berlaku selama sesi (dibuang setelah sync). */
-    private val driveStatsCache = mutableMapOf<String, FolderStats>()
 
     init {
         // Pesan dari auto-sync (konflik, gagal push, sukses push) tampil sebagai snackbar.
@@ -296,7 +277,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Detail folder / repo ----------
 
-    /** Membuka detail folder root Drive. Hitung isi dilakukan rekursif (dibatasi jumlah panggilan). */
+    /** Membuka detail folder root Drive. */
     fun openDriveFolder(item: TreeItem) {
         val email = item.sourceKey.removePrefix("drive:")
         val root = LocalPathHelper.driveRoot(email)
@@ -308,25 +289,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             summaryKey = item.key,
             driveItem = item
         )
-        statsJob?.cancel()
-        driveStatsCache[item.key]?.let {
-            _detailStats.value = it
-            return
-        }
-        _detailStats.value = FolderStats(loading = true)
-        val folderId = item.remoteId
-        statsJob = viewModelScope.launch {
-            val stats = if (folderId == null) {
-                FolderStats(error = "ID folder Drive tidak ada")
-            } else {
-                countDriveFolder(email, folderId)
-            }
-            if (stats.error == null) driveStatsCache[item.key] = stats
-            if (_detail.value?.summaryKey == item.key) _detailStats.value = stats
-        }
     }
 
-    /** Membuka detail repo. Pohon dimuat dulu bila belum ada. */
+    /** Membuka detail repo. Pohon dimuat di latar belakang bila belum ada (dibutuhkan untuk download/unggah). */
     fun openRepo(repo: GithubRepoEntity) {
         val sourceKey = SourceKeys.github(repo.fullName)
         _detail.value = FolderDetail(
@@ -337,24 +302,13 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             summaryKey = sourceKey,
             repo = repo
         )
-        statsJob?.cancel()
-        _detailStats.value = FolderStats(loading = true)
-        statsJob = viewModelScope.launch {
-            if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
-            if (_detail.value?.summaryKey != sourceKey) return@launch
-            _detailStats.value = if (sourceKey !in _uiState.value.loaded) {
-                FolderStats(error = "Isi repo belum bisa dimuat")
-            } else {
-                repoStats(sourceKey)
-            }
+        if (sourceKey !in _uiState.value.loaded) {
+            viewModelScope.launch { loadRepoTree(repo) }
         }
     }
 
     fun closeDetail() {
-        statsJob?.cancel()
-        statsJob = null
         _detail.value = null
-        _detailStats.value = FolderStats()
     }
 
     /** Download/unggah dari layar detail, memakai alur yang sama dengan beranda. */
@@ -401,8 +355,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             _uiState.update { it.copy(busySources = it.busySources - sourceKey) }
         }
-        // Isi folder berubah setelah sync: hitung ulang saat detail dibuka lagi.
-        driveStatsCache.remove(summaryKey)
         val summary = SyncSummary.fromResult(result, System.currentTimeMillis())
         summaryStore.save(summaryKey, summary)
         _summaries.update { it + (summaryKey to summary) }
@@ -459,49 +411,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             _uiState.update { it.copy(loading = it.loading - parentKey) }
         }
-    }
-
-    /** Hitung file dan total ukuran di dalam folder Drive, rekursif, dengan batas jumlah panggilan. */
-    private suspend fun countDriveFolder(email: String, rootId: String): FolderStats {
-        return try {
-            var files = 0
-            var bytes = 0L
-            var unknown = 0
-            var calls = 0
-            var partial = false
-            val queue = ArrayDeque<String>()
-            queue.addLast(rootId)
-            while (queue.isNotEmpty()) {
-                if (calls >= DRIVE_STATS_MAX_CALLS) {
-                    partial = true
-                    break
-                }
-                calls++
-                val children = engine.driveChildren(email, queue.removeFirst())
-                for (child in children) {
-                    if (child.name.startsWith(".")) continue
-                    if (child.isFolder) {
-                        queue.addLast(child.id)
-                    } else {
-                        files++
-                        val size = child.size
-                        if (size == null) unknown++ else bytes += size
-                    }
-                }
-            }
-            FolderStats(fileCount = files, totalBytes = bytes, unknownSizeCount = unknown, partial = partial)
-        } catch (e: Exception) {
-            FolderStats(error = e.message ?: "Gagal menghitung isi folder")
-        }
-    }
-
-    private fun repoStats(sourceKey: String): FolderStats {
-        val files = _uiState.value.trees[sourceKey].orEmpty().filter { !it.isFolder }
-        return FolderStats(
-            fileCount = files.size,
-            totalBytes = files.sumOf { it.size ?: 0L },
-            unknownSizeCount = files.count { it.size == null }
-        )
     }
 
     private suspend fun loadRepoTree(repo: GithubRepoEntity) {
@@ -569,12 +478,13 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Penjelajah file & editor (repo GitHub) ----------
 
-    fun openFiles(repo: GithubRepoEntity) {
-        val root = File(repo.localPath)
+    /** Membuka penjelajah di salinan lokal sebuah repo atau folder Drive. */
+    fun openLocalFolder(title: String, localPath: String) {
+        val root = File(localPath)
         viewModelScope.launch {
             withContext(Dispatchers.IO) { root.mkdirs() }
             _browse.value = BrowseState(
-                title = repo.fullName,
+                title = title,
                 root = root,
                 dir = root,
                 entries = withContext(Dispatchers.IO) { LocalFileOps.list(root) }
@@ -835,6 +745,5 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val DRIVE_PRELOAD_LEVELS = 1
         /** Batas panggilan API untuk menghitung isi folder Drive. */
-        private const val DRIVE_STATS_MAX_CALLS = 300
     }
 }
