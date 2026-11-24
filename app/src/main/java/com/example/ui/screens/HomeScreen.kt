@@ -22,8 +22,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -145,10 +143,7 @@ fun HomeScreen(
                         FolderRow(
                             item = folder,
                             summary = summaries[folder.key],
-                            enabled = !busy,
-                            onOpen = { onOpenDriveFolder(folder) },
-                            onDownload = { onSyncFolder(folder, false) },
-                            onUpload = { onSyncFolder(folder, true) }
+                            onOpen = { onOpenDriveFolder(folder) }
                         )
                     }
                 }
@@ -188,7 +183,6 @@ fun HomeScreen(
                         repo = repo,
                         loading = loading,
                         summary = summaries[SourceKeys.github(repo.fullName)],
-                        busy = busy,
                         onOpenRepo = onOpenRepo,
                         onSyncRepo = onSyncRepo
                     )
@@ -217,7 +211,6 @@ private fun LazyListScope.repoCard(
     repo: GithubRepoEntity,
     loading: Set<String>,
     summary: SyncSummary?,
-    busy: Boolean,
     onOpenRepo: (GithubRepoEntity) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
@@ -232,13 +225,8 @@ private fun LazyListScope.repoCard(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SyncIcons(
-                    enabled = !busy,
-                    onDownload = { onSyncRepo(repo, false) },
-                    onUpload = { onSyncRepo(repo, true) }
-                )
                 Row(
-                    modifier = Modifier.weight(1f).padding(start = 6.dp),
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -318,18 +306,6 @@ private fun AccountHeader(
     }
 }
 
-@Composable
-private fun SyncIcons(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onDownload, enabled = enabled) {
-            Icon(Icons.Rounded.CloudDownload, contentDescription = "Download")
-        }
-        IconButton(onClick = onUpload, enabled = enabled) {
-            Icon(Icons.Rounded.CloudUpload, contentDescription = "Unggah")
-        }
-    }
-}
-
 /** Ikon status sync terakhir: centang (OK), peringatan (SEBAGIAN), silang (GAGAL). Kosong jika belum pernah sync. */
 @Composable
 private fun StatusIcon(summary: SyncSummary?) {
@@ -346,19 +322,15 @@ private fun StatusIcon(summary: SyncSummary?) {
 private fun FolderRow(
     item: TreeItem,
     summary: SyncSummary?,
-    enabled: Boolean,
-    onOpen: () -> Unit,
-    onDownload: () -> Unit,
-    onUpload: () -> Unit
+    onOpen: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SyncIcons(enabled = enabled, onDownload = onDownload, onUpload = onUpload)
             Row(
-                modifier = Modifier.weight(1f).padding(start = 6.dp),
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
