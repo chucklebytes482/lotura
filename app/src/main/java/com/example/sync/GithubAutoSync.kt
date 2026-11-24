@@ -184,8 +184,9 @@ class GithubAutoSync(
                     pushes += path to (blobSha ?: "")
                 }
                 Action.DELETE -> {
-                    changes += GithubTreeChange(repoPath = path, blobSha = null)
-                    pushes += path to ""
+                    // Tidak ada penghapusan otomatis di GitHub (standar sinkronisasi bagian 3).
+                    // Base dibiarkan supaya file tidak ditarik balik.
+                    settled += path
                 }
                 Action.PULL -> {
                     val remoteSha = remote.getValue(path)
@@ -195,9 +196,7 @@ class GithubAutoSync(
                     settled += path
                 }
                 Action.PULL_DELETE -> {
-                    target.delete()
-                    bases.remove(path)
-                    pulled += path
+                    // Tidak ada penghapusan otomatis di perangkat. Base dibiarkan.
                     settled += path
                 }
                 Action.CONFLICT -> {
