@@ -25,24 +25,25 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 - Baris akun GitHub punya dua ikon saja: *muat ulang* (mengambil daftar repo terbaru) dan *hapus* (memutus akun).
 - Ikon status di kartu menunjukkan hasil sync terakhir: centang (OK), peringatan (sebagian berhasil), silang (gagal). Teks lengkapnya ada di layar detail.
 
-## 4. Download dan Upload
+## 4. Download dan Unggah
 
-- Ikon **download** dan **unggah** tampil langsung di setiap kartu folder root Drive dan repo GitHub.
+Aksi download dan unggah hanya ada di layar detail, bukan di Beranda.
+
 - **Download:** menyalin isi folder atau repo dari Drive atau GitHub ke folder lokal.
 - **Unggah:** mengirim isi folder atau repo dari folder lokal ke Drive atau GitHub. File baru di dalam folder itu ikut terkirim.
 - Perbandingan hanya memakai ukuran. Ukuran sama berarti dilewati. Ukuran beda berarti ditransfer.
 - Dokumen Google (Docs, Sheets, Slides) selalu ditransfer karena ukurannya tidak diketahui.
 - File dan folder tersembunyi (nama diawali titik) tidak ikut disinkronkan.
-- Saat transfer berjalan, ikon di kartu tidak bisa ditekan dan bar progres tampil di atas daftar.
+- Saat transfer berjalan, tombol download dan unggah tidak bisa ditekan sampai transfer selesai.
+- Untuk repo GitHub, download dan unggah hanya memproses file yang dilacak (lihat bagian 6).
 
-## 5. Detail kartu
+## 5. Layar detail
 
 - Ketuk kartu folder root Drive atau repo GitHub untuk membuka layar detail.
 - Layar detail menampilkan:
   - tombol **Download** dan **Unggah** untuk seluruh isi folder atau repo,
   - tombol **Jelajahi file** untuk repo GitHub dan folder Drive,
-  - status sync terakhir: waktu, status (OK, Sebagian, Gagal), jumlah berhasil atau sudah sama, jumlah gagal, dan jumlah item tersembunyi yang dilewati.
-- Beranda tidak punya tombol download dan unggah. Semua aksi itu ada di layar detail.
+  - bagian **Sync terakhir**: waktu, status (OK, Sebagian, Gagal), jumlah berhasil atau sudah sama, jumlah gagal, dan jumlah item tersembunyi yang dilewati.
 - Tombol kembali di top bar kembali ke Beranda.
 
 ## 6. Jelajahi dan edit file GitHub
