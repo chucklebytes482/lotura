@@ -204,8 +204,11 @@ dependencies {
   // "ksp"(libs.moshi.kotlin.codegen)
 }
 
-android.sourceSets.getByName("main") {
-  assets.srcDir(panduanAssetsDir)
+// AGP 9 melarang Provider di sourceSets, jadi folder hasil task didaftarkan lewat Variant API.
+androidComponents {
+  onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(copyPanduanAssets) { it.destinationDirectory }
+  }
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
