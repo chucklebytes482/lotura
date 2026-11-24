@@ -106,11 +106,11 @@ private fun NoteText(text: String) {
     Text(text, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-private fun statusText(status: SyncStatus): String = when (status) {
+internal fun statusText(status: SyncStatus): String = when (status) {
     SyncStatus.OK -> "OK"
     SyncStatus.SEBAGIAN -> "Sebagian"
     SyncStatus.GAGAL -> "Gagal"
 }
 
-private fun formatTime(millis: Long): String =
+internal fun formatTime(millis: Long): String =
     SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(millis))

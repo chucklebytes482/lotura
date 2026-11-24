@@ -19,8 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LocalPathHelper
+import com.example.data.SyncStatus
 import com.example.data.SyncSummary
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
@@ -89,6 +93,7 @@ fun HomeScreen(
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     var showAddGithub by remember { mutableStateOf(false) }
+    var syncInfo by remember { mutableStateOf<SyncInfoTarget?>(null) }
     val busy = busySources.isNotEmpty()
 
     Column(Modifier.fillMaxWidth()) {
@@ -141,7 +146,7 @@ fun HomeScreen(
                         FolderRow(
                             item = folder,
                             busy = sourceKey in loading,
-                            onOpen = { onOpenDriveFolder(folder) },
+                            onInfo = { syncInfo = SyncInfoTarget(folder.name, folder.key) { onOpenDriveFolder(folder) } },
                             onSync = { upload -> onSyncFolder(folder, upload) }
                         )
                     }
@@ -181,7 +186,7 @@ fun HomeScreen(
                     repoCard(
                         repo = repo,
                         loading = loading,
-                        onOpenRepo = onOpenRepo,
+                        onInfo = { syncInfo = SyncInfoTarget(repo.name, SourceKeys.github(repo.fullName)) { onOpenRepo(repo) } },
                         onSyncRepo = onSyncRepo
                     )
                 }
@@ -192,6 +197,14 @@ fun HomeScreen(
     }
 
     if (showAddGithub) {
+        syncInfo?.let { target ->
+            SyncInfoDialog(
+                title = target.title,
+                summary = summaries[target.summaryKey],
+                onOpen = { syncInfo = null; target.onOpen() },
+                onDismiss = { syncInfo = null }
+            )
+        }
         AddGithubDialog(
             isAdding = isAddingGithub,
             error = githubAccountError,
@@ -208,13 +221,13 @@ fun HomeScreen(
 private fun LazyListScope.repoCard(
     repo: GithubRepoEntity,
     loading: Set<String>,
-    onOpenRepo: (GithubRepoEntity) -> Unit,
+    onInfo: () -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     val sourceKey = SourceKeys.github(repo.fullName)
     item(key = "repo:${repo.fullName}") {
         Surface(
-            modifier = Modifier.fillMaxWidth().clickable { onOpenRepo(repo) },
+            modifier = Modifier.fillMaxWidth().clickable { onInfo() },
             shape = RoundedCornerShape(10.dp),
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
@@ -252,6 +265,59 @@ private fun LazyListScope.repoCard(
                 }
             }
         }
+    }
+}
+
+// ---------- Popup info sync ----------
+
+/** Sasaran popup info: judul, kunci ringkasan sync, dan aksi untuk membuka detail. */
+private class SyncInfoTarget(val title: String, val summaryKey: String, val onOpen: () -> Unit)
+
+/** Popup kecil: status sync terakhir dalam bentuk ringkas. Tombol Buka membawa ke detail. */
+@Composable
+private fun SyncInfoDialog(
+    title: String,
+    summary: SyncSummary?,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        },
+        text = {
+            if (summary == null) {
+                Text("Belum pernah di-sync.", fontSize = 13.sp)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val (icon, tint) = when (summary.status) {
+                            SyncStatus.OK -> Icons.Filled.Check to MaterialTheme.colorScheme.primary
+                            SyncStatus.SEBAGIAN -> Icons.Filled.Warning to MaterialTheme.colorScheme.tertiary
+                            SyncStatus.GAGAL -> Icons.Filled.Close to MaterialTheme.colorScheme.error
+                        }
+                        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(statusText(summary.status), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    SyncInfoLine("Waktu", formatTime(summary.lastSyncAtMillis))
+                    SyncInfoLine("Berhasil / sama", summary.okCount.toString())
+                    SyncInfoLine("Gagal", summary.failCount.toString())
+                    SyncInfoLine("Tersembunyi dilewati", summary.hiddenSkipped.toString())
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onOpen) { Text("Buka") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Tutup") } }
+    )
+}
+
+@Composable
+private fun SyncInfoLine(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 12.sp)
     }
 }
 
@@ -323,12 +389,12 @@ private fun SyncArrows(onDownload: () -> Unit, onUpload: () -> Unit) {
 private fun FolderRow(
     item: TreeItem,
     busy: Boolean,
-    onOpen: () -> Unit,
+    onInfo: () -> Unit,
     onSync: (Boolean) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 2.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onInfo).padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
