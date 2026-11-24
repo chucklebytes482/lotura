@@ -263,6 +263,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                         detail = current,
                         summary = summaries[current.summaryKey],
                         busy = uiState.busySources.contains(current.sourceKey),
+                        onDownload = { viewModel.syncDetail(upload = false) },
+                        onUpload = { viewModel.syncDetail(upload = true) },
                         onOpenFiles = current.repo?.let { repo ->
                             val open: () -> Unit = {
                                 viewModel.openFiles(repo)

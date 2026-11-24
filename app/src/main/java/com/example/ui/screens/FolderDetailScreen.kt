@@ -11,7 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,14 +35,16 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Kartu detail folder. Hanya menampilkan tombol jelajah file (repo GitHub saja)
- * dan status sync terakhir. Tombol top bar tetap ada untuk kembali.
+ * Kartu detail folder. Menampilkan tombol download dan unggah, tombol jelajah file
+ * (repo GitHub saja), dan status sync terakhir. Tombol top bar tetap ada untuk kembali.
  */
 @Composable
 fun FolderDetailScreen(
     detail: FolderDetail,
     summary: SyncSummary?,
     busy: Boolean,
+    onDownload: () -> Unit,
+    onUpload: () -> Unit,
     onOpenFiles: (() -> Unit)? = null
 ) {
     Column(
@@ -50,6 +55,17 @@ fun FolderDetailScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onDownload, enabled = !busy, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Rounded.CloudDownload, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                Text("Download")
+            }
+            OutlinedButton(onClick = onUpload, enabled = !busy, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Rounded.CloudUpload, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                Text("Unggah")
+            }
+        }
 
         if (onOpenFiles != null) {
             OutlinedButton(onClick = onOpenFiles, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
