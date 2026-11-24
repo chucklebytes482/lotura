@@ -22,13 +22,15 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 ## 3. Beranda
 
-Beranda punya tiga tab:
+Beranda punya tiga tab. Geser layar ke kiri atau kanan untuk pindah tab, atau ketuk nama tabnya.
 
 - **Google Drive:** folder root tiap akun Drive, masing-masing sebagai baris dengan ikon **↓** dan **↑**.
 - **GitHub:** repo tiap akun GitHub, masing-masing sebagai kartu dengan ikon **↓** dan **↑**. Baris akun punya dua ikon: *muat ulang* (mengambil daftar repo terbaru) dan *hapus* (memutus akun).
-- **Log standar:** riwayat semua sync dari Drive dan GitHub, terbaru di atas. Tiap entri menampilkan arah (↓ download atau ↑ unggah), sumber, nama folder atau repo, waktu, status (OK, Sebagian, Gagal), dan jumlah ditransfer, dilewati, serta gagal. Log menyimpan 200 entri terakhir.
+- **Log standar:** riwayat semua sync dari Drive dan GitHub, terbaru di atas. Tiap entri menampilkan arah (↓ download atau ↑ unggah), sumber, nama folder atau repo, waktu, status (OK, Sebagian, Gagal), dan jumlah ditransfer, dilewati, serta gagal. Log menyimpan 200 entri terakhir. Ketuk entri yang punya angka *dilewati* untuk melihat daftar file dan alasannya: *ukuran sama*, *tidak ada di perangkat*, *lebih dari 45 MB*, atau *tersembunyi*. Entri yang dibatalkan berstatus *Dibatalkan*.
 
 Ketuk kartu atau baris tidak melakukan apa pun. Sync hanya jalan lewat ikon ↓ dan ↑.
+
+Satu sumber hanya boleh punya satu sync dalam antrean atau yang berjalan. Sync berikutnya antre dan jalan satu per satu. Saat sync berjalan atau antre, baris sumber itu menampilkan spinner dan tombol *Batalkan sync*. Sync yang dibatalkan tetap tercatat di log.
 
 ## 4. Download dan Unggah
 
@@ -52,6 +54,7 @@ Ketuk kartu atau baris tidak melakukan apa pun. Sync hanya jalan lewat ikon ↓ 
 - Jika file yang sama berubah di HP dan di GitHub, Lotura tidak menimpa salah satunya. Pilih arah ↓ atau ↑ sesuai versi yang ingin dipertahankan.
 - File di atas 45 MB dilewati dan dilaporkan.
 - Repo yang diarsipkan dilewati.
+- Nama yang diawali titik (mis. `.git`) tersembunyi dan dilewati.
 
 ## 7. Hapus akun
 

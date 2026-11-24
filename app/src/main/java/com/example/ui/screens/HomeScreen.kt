@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -43,6 +47,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +64,12 @@ import com.example.data.SyncStatus
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.sync.SkipDetail
+import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.ui.tree.rootVisibleItems
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,10 +80,22 @@ private enum class HomeTab(val title: String) {
     LOG("Log standar")
 }
 
+/** Keadaan satu sumber: menunggu giliran, sedang sync, atau sedang memuat pohon. */
+private enum class RowActivity { IDLE, LOADING, QUEUED, RUNNING }
+
+private fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<String>, busy: Set<String>): RowActivity =
+    when {
+        sourceKey in busy -> RowActivity.RUNNING
+        sourceKey in queued -> RowActivity.QUEUED
+        sourceKey in loading -> RowActivity.LOADING
+        else -> RowActivity.IDLE
+    }
+
 /**
  * Beranda dengan tiga tab: Google Drive, GitHub, dan Log standar (semua sumber).
+ * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Ikon ↓ (download) dan ↑ (unggah) di tiap folder dasar dan tiap repo langsung menjalankan sinkron.
- * Ketuk kartu tidak melakukan apa pun.
+ * Sync berjalan satu per satu; sumber yang sedang antre atau berjalan bisa dibatalkan.
  */
 @Composable
 fun HomeScreen(
@@ -86,6 +107,7 @@ fun HomeScreen(
     loading: Set<String>,
     logs: List<SyncLogEntry>,
     busySources: Set<String>,
+    queuedSources: Set<String>,
     isConnectingDrive: Boolean,
     driveAuthError: String?,
     isAddingGithub: Boolean,
@@ -101,66 +123,73 @@ fun HomeScreen(
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
     onSyncFolder: (TreeItem, Boolean) -> Unit,
-    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
+    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit,
+    onCancelSync: (String) -> Unit
 ) {
-    var showAddGithub by remember { mutableStateOf(false) }
-    var tab by remember { mutableStateOf(HomeTab.DRIVE) }
+    // Disimpan saat rotasi. PAT sengaja tidak disimpan di state yang tersimpan.
+    var showAddGithub by rememberSaveable { mutableStateOf(false) }
     val busy = busySources.isNotEmpty()
+    val pagerState = rememberPagerState(pageCount = { HomeTab.entries.size })
+    val scope = rememberCoroutineScope()
 
     Column(modifier.fillMaxSize()) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-        TabRow(selectedTabIndex = tab.ordinal) {
-            HomeTab.entries.forEach { t ->
+        TabRow(selectedTabIndex = pagerState.currentPage) {
+            HomeTab.entries.forEachIndexed { index, t ->
                 Tab(
-                    selected = tab == t,
-                    onClick = { tab = t },
+                    selected = pagerState.currentPage == index,
+                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                     text = { Text(t.title, fontSize = 13.sp, maxLines = 1) }
                 )
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (!isOnline) {
-                item { Notice("Tidak ada koneksi internet.") }
-            }
-            if (!hasStoragePermission) {
-                item {
-                    Notice("Izin akses semua file belum diberikan. Lotura butuh izin ini untuk membaca dan menulis folder lokal.")
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = onRequestStoragePermission) { Text("Beri izin") }
-                }
-            }
-            item {
-                TextButton(onClick = onOpenWebGuide) { Text("Buka panduan") }
-            }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) { page ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                noticeItems(
+                    isOnline = isOnline,
+                    hasStoragePermission = hasStoragePermission,
+                    onRequestStoragePermission = onRequestStoragePermission,
+                    onOpenWebGuide = onOpenWebGuide
+                )
 
-            when (tab) {
-                HomeTab.DRIVE -> driveSection(
-                    driveAccounts = driveAccounts,
-                    trees = trees,
-                    loading = loading,
-                    isConnectingDrive = isConnectingDrive,
-                    driveAuthError = driveAuthError,
-                    onConnectDrive = onConnectDrive,
-                    onReloadDrive = onReloadDrive,
-                    onRemoveDrive = onRemoveDrive,
-                    onSyncFolder = onSyncFolder
-                )
-                HomeTab.GITHUB -> githubSection(
-                    githubAccounts = githubAccounts,
-                    repos = repos,
-                    loading = loading,
-                    onAddClick = { showAddGithub = true },
-                    onRefreshRepos = onRefreshRepos,
-                    onDeleteGithubAccount = onDeleteGithubAccount,
-                    onSyncRepo = onSyncRepo
-                )
-                HomeTab.LOG -> logSection(logs)
+                when (HomeTab.entries[page]) {
+                    HomeTab.DRIVE -> driveSection(
+                        driveAccounts = driveAccounts,
+                        trees = trees,
+                        loading = loading,
+                        busySources = busySources,
+                        queuedSources = queuedSources,
+                        isConnectingDrive = isConnectingDrive,
+                        driveAuthError = driveAuthError,
+                        onConnectDrive = onConnectDrive,
+                        onReloadDrive = onReloadDrive,
+                        onRemoveDrive = onRemoveDrive,
+                        onSyncFolder = onSyncFolder,
+                        onCancelSync = onCancelSync
+                    )
+                    HomeTab.GITHUB -> githubSection(
+                        githubAccounts = githubAccounts,
+                        repos = repos,
+                        loading = loading,
+                        busySources = busySources,
+                        queuedSources = queuedSources,
+                        onAddClick = { showAddGithub = true },
+                        onRefreshRepos = onRefreshRepos,
+                        onDeleteGithubAccount = onDeleteGithubAccount,
+                        onSyncRepo = onSyncRepo,
+                        onCancelSync = onCancelSync
+                    )
+                    HomeTab.LOG -> logSection(logs)
+                }
             }
         }
     }
@@ -177,18 +206,43 @@ fun HomeScreen(
     }
 }
 
+/** Pemberitahuan di atas setiap tab: offline, izin, dan tombol panduan. */
+private fun LazyListScope.noticeItems(
+    isOnline: Boolean,
+    hasStoragePermission: Boolean,
+    onRequestStoragePermission: () -> Unit,
+    onOpenWebGuide: () -> Unit
+) {
+    if (!isOnline) {
+        item { Notice("Tidak ada koneksi internet.") }
+    }
+    if (!hasStoragePermission) {
+        item {
+            Notice("Izin akses semua file belum diberikan. Lotura butuh izin ini untuk membaca dan menulis folder lokal.")
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onRequestStoragePermission) { Text("Beri izin") }
+        }
+    }
+    item {
+        TextButton(onClick = onOpenWebGuide) { Text("Buka panduan") }
+    }
+}
+
 // ---------- Tab Google Drive ----------
 
 private fun LazyListScope.driveSection(
     driveAccounts: List<DriveAccountEntity>,
     trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
+    busySources: Set<String>,
+    queuedSources: Set<String>,
     isConnectingDrive: Boolean,
     driveAuthError: String?,
     onConnectDrive: () -> Unit,
     onReloadDrive: (String) -> Unit,
     onRemoveDrive: (String) -> Unit,
-    onSyncFolder: (TreeItem, Boolean) -> Unit
+    onSyncFolder: (TreeItem, Boolean) -> Unit,
+    onCancelSync: (String) -> Unit
 ) {
     item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
     item {
@@ -202,19 +256,21 @@ private fun LazyListScope.driveSection(
     }
     driveAccounts.forEach { account ->
         val sourceKey = SourceKeys.drive(account.email)
+        val activity = activityOf(sourceKey, loading, queuedSources, busySources)
         item(key = "drive-head:${account.email}") {
             AccountHeader(
                 title = account.email,
+                activity = activity,
                 onReload = { onReloadDrive(account.email) },
                 onRemove = { onRemoveDrive(account.email) },
-                isLoading = sourceKey in loading
+                onCancel = { onCancelSync(sourceKey) }
             )
         }
         rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
             item(key = folder.key) {
                 FolderRow(
                     item = folder,
-                    busy = sourceKey in loading,
+                    enabled = activity == RowActivity.IDLE,
                     onSync = { upload -> onSyncFolder(folder, upload) }
                 )
             }
@@ -228,10 +284,13 @@ private fun LazyListScope.githubSection(
     githubAccounts: List<GithubAccountEntity>,
     repos: List<GithubRepoEntity>,
     loading: Set<String>,
+    busySources: Set<String>,
+    queuedSources: Set<String>,
     onAddClick: () -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
+    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit,
+    onCancelSync: (String) -> Unit
 ) {
     item { SectionTitle("GitHub", null) }
     item {
@@ -248,9 +307,10 @@ private fun LazyListScope.githubSection(
         item(key = "gh-head:${account.id}") {
             AccountHeader(
                 title = account.username,
+                activity = RowActivity.IDLE,
                 onReload = { onRefreshRepos(account) },
                 onRemove = { onDeleteGithubAccount(account) },
-                isLoading = false
+                onCancel = {}
             )
         }
         val accountRepos = repos.filter { it.accountId == account.id }
@@ -259,11 +319,13 @@ private fun LazyListScope.githubSection(
             item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
         }
         accountRepos.forEach { repo ->
+            val sourceKey = SourceKeys.github(repo.fullName)
             item(key = "repo:${repo.fullName}") {
                 RepoCard(
                     repo = repo,
-                    busy = SourceKeys.github(repo.fullName) in loading,
-                    onSync = { upload -> onSyncRepo(repo, upload) }
+                    activity = activityOf(sourceKey, loading, queuedSources, busySources),
+                    onSync = { upload -> onSyncRepo(repo, upload) },
+                    onCancel = { onCancelSync(sourceKey) }
                 )
             }
         }
@@ -276,7 +338,7 @@ private fun LazyListScope.logSection(logs: List<SyncLogEntry>) {
     item {
         SectionTitle(
             "Log standar",
-            "Semua sumber, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir."
+            "Semua sumber, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir. Ketuk entri untuk melihat item yang dilewati."
         )
     }
     if (logs.isEmpty()) {
@@ -287,10 +349,15 @@ private fun LazyListScope.logSection(logs: List<SyncLogEntry>) {
 
 @Composable
 private fun LogRow(entry: SyncLogEntry) {
+    val skippedTotal = entry.skipped + entry.hidden
+    val hasDetail = entry.skipDetails.isNotEmpty()
+    var expanded by rememberSaveable(entry.atMillis, entry.source, entry.label) { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        onClick = { if (hasDetail) expanded = !expanded }
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -323,17 +390,45 @@ private fun LogRow(entry: SyncLogEntry) {
                     SyncStatus.OK -> Icons.Filled.Check to MaterialTheme.colorScheme.primary
                     SyncStatus.SEBAGIAN -> Icons.Filled.Warning to MaterialTheme.colorScheme.tertiary
                     SyncStatus.GAGAL -> Icons.Filled.Close to MaterialTheme.colorScheme.error
+                    SyncStatus.DIBATALKAN -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "${statusText(entry.status)} · ${entry.transferred} ditransfer, ${entry.skipped} dilewati, ${entry.failed} gagal",
+                    "${statusText(entry.status)} · ${entry.transferred} berhasil, $skippedTotal dilewati, ${entry.failed} gagal",
                     fontSize = 13.sp
+                )
+            }
+            if (skippedTotal > 0) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Dilewati: ${skipCountsText(entry.skipCounts, entry.hidden)}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             entry.error?.let {
                 Spacer(Modifier.height(2.dp))
                 ErrorText(it)
+            }
+            if (hasDetail) {
+                Spacer(Modifier.height(4.dp))
+                if (expanded) {
+                    entry.skipDetails.forEach { detail ->
+                        Text(
+                            "${detail.path} — ${skipReasonLabel(detail.reason)}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    val notShown = skippedTotal - entry.skipDetails.size
+                    if (notShown > 0) {
+                        Text("…dan $notShown item lain tidak ditampilkan", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("Ketuk untuk menutup", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                } else {
+                    Text("Ketuk untuk lihat daftar item yang dilewati", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
@@ -344,8 +439,9 @@ private fun LogRow(entry: SyncLogEntry) {
 @Composable
 private fun RepoCard(
     repo: GithubRepoEntity,
-    busy: Boolean,
-    onSync: (Boolean) -> Unit
+    activity: RowActivity,
+    onSync: (Boolean) -> Unit,
+    onCancel: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -376,10 +472,10 @@ private fun RepoCard(
                     Tag("Private")
                 }
             }
-            if (busy) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            if (activity == RowActivity.IDLE) {
+                SyncArrows(enabled = true, onDownload = { onSync(false) }, onUpload = { onSync(true) })
             } else {
-                SyncArrows(onDownload = { onSync(false) }, onUpload = { onSync(true) })
+                ActivityStatus(activity, onCancel)
             }
         }
     }
@@ -398,9 +494,10 @@ private fun SectionTitle(title: String, hint: String?) {
 @Composable
 private fun AccountHeader(
     title: String,
+    activity: RowActivity,
     onReload: () -> Unit,
     onRemove: () -> Unit,
-    isLoading: Boolean
+    onCancel: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -418,12 +515,12 @@ private fun AccountHeader(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            if (isLoading) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
+            if (activity == RowActivity.IDLE) {
                 IconButton(onClick = onReload) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang")
                 }
+            } else {
+                ActivityStatus(activity, onCancel)
             }
             IconButton(onClick = onRemove) {
                 Icon(Icons.Filled.Delete, contentDescription = "Hapus akun")
@@ -432,14 +529,33 @@ private fun AccountHeader(
     }
 }
 
+/** Status aktivitas di tempat ikon sinkron: spinner, teks menunggu/berjalan, dan tombol batal. */
+@Composable
+private fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (activity == RowActivity.QUEUED) {
+            Text("Menunggu giliran", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (activity == RowActivity.RUNNING) {
+            Text("Sync berjalan", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(6.dp))
+        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        if (activity == RowActivity.QUEUED || activity == RowActivity.RUNNING) {
+            IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Batalkan sync", modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
 /** Ikon kecil di pojok kanan kartu: ↓ = download (sumber ke perangkat), ↑ = unggah (perangkat ke sumber). */
 @Composable
-private fun SyncArrows(onDownload: () -> Unit, onUpload: () -> Unit) {
+private fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onDownload, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = onDownload, enabled = enabled, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.ArrowDownward, contentDescription = "Download", modifier = Modifier.size(16.dp))
         }
-        IconButton(onClick = onUpload, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = onUpload, enabled = enabled, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.ArrowUpward, contentDescription = "Unggah", modifier = Modifier.size(16.dp))
         }
     }
@@ -448,7 +564,7 @@ private fun SyncArrows(onDownload: () -> Unit, onUpload: () -> Unit) {
 @Composable
 private fun FolderRow(
     item: TreeItem,
-    busy: Boolean,
+    enabled: Boolean,
     onSync: (Boolean) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -473,11 +589,8 @@ private fun FolderRow(
                     Tag("Archived")
                 }
             }
-            if (busy) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                SyncArrows(onDownload = { onSync(false) }, onUpload = { onSync(true) })
-            }
+            // Dinonaktifkan selama sumber ini antre atau berjalan; statusnya ada di header akun.
+            SyncArrows(enabled = enabled, onDownload = { onSync(false) }, onUpload = { onSync(true) })
         }
     }
     HorizontalDivider()
@@ -564,6 +677,26 @@ private fun statusText(status: SyncStatus): String = when (status) {
     SyncStatus.OK -> "OK"
     SyncStatus.SEBAGIAN -> "Sebagian"
     SyncStatus.GAGAL -> "Gagal"
+    SyncStatus.DIBATALKAN -> "Dibatalkan"
+}
+
+/** Label pendek untuk satu alasan skip. */
+private fun skipReasonLabel(reason: SkipReason): String = when (reason) {
+    SkipReason.SAME_SIZE -> "ukuran sama, dianggap sudah sinkron"
+    SkipReason.NOT_A_LOCAL_FILE -> "tidak ada sebagai file di perangkat"
+    SkipReason.TOO_LARGE_FOR_GITHUB -> "lebih dari 45 MB, melewati batas aman GitHub"
+    SkipReason.HIDDEN -> "nama diawali titik, tersembunyi"
+}
+
+/** Ringkasan jumlah per alasan, mis. "7 ukuran sama, 3 lebih dari 45 MB". */
+private fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
+    val parts = mutableListOf<String>()
+    counts[SkipReason.SAME_SIZE]?.takeIf { it > 0 }?.let { parts += "$it ukuran sama" }
+    counts[SkipReason.NOT_A_LOCAL_FILE]?.takeIf { it > 0 }?.let { parts += "$it tidak ada di perangkat" }
+    counts[SkipReason.TOO_LARGE_FOR_GITHUB]?.takeIf { it > 0 }?.let { parts += "$it lebih dari 45 MB" }
+    val hiddenCount = counts[SkipReason.HIDDEN] ?: hidden
+    if (hiddenCount > 0) parts += "$hiddenCount tersembunyi"
+    return parts.joinToString(", ").ifEmpty { "-" }
 }
 
 private fun formatTime(millis: Long): String =

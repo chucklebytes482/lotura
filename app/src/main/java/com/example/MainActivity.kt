@@ -156,6 +156,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             loading = uiState.loading,
             logs = logs,
             busySources = uiState.busySources,
+            queuedSources = uiState.queuedSources,
             isConnectingDrive = uiState.isConnectingDrive,
             driveAuthError = uiState.driveAuthError,
             isAddingGithub = uiState.isAddingGithub,
@@ -184,7 +185,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
             onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
             onSyncFolder = { item, upload -> viewModel.syncFolder(item, upload) },
-            onSyncRepo = { repo, upload -> viewModel.syncRepo(repo, upload) }
+            onSyncRepo = { repo, upload -> viewModel.syncRepo(repo, upload) },
+            onCancelSync = { key -> viewModel.cancelSync(key) }
         )
     }
 }

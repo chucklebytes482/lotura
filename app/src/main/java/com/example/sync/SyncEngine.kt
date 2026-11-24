@@ -10,6 +10,8 @@ import com.example.github.GithubTreeBlob
 import com.example.github.GithubTreeChange
 import com.example.data.LocalFileOps
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -39,6 +41,7 @@ class SyncEngine(
         val token = driveTokenProvider(email)
         var result = OpResult()
         for (item in items) {
+            if (!currentCoroutineContext().isActive) break
             val remoteId = item.remoteId
             if (remoteId == null) {
                 result += OpResult(failed = 1)
@@ -54,7 +57,9 @@ class SyncEngine(
                     null
                 }
                 listing?.let { all ->
-                    result += OpResult(hidden = all.count { isHiddenPath(it.relativePath) })
+                    all.filter { isHiddenPath(it.relativePath) }.forEach {
+                        result += OpResult.skip(SkipReason.HIDDEN, "${item.path}/${it.relativePath}")
+                    }
                 }
                 listing?.filterNot { isHiddenPath(it.relativePath) }?.forEach { remote ->
                     result += downloadDriveFile(
@@ -88,9 +93,10 @@ class SyncEngine(
         size: Long?,
         nativeMime: String?
     ): OpResult {
+        if (!currentCoroutineContext().isActive) return OpResult()
         val localSize = dest.takeIf { it.isFile }?.length()
         if (!SyncDecisions.shouldTransfer(sourceSize = size, targetSize = localSize)) {
-            return OpResult(skipped = 1)
+            return OpResult.skip(SkipReason.SAME_SIZE, relPath)
         }
         return try {
             dest.parentFile?.mkdirs()
@@ -116,6 +122,7 @@ class SyncEngine(
         val token = driveTokenProvider(email)
         var result = OpResult()
         for (item in items) {
+            if (!currentCoroutineContext().isActive) break
             // Pasangan (path relatif ke root Drive, file lokal, referensi remote) untuk item ini
             val jobs = mutableListOf<Triple<String, File, RemoteRef?>>()
             if (item.isFolder) {
@@ -133,14 +140,15 @@ class SyncEngine(
                 if (file.isFile) {
                     jobs += Triple(item.path, file, RemoteRef(item.remoteId, item.size, item.nativeMime))
                 } else {
-                    result += OpResult(skipped = 1)
+                    result += OpResult.skip(SkipReason.NOT_A_LOCAL_FILE, item.path)
                 }
             }
             for ((relPath, file, remote) in jobs) {
+                if (!currentCoroutineContext().isActive) break
                 val remoteSize = remote?.size
                 val exists = remote?.id != null
                 if (exists && !SyncDecisions.shouldTransfer(sourceSize = file.length(), targetSize = remoteSize)) {
-                    result += OpResult(skipped = 1)
+                    result += OpResult.skip(SkipReason.SAME_SIZE, relPath)
                     continue
                 }
                 try {
@@ -176,15 +184,16 @@ class SyncEngine(
         val blobs = github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
         var result = OpResult()
         for (blob in blobs) {
+            if (!currentCoroutineContext().isActive) break
             if (items.none { it.covers(blob.repoPath) }) continue
             if (isHiddenPath(blob.repoPath)) {
-                result += OpResult(hidden = 1)
+                result += OpResult.skip(SkipReason.HIDDEN, blob.repoPath)
                 continue
             }
             if (!isTrackedRepoPath(blob.repoPath)) continue
             val dest = File(rootDir, blob.repoPath)
             if (!SyncDecisions.shouldTransfer(sourceSize = blob.size, targetSize = dest.takeIf { it.isFile }?.length())) {
-                result += OpResult(skipped = 1)
+                result += OpResult.skip(SkipReason.SAME_SIZE, blob.repoPath)
                 // Ukuran sama: hanya dianggap sinkron kalau isinya memang identik.
                 if (dest.isFile && LocalFileOps.gitBlobSha(dest) == blob.sha) onSynced(blob.repoPath, blob.sha)
                 continue
@@ -232,15 +241,16 @@ class SyncEngine(
         }
 
         for ((repoPath, file) in candidates) {
+            if (!currentCoroutineContext().isActive) break
             if (!isTrackedRepoPath(repoPath)) continue
             val remote = remoteBlobs[repoPath]
             if (!SyncDecisions.shouldTransfer(sourceSize = file.length(), targetSize = remote?.size)) {
-                result += OpResult(skipped = 1)
+                result += OpResult.skip(SkipReason.SAME_SIZE, repoPath)
                 if (remote != null && LocalFileOps.gitBlobSha(file) == remote.sha) onSynced(repoPath, remote.sha)
                 continue
             }
             if (file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
-                result += OpResult(skipped = 1)
+                result += OpResult.skip(SkipReason.TOO_LARGE_FOR_GITHUB, repoPath)
                 continue
             }
             try {
@@ -251,7 +261,8 @@ class SyncEngine(
             }
         }
 
-        if (changes.isNotEmpty()) {
+        // Dibatalkan sebelum commit: tidak ada yang dikirim ke repo.
+        if (changes.isNotEmpty() && currentCoroutineContext().isActive) {
             try {
                 github.createAtomicCommit(
                     pat = pat,

@@ -3,7 +3,8 @@ package com.example.data
 import com.example.sync.OpResult
 
 /** Hasil sync terakhir untuk satu folder root Drive atau satu repo GitHub. */
-enum class SyncStatus { OK, SEBAGIAN, GAGAL }
+/** DIBATALKAN: dihentikan user di tengah jalan; angka di log adalah yang sudah sempat diproses. */
+enum class SyncStatus { OK, SEBAGIAN, GAGAL, DIBATALKAN }
 
 data class SyncSummary(
     val lastSyncAtMillis: Long,

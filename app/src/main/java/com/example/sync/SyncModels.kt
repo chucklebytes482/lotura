@@ -70,17 +70,46 @@ object SyncDecisions {
         sourceSize == null || targetSize == null || sourceSize != targetSize
 }
 
+/** Alasan satu item dilewati. */
+enum class SkipReason {
+    /** Ukuran di sumber dan tujuan sama, jadi dianggap sudah sinkron. */
+    SAME_SIZE,
+    /** Bukan file biasa di perangkat (mis. folder kosong atau tidak ada), tidak bisa diunggah. */
+    NOT_A_LOCAL_FILE,
+    /** Lebih dari batas 45 MB untuk GitHub. */
+    TOO_LARGE_FOR_GITHUB,
+    /** Path tersembunyi (diawali '.'), dilewati sebelum sync. */
+    HIDDEN
+}
+
+data class SkipDetail(val path: String, val reason: SkipReason)
+
+/**
+ * Hasil satu operasi sync.
+ * Invariant: [skipDetails].size == skipped + hidden. Angka [hidden] dihitung terpisah dari [skipped]
+ * supaya ringkasan status tetap sama seperti sebelumnya.
+ */
 data class OpResult(
     val transferred: Int = 0,
     val skipped: Int = 0,
     val failed: Int = 0,
     /** Item tersembunyi (mis. file sistem) yang dilewati sebelum sync. */
-    val hidden: Int = 0
+    val hidden: Int = 0,
+    /** Alasan per item yang dilewati, termasuk yang [hidden]. */
+    val skipDetails: List<SkipDetail> = emptyList()
 ) {
     operator fun plus(other: OpResult) = OpResult(
         transferred + other.transferred,
         skipped + other.skipped,
         failed + other.failed,
-        hidden + other.hidden
+        hidden + other.hidden,
+        skipDetails + other.skipDetails
     )
+
+    companion object {
+        /** Satu item dilewati dengan alasan [reason]. HIDDEN masuk ke hitungan [hidden]. */
+        fun skip(reason: SkipReason, path: String): OpResult =
+            if (reason == SkipReason.HIDDEN) OpResult(hidden = 1, skipDetails = listOf(SkipDetail(path, reason)))
+            else OpResult(skipped = 1, skipDetails = listOf(SkipDetail(path, reason)))
+    }
 }

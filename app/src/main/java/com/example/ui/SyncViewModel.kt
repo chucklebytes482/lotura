@@ -10,6 +10,7 @@ import com.example.SyncBebasApp
 import com.example.data.LocalPathHelper
 import com.example.data.SyncLogEntry
 import com.example.data.SyncLogStore
+import com.example.data.SyncStatus
 import com.example.data.SyncSummary
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
@@ -21,13 +22,20 @@ import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
 import com.example.sync.isTrackedRepoPath
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /**
@@ -42,6 +50,8 @@ data class SyncUiState(
     val loading: Set<String> = emptySet(),
     /** sourceKey yang sedang diunduh/diunggah. */
     val busySources: Set<String> = emptySet(),
+    /** sourceKey yang menunggu giliran sync (sync lain sedang berjalan). */
+    val queuedSources: Set<String> = emptySet(),
     val isConnectingDrive: Boolean = false,
     val isAddingGithub: Boolean = false,
     val driveAuthError: String? = null,
@@ -59,6 +69,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = app.syncEngine
     private val logStore = SyncLogStore(application)
     private val ignoreRules = IgnoreRules(IgnoreRules.DEFAULT_PATTERNS)
+
+    /** Semua sync berjalan satu per satu, supaya dua sumber tidak saling berebut jaringan dan file. */
+    private val syncMutex = Mutex()
+    /** Job sync per sumber (yang sedang antre atau berjalan), untuk tombol batal. */
+    private val syncJobs = mutableMapOf<String, Job>()
 
     val driveAccounts: StateFlow<List<DriveAccountEntity>> = repository.driveAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -209,7 +224,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Download/unggah satu folder dasar, termasuk seluruh isinya. */
     fun syncFolder(item: TreeItem, upload: Boolean) {
-        viewModelScope.launch { runItems(listOf(item), upload, label = item.name) }
+        runItems(listOf(item), upload, label = item.name)
+    }
+
+    /** Menghentikan sync sumber [sourceKey], baik yang sedang berjalan maupun yang masih antre. */
+    fun cancelSync(sourceKey: String) {
+        syncJobs[sourceKey]?.cancel()
     }
 
     /**
@@ -222,30 +242,83 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
             val rootItems = _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
             if (rootItems.isEmpty()) {
-                _uiState.update { it.copy(snackbarMessage = "Repo ${repo.name} kosong atau gagal dimuat") }
+                val message = "Repo ${repo.name} kosong atau gagal dimuat"
+                _uiState.update { it.copy(snackbarMessage = message) }
+                appendLog(sourceKey, repo.name, upload = false, status = SyncStatus.GAGAL, result = OpResult(), error = message)
                 return@launch
             }
             runItems(rootItems, upload, label = repo.name)
         }
     }
 
-    private suspend fun runItems(items: List<TreeItem>, upload: Boolean, label: String) {
+    /**
+     * Memasukkan sync ke antrean. Satu sumber hanya boleh sekali dalam antrean atau berjalan.
+     * Sync dijalankan lewat [syncMutex], jadi satu per satu.
+     */
+    private fun runItems(items: List<TreeItem>, upload: Boolean, label: String) {
         if (items.isEmpty()) return
         val sourceKey = items.first().sourceKey
-        _uiState.update { it.copy(busySources = it.busySources + sourceKey) }
+        val state = _uiState.value
+        if (sourceKey in state.busySources || sourceKey in state.queuedSources) {
+            _uiState.update { it.copy(snackbarMessage = "$label sudah dalam antrean atau sedang berjalan") }
+            return
+        }
+        _uiState.update { it.copy(queuedSources = it.queuedSources + sourceKey) }
+        // LAZY: job disimpan dulu sebelum mulai, supaya blok finally tidak jalan sebelum job tercatat.
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                syncMutex.withLock {
+                    _uiState.update {
+                        it.copy(queuedSources = it.queuedSources - sourceKey, busySources = it.busySources + sourceKey)
+                    }
+                    executeSync(sourceKey, items, upload, label)
+                }
+            } finally {
+                _uiState.update {
+                    it.copy(queuedSources = it.queuedSources - sourceKey, busySources = it.busySources - sourceKey)
+                }
+                syncJobs.remove(sourceKey)
+            }
+        }
+        syncJobs[sourceKey] = job
+        job.start()
+    }
+
+    private suspend fun executeSync(sourceKey: String, items: List<TreeItem>, upload: Boolean, label: String) {
+        var cancelled = false
         var errorMessage: String? = null
         val result = try {
             runOperation(sourceKey, items, upload)
+        } catch (e: CancellationException) {
+            cancelled = true
+            OpResult()
         } catch (e: Exception) {
             errorMessage = e.message ?: "Operasi gagal"
             OpResult(failed = items.size)
-        } finally {
-            _uiState.update { it.copy(busySources = it.busySources - sourceKey) }
         }
-        val now = System.currentTimeMillis()
-        val status = SyncSummary.fromResult(result, now).status
+        if (!currentCoroutineContext().isActive) cancelled = true
+        val status = if (cancelled) SyncStatus.DIBATALKAN else SyncSummary.fromResult(result, System.currentTimeMillis()).status
+        appendLog(
+            sourceKey = sourceKey,
+            label = label,
+            upload = upload,
+            status = status,
+            result = result,
+            error = if (cancelled) "Dibatalkan oleh pengguna" else errorMessage
+        )
+    }
+
+    /** Menulis satu entri log. Dipakai untuk sync dan untuk kegagalan memuat pohon. */
+    private fun appendLog(
+        sourceKey: String,
+        label: String,
+        upload: Boolean,
+        status: SyncStatus,
+        result: OpResult,
+        error: String?
+    ) {
         val entry = SyncLogEntry(
-            atMillis = now,
+            atMillis = System.currentTimeMillis(),
             source = sourceLabel(sourceKey),
             label = label,
             upload = upload,
@@ -253,10 +326,12 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             transferred = result.transferred,
             skipped = result.skipped,
             failed = result.failed,
-            error = errorMessage
+            error = error,
+            hidden = result.hidden,
+            skipDetails = result.skipDetails.take(SyncLogStore.MAX_SKIP_DETAILS),
+            skipCounts = result.skipDetails.groupingBy { it.reason }.eachCount()
         )
         _logs.value = logStore.append(entry)
-
     }
 
     private fun sourceLabel(sourceKey: String): String =
@@ -305,7 +380,16 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(snackbarMessage = "Gagal memuat Drive $email: ${e.message ?: "tidak diketahui"}") }
+            val message = "Gagal memuat Drive $email: ${e.message ?: "tidak diketahui"}"
+            _uiState.update { it.copy(snackbarMessage = message) }
+            appendLog(
+                sourceKey = sourceKey,
+                label = parent?.name ?: email,
+                upload = false,
+                status = SyncStatus.GAGAL,
+                result = OpResult(),
+                error = message
+            )
         } finally {
             _uiState.update { it.copy(loading = it.loading - parentKey) }
         }
@@ -334,7 +418,16 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 st.copy(trees = st.trees + (sourceKey to items), loaded = st.loaded + sourceKey)
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(snackbarMessage = "Gagal memuat repo ${repo.fullName}: ${e.message ?: "tidak diketahui"}") }
+            val message = "Gagal memuat repo ${repo.fullName}: ${e.message ?: "tidak diketahui"}"
+            _uiState.update { it.copy(snackbarMessage = message) }
+            appendLog(
+                sourceKey = sourceKey,
+                label = repo.name,
+                upload = false,
+                status = SyncStatus.GAGAL,
+                result = OpResult(),
+                error = message
+            )
         } finally {
             _uiState.update { it.copy(loading = it.loading - sourceKey) }
         }
