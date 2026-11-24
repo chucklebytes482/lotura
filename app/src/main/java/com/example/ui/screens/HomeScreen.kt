@@ -17,9 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -49,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LocalPathHelper
 import com.example.data.SyncSummary
-import com.example.data.SyncStatus
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
@@ -142,8 +140,9 @@ fun HomeScreen(
                     item(key = folder.key) {
                         FolderRow(
                             item = folder,
-                            summary = summaries[folder.key],
-                            onOpen = { onOpenDriveFolder(folder) }
+                            busy = sourceKey in loading,
+                            onOpen = { onOpenDriveFolder(folder) },
+                            onSync = { upload -> onSyncFolder(folder, upload) }
                         )
                     }
                 }
@@ -182,7 +181,6 @@ fun HomeScreen(
                     repoCard(
                         repo = repo,
                         loading = loading,
-                        summary = summaries[SourceKeys.github(repo.fullName)],
                         onOpenRepo = onOpenRepo,
                         onSyncRepo = onSyncRepo
                     )
@@ -210,7 +208,6 @@ fun HomeScreen(
 private fun LazyListScope.repoCard(
     repo: GithubRepoEntity,
     loading: Set<String>,
-    summary: SyncSummary?,
     onOpenRepo: (GithubRepoEntity) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
@@ -248,7 +245,10 @@ private fun LazyListScope.repoCard(
                 if (sourceKey in loading) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 } else {
-                    StatusIcon(summary)
+                    SyncArrows(
+                        onDownload = { onSyncRepo(repo, false) },
+                        onUpload = { onSyncRepo(repo, true) }
+                    )
                 }
             }
         }
@@ -306,23 +306,25 @@ private fun AccountHeader(
     }
 }
 
-/** Ikon status sync terakhir: centang (OK), peringatan (SEBAGIAN), silang (GAGAL). Kosong jika belum pernah sync. */
+/** Ikon kecil di pojok kanan kartu: ↓ = download (sumber ke perangkat), ↑ = unggah (perangkat ke sumber). */
 @Composable
-private fun StatusIcon(summary: SyncSummary?) {
-    if (summary == null) return
-    val (icon, tint, desc) = when (summary.status) {
-        SyncStatus.OK -> Triple(Icons.Filled.Check, MaterialTheme.colorScheme.primary, "Sync terakhir OK")
-        SyncStatus.SEBAGIAN -> Triple(Icons.Filled.Warning, MaterialTheme.colorScheme.tertiary, "Sync terakhir sebagian")
-        SyncStatus.GAGAL -> Triple(Icons.Filled.Close, MaterialTheme.colorScheme.error, "Sync terakhir gagal")
+private fun SyncArrows(onDownload: () -> Unit, onUpload: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onDownload, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.ArrowDownward, contentDescription = "Download", modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onUpload, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.ArrowUpward, contentDescription = "Unggah", modifier = Modifier.size(16.dp))
+        }
     }
-    Icon(icon, contentDescription = desc, tint = tint, modifier = Modifier.padding(end = 6.dp))
 }
 
 @Composable
 private fun FolderRow(
     item: TreeItem,
-    summary: SyncSummary?,
-    onOpen: () -> Unit
+    busy: Boolean,
+    onOpen: () -> Unit,
+    onSync: (Boolean) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -346,7 +348,11 @@ private fun FolderRow(
                     Tag("Archived")
                 }
             }
-            StatusIcon(summary)
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                SyncArrows(onDownload = { onSync(false) }, onUpload = { onSync(true) })
+            }
         }
     }
     HorizontalDivider()
