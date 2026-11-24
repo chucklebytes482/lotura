@@ -451,7 +451,7 @@
             var t = new Date(d.published_at).toLocaleString("id-ID", {
               timeZone: "Asia/Jakarta", day: "2-digit", month: "long", year: "numeric",
               hour: "2-digit", minute: "2-digit"
-            }).replace(":", ".");
+            });
             el.textContent = "Versi terbaru untuk HP Android • Rilis " + (d.tag_name || "") + ", " + t + " WIB";
           })
           .catch(function () {});
