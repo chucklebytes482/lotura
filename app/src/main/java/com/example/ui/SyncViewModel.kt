@@ -126,7 +126,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val info = driveApi.fetchUserInfo(accessToken)
                 repository.addOrUpdateDriveAccount(info.email, info.displayName, accessToken)
-                _uiState.update { it.copy(snackbarMessage = "Google Drive terhubung: ${info.email}") }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(driveAuthError = e.localizedMessage ?: "Gagal membaca akun Google Drive.")
@@ -174,9 +173,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val summaries = githubApi.listRepositories(token)
                 repository.replaceGithubRepos(accountId, summaries.map { it.toEntity(accountId, user.login) })
-                _uiState.update {
-                    it.copy(snackbarMessage = "Akun GitHub @${user.login} berhasil, ${summaries.size} repo")
-                }
                 onSuccess()
             } catch (e: Exception) {
                 _uiState.update {
@@ -194,7 +190,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 val pat = repository.getGithubPat(account.id) ?: error("PAT tidak ada, tambahkan ulang akun.")
                 val summaries = githubApi.listRepositories(pat)
                 repository.replaceGithubRepos(account.id, summaries.map { it.toEntity(account.id, account.username) })
-                _uiState.update { it.copy(snackbarMessage = "Daftar repo @${account.username} diperbarui") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(snackbarMessage = "Gagal memuat repo: ${e.message ?: "tidak diketahui"}") }
             }
@@ -207,7 +202,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             repository.replaceGithubRepos(account.id, emptyList())
             repository.deleteGithubAccount(account.id)
             accountRepos.forEach { dropSource(SourceKeys.github(it.fullName)) }
-            _uiState.update { it.copy(snackbarMessage = "Akun GitHub @${account.username} dihapus") }
         }
     }
 
@@ -263,13 +257,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         )
         _logs.value = logStore.append(entry)
 
-        val verb = if (upload) "Unggah" else "Download"
-        val text = if (errorMessage != null) {
-            "$verb $label gagal: $errorMessage"
-        } else {
-            "$verb $label selesai: ${result.transferred} ditransfer, ${result.skipped} dilewati, ${result.failed} gagal"
-        }
-        _uiState.update { it.copy(snackbarMessage = text) }
     }
 
     private fun sourceLabel(sourceKey: String): String =
