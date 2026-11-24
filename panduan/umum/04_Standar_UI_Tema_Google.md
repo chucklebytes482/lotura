@@ -109,7 +109,7 @@ Judul tidak memakai bold penuh. Pakai `Normal` atau `Medium`.
 
 - **Tombol utama:** satu per layar, `Button` dengan warna primary.
 - **Tombol sekunder:** `OutlinedButton`. Tombol hapus memakai warna `error` sebagai teks.
-- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ditaruh di layar detail.
+- **Status:** ikon dengan warna dan label. Jangan hanya mengandalkan warna. Di daftar yang padat, cukup ikon. Teks lengkapnya ada di tab Log standar.
 - **Aksi berulang di daftar:** pakai ikon (misalnya download, unggah, muat ulang, hapus), bukan teks. Beri `contentDescription` agar tetap terbaca oleh pembaca layar.
 - **Nilai teknis (path, ID, angka hasil):** `labelSmall` (Roboto Mono) di dalam `SelectionContainer` agar bisa disalin.
 

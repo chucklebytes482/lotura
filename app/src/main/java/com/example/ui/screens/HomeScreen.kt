@@ -1,11 +1,11 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -35,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,28 +52,39 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.LocalPathHelper
+import com.example.data.SyncLogEntry
+import com.example.data.SyncLogStore
 import com.example.data.SyncStatus
-import com.example.data.SyncSummary
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
-import com.example.ui.components.StoragePermissionHelper
 import com.example.ui.tree.rootVisibleItems
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private enum class HomeTab(val title: String) {
+    DRIVE("Google Drive"),
+    GITHUB("GitHub"),
+    LOG("Log standar")
+}
 
 /**
- * Beranda: setiap akun (Drive atau GitHub) menampilkan folder dasarnya.
- * Ikon download/unggah di tiap folder dasar (dan di tiap repo) langsung menjalankan sinkron.
+ * Beranda dengan tiga tab: Google Drive, GitHub, dan Log standar (semua sumber).
+ * Ikon ↓ (download) dan ↑ (unggah) di tiap folder dasar dan tiap repo langsung menjalankan sinkron.
+ * Ketuk kartu tidak melakukan apa pun.
  */
 @Composable
 fun HomeScreen(
+    modifier: Modifier = Modifier,
     driveAccounts: List<DriveAccountEntity>,
     githubAccounts: List<GithubAccountEntity>,
     repos: List<GithubRepoEntity>,
     trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
-    summaries: Map<String, SyncSummary>,
+    logs: List<SyncLogEntry>,
     busySources: Set<String>,
     isConnectingDrive: Boolean,
     driveAuthError: String?,
@@ -87,17 +100,25 @@ fun HomeScreen(
     onAddGithubAccount: (String, () -> Unit) -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onOpenDriveFolder: (TreeItem) -> Unit,
-    onOpenRepo: (GithubRepoEntity) -> Unit,
     onSyncFolder: (TreeItem, Boolean) -> Unit,
     onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
     var showAddGithub by remember { mutableStateOf(false) }
-    var syncInfo by remember { mutableStateOf<SyncInfoTarget?>(null) }
+    var tab by remember { mutableStateOf(HomeTab.DRIVE) }
     val busy = busySources.isNotEmpty()
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxSize()) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+        TabRow(selectedTabIndex = tab.ordinal) {
+            HomeTab.entries.forEach { t ->
+                Tab(
+                    selected = tab == t,
+                    onClick = { tab = t },
+                    text = { Text(t.title, fontSize = 13.sp, maxLines = 1) }
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -118,93 +139,33 @@ fun HomeScreen(
                 TextButton(onClick = onOpenWebGuide) { Text("Buka panduan") }
             }
 
-            // ---------- Google Drive ----------
-            item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
-            item {
-                Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
-                    Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")
-                }
+            when (tab) {
+                HomeTab.DRIVE -> driveSection(
+                    driveAccounts = driveAccounts,
+                    trees = trees,
+                    loading = loading,
+                    isConnectingDrive = isConnectingDrive,
+                    driveAuthError = driveAuthError,
+                    onConnectDrive = onConnectDrive,
+                    onReloadDrive = onReloadDrive,
+                    onRemoveDrive = onRemoveDrive,
+                    onSyncFolder = onSyncFolder
+                )
+                HomeTab.GITHUB -> githubSection(
+                    githubAccounts = githubAccounts,
+                    repos = repos,
+                    loading = loading,
+                    onAddClick = { showAddGithub = true },
+                    onRefreshRepos = onRefreshRepos,
+                    onDeleteGithubAccount = onDeleteGithubAccount,
+                    onSyncRepo = onSyncRepo
+                )
+                HomeTab.LOG -> logSection(logs)
             }
-            driveAuthError?.let { item { ErrorText(it) } }
-            if (driveAccounts.isEmpty()) {
-                item { EmptyText("Belum ada akun Drive.") }
-            }
-            driveAccounts.forEach { account ->
-                val sourceKey = SourceKeys.drive(account.email)
-                item(key = "drive-head:${account.email}") {
-                    AccountHeader(
-                        title = account.email,
-                        subtitle = null,
-                        path = null,
-                        onReload = { onReloadDrive(account.email) },
-                        onRemove = { onRemoveDrive(account.email) },
-                        isLoading = sourceKey in loading
-                    )
-                }
-                rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
-                    item(key = folder.key) {
-                        FolderRow(
-                            item = folder,
-                            busy = sourceKey in loading,
-                            onInfo = { syncInfo = SyncInfoTarget(folder.name, folder.key) { onOpenDriveFolder(folder) } },
-                            onSync = { upload -> onSyncFolder(folder, upload) }
-                        )
-                    }
-                }
-            }
-
-            // ---------- GitHub ----------
-            item { Spacer(Modifier.height(8.dp)) }
-            item { SectionTitle("GitHub", null) }
-            item {
-                Button(onClick = { showAddGithub = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Tambah akun GitHub")
-                }
-            }
-            if (githubAccounts.isEmpty()) {
-                item { EmptyText("Belum ada akun GitHub.") }
-            }
-            githubAccounts.forEach { account ->
-                item(key = "gh-head:${account.id}") {
-                    AccountHeader(
-                        title = account.username,
-                        subtitle = null,
-                        path = null,
-                        onReload = { onRefreshRepos(account) },
-                        onRemove = { onDeleteGithubAccount(account) },
-                        isLoading = false
-                    )
-                }
-                val accountRepos = repos.filter { it.accountId == account.id }
-                    .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
-                if (accountRepos.isEmpty()) {
-                    item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
-                }
-                accountRepos.forEach { repo ->
-                    repoCard(
-                        repo = repo,
-                        loading = loading,
-                        onInfo = { syncInfo = SyncInfoTarget(repo.name, SourceKeys.github(repo.fullName)) { onOpenRepo(repo) } },
-                        onSyncRepo = onSyncRepo
-                    )
-                }
-            }
-            item { Spacer(Modifier.height(8.dp)) }
         }
-
     }
 
     if (showAddGithub) {
-        syncInfo?.let { target ->
-            SyncInfoDialog(
-                title = target.title,
-                summary = summaries[target.summaryKey],
-                onOpen = { syncInfo = null; target.onOpen() },
-                onDismiss = { syncInfo = null }
-            )
-        }
         AddGithubDialog(
             isAdding = isAddingGithub,
             error = githubAccountError,
@@ -216,108 +177,211 @@ fun HomeScreen(
     }
 }
 
-// ---------- Bagian repo GitHub ----------
+// ---------- Tab Google Drive ----------
 
-private fun LazyListScope.repoCard(
-    repo: GithubRepoEntity,
+private fun LazyListScope.driveSection(
+    driveAccounts: List<DriveAccountEntity>,
+    trees: Map<String, List<TreeItem>>,
     loading: Set<String>,
-    onInfo: () -> Unit,
-    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
+    isConnectingDrive: Boolean,
+    driveAuthError: String?,
+    onConnectDrive: () -> Unit,
+    onReloadDrive: (String) -> Unit,
+    onRemoveDrive: (String) -> Unit,
+    onSyncFolder: (TreeItem, Boolean) -> Unit
 ) {
-    val sourceKey = SourceKeys.github(repo.fullName)
-    item(key = "repo:${repo.fullName}") {
-        Surface(
-            modifier = Modifier.fillMaxWidth().clickable { onInfo() },
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = repo.name,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (repo.archived) {
-                        Spacer(Modifier.width(6.dp))
-                        Tag("Archived")
-                    }
-                    if (repo.isPrivate) {
-                        Spacer(Modifier.width(6.dp))
-                        Tag("Private")
-                    }
-                }
-                if (sourceKey in loading) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    SyncArrows(
-                        onDownload = { onSyncRepo(repo, false) },
-                        onUpload = { onSyncRepo(repo, true) }
-                    )
-                }
+    item { SectionTitle("Google Drive", "Folder lokal: ${LocalPathHelper.BASE_DIR}/${LocalPathHelper.DRIVE_PREFIX} <email>/") }
+    item {
+        Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
+            Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")
+        }
+    }
+    driveAuthError?.let { item { ErrorText(it) } }
+    if (driveAccounts.isEmpty()) {
+        item { EmptyText("Belum ada akun Drive.") }
+    }
+    driveAccounts.forEach { account ->
+        val sourceKey = SourceKeys.drive(account.email)
+        item(key = "drive-head:${account.email}") {
+            AccountHeader(
+                title = account.email,
+                onReload = { onReloadDrive(account.email) },
+                onRemove = { onRemoveDrive(account.email) },
+                isLoading = sourceKey in loading
+            )
+        }
+        rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
+            item(key = folder.key) {
+                FolderRow(
+                    item = folder,
+                    busy = sourceKey in loading,
+                    onSync = { upload -> onSyncFolder(folder, upload) }
+                )
             }
         }
     }
 }
 
-// ---------- Popup info sync ----------
+// ---------- Tab GitHub ----------
 
-/** Sasaran popup info: judul, kunci ringkasan sync, dan aksi untuk membuka detail. */
-private class SyncInfoTarget(val title: String, val summaryKey: String, val onOpen: () -> Unit)
-
-/** Popup kecil: status sync terakhir dalam bentuk ringkas. Tombol Buka membawa ke detail. */
-@Composable
-private fun SyncInfoDialog(
-    title: String,
-    summary: SyncSummary?,
-    onOpen: () -> Unit,
-    onDismiss: () -> Unit
+private fun LazyListScope.githubSection(
+    githubAccounts: List<GithubAccountEntity>,
+    repos: List<GithubRepoEntity>,
+    loading: Set<String>,
+    onAddClick: () -> Unit,
+    onRefreshRepos: (GithubAccountEntity) -> Unit,
+    onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
+    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        text = {
-            if (summary == null) {
-                Text("Belum pernah di-sync.", fontSize = 13.sp)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val (icon, tint) = when (summary.status) {
-                            SyncStatus.OK -> Icons.Filled.Check to MaterialTheme.colorScheme.primary
-                            SyncStatus.SEBAGIAN -> Icons.Filled.Warning to MaterialTheme.colorScheme.tertiary
-                            SyncStatus.GAGAL -> Icons.Filled.Close to MaterialTheme.colorScheme.error
-                        }
-                        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(statusText(summary.status), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    SyncInfoLine("Waktu", formatTime(summary.lastSyncAtMillis))
-                    SyncInfoLine("Berhasil / sama", summary.okCount.toString())
-                    SyncInfoLine("Gagal", summary.failCount.toString())
-                    SyncInfoLine("Tersembunyi dilewati", summary.hiddenSkipped.toString())
-                }
+    item { SectionTitle("GitHub", null) }
+    item {
+        Button(onClick = onAddClick) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Tambah akun GitHub")
+        }
+    }
+    if (githubAccounts.isEmpty()) {
+        item { EmptyText("Belum ada akun GitHub.") }
+    }
+    githubAccounts.forEach { account ->
+        item(key = "gh-head:${account.id}") {
+            AccountHeader(
+                title = account.username,
+                onReload = { onRefreshRepos(account) },
+                onRemove = { onDeleteGithubAccount(account) },
+                isLoading = false
+            )
+        }
+        val accountRepos = repos.filter { it.accountId == account.id }
+            .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
+        if (accountRepos.isEmpty()) {
+            item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
+        }
+        accountRepos.forEach { repo ->
+            item(key = "repo:${repo.fullName}") {
+                RepoCard(
+                    repo = repo,
+                    busy = SourceKeys.github(repo.fullName) in loading,
+                    onSync = { upload -> onSyncRepo(repo, upload) }
+                )
             }
-        },
-        confirmButton = { TextButton(onClick = onOpen) { Text("Buka") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Tutup") } }
-    )
+        }
+    }
+}
+
+// ---------- Tab Log standar ----------
+
+private fun LazyListScope.logSection(logs: List<SyncLogEntry>) {
+    item {
+        SectionTitle(
+            "Log standar",
+            "Semua sumber, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir."
+        )
+    }
+    if (logs.isEmpty()) {
+        item { EmptyText("Belum ada aktivitas sync.") }
+    }
+    items(logs) { entry -> LogRow(entry) }
 }
 
 @Composable
-private fun SyncInfoLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth()) {
-        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        Text(value, fontSize = 12.sp)
+private fun LogRow(entry: SyncLogEntry) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (entry.upload) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                    contentDescription = if (entry.upload) "Unggah" else "Download",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = entry.label,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(formatTime(entry.atMillis), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                text = entry.source,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (icon, tint) = when (entry.status) {
+                    SyncStatus.OK -> Icons.Filled.Check to MaterialTheme.colorScheme.primary
+                    SyncStatus.SEBAGIAN -> Icons.Filled.Warning to MaterialTheme.colorScheme.tertiary
+                    SyncStatus.GAGAL -> Icons.Filled.Close to MaterialTheme.colorScheme.error
+                }
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "${statusText(entry.status)} · ${entry.transferred} ditransfer, ${entry.skipped} dilewati, ${entry.failed} gagal",
+                    fontSize = 13.sp
+                )
+            }
+            entry.error?.let {
+                Spacer(Modifier.height(2.dp))
+                ErrorText(it)
+            }
+        }
+    }
+}
+
+// ---------- Kartu repo ----------
+
+@Composable
+private fun RepoCard(
+    repo: GithubRepoEntity,
+    busy: Boolean,
+    onSync: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = repo.name,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (repo.archived) {
+                    Spacer(Modifier.width(6.dp))
+                    Tag("Archived")
+                }
+                if (repo.isPrivate) {
+                    Spacer(Modifier.width(6.dp))
+                    Tag("Private")
+                }
+            }
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                SyncArrows(onDownload = { onSync(false) }, onUpload = { onSync(true) })
+            }
+        }
     }
 }
 
@@ -334,8 +398,6 @@ private fun SectionTitle(title: String, hint: String?) {
 @Composable
 private fun AccountHeader(
     title: String,
-    subtitle: String?,
-    path: String?,
     onReload: () -> Unit,
     onRemove: () -> Unit,
     isLoading: Boolean
@@ -349,15 +411,13 @@ private fun AccountHeader(
             modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitle?.let {
-                    Text(it, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                path?.let {
-                    Text(it, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            Text(
+                title,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             if (isLoading) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
@@ -389,12 +449,11 @@ private fun SyncArrows(onDownload: () -> Unit, onUpload: () -> Unit) {
 private fun FolderRow(
     item: TreeItem,
     busy: Boolean,
-    onInfo: () -> Unit,
     onSync: (Boolean) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onInfo).padding(vertical = 2.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
@@ -500,3 +559,12 @@ private fun ErrorText(text: String) {
 private fun EmptyText(text: String) {
     Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
 }
+
+private fun statusText(status: SyncStatus): String = when (status) {
+    SyncStatus.OK -> "OK"
+    SyncStatus.SEBAGIAN -> "Sebagian"
+    SyncStatus.GAGAL -> "Gagal"
+}
+
+private fun formatTime(millis: Long): String =
+    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(millis))

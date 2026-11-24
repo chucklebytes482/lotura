@@ -1,13 +1,14 @@
+
 # 01 — Panduan Lotura
 
-Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google Drive, dan GitHub, serta edit file repo GitHub langsung di HP.
+Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google Drive, dan GitHub.
 
 ---
 
 ## 1. Persiapan
 
 - Beri izin **Akses Semua File** saat diminta di Beranda. Tanpa izin ini Lotura tidak bisa membaca atau menulis folder lokal.
-- Pastikan ponsel terhubung internet saat memuat daftar, mengunduh, mengunggah, atau menyimpan perubahan file GitHub.
+- Pastikan ponsel terhubung internet saat memuat daftar, mengunduh, atau mengunggah.
 - Lokasi folder di perangkat:
   - Google Drive: `/storage/emulated/0/google drive <email>/`
   - GitHub: `/storage/emulated/0/github <username>/<repo>/`
@@ -15,56 +16,38 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 ## 2. Hubungkan akun
 
-- **Google Drive:** ketuk *Hubungkan akun Google Drive* di Beranda, pilih akun, lalu beri izin. Bisa menambah banyak akun.
-- **GitHub:** ketuk *Tambah akun GitHub*, tempel fine-grained PAT dengan izin `Contents: Read and write`, lalu ketuk *Simpan*. Semua repo di akun itu terhubung, masing-masing sebagai kartu sendiri. Repo yang diarsipkan diberi label *Archived*.
+- **Google Drive:** ketuk *Hubungkan akun Google Drive* di tab Google Drive, pilih akun, lalu beri izin. Bisa menambah banyak akun.
+- **GitHub:** di tab GitHub, ketuk *Tambah akun GitHub*, tempel fine-grained PAT dengan izin `Contents: Read and write`, lalu ketuk *Simpan*. Semua repo di akun itu tampil sebagai kartu sendiri. Repo yang diarsipkan diberi label *Archived*.
 - Setelah pembaruan aplikasi, akun Drive harus disambungkan ulang dan akun GitHub harus ditambahkan ulang.
 
 ## 3. Beranda
 
-- Beranda hanya menampilkan folder root Drive dan daftar repo GitHub, masing-masing sebagai kartu.
-- Baris akun GitHub punya dua ikon saja: *muat ulang* (mengambil daftar repo terbaru) dan *hapus* (memutus akun).
-- Ikon status di kartu menunjukkan hasil sync terakhir: centang (OK), peringatan (sebagian berhasil), silang (gagal). Teks lengkapnya ada di layar detail.
+Beranda punya tiga tab:
+
+- **Google Drive:** folder root tiap akun Drive, masing-masing sebagai baris dengan ikon **↓** dan **↑**.
+- **GitHub:** repo tiap akun GitHub, masing-masing sebagai kartu dengan ikon **↓** dan **↑**. Baris akun punya dua ikon: *muat ulang* (mengambil daftar repo terbaru) dan *hapus* (memutus akun).
+- **Log standar:** riwayat semua sync dari Drive dan GitHub, terbaru di atas. Tiap entri menampilkan arah (↓ download atau ↑ unggah), sumber, nama folder atau repo, waktu, status (OK, Sebagian, Gagal), dan jumlah ditransfer, dilewati, serta gagal. Log menyimpan 200 entri terakhir.
+
+Ketuk kartu atau baris tidak melakukan apa pun. Sync hanya jalan lewat ikon ↓ dan ↑.
 
 ## 4. Download dan Unggah
 
-Aksi download dan unggah hanya ada di layar detail, bukan di Beranda.
-
-- **Download:** menyalin isi folder atau repo dari Drive atau GitHub ke folder lokal.
-- **Unggah:** mengirim isi folder atau repo dari folder lokal ke Drive atau GitHub. File baru di dalam folder itu ikut terkirim.
+- **↓ Download:** menyalin isi folder atau repo dari Drive atau GitHub ke folder lokal.
+- **↑ Unggah:** mengirim isi folder atau repo dari folder lokal ke Drive atau GitHub. File baru di dalam folder itu ikut terkirim.
 - Perbandingan hanya memakai ukuran. Ukuran sama berarti dilewati. Ukuran beda berarti ditransfer.
 - Dokumen Google (Docs, Sheets, Slides) selalu ditransfer karena ukurannya tidak diketahui.
 - File dan folder tersembunyi (nama diawali titik) tidak ikut disinkronkan.
-- Saat transfer berjalan, tombol download dan unggah tidak bisa ditekan sampai transfer selesai.
-- Untuk repo GitHub, download dan unggah hanya memproses file yang dilacak (lihat bagian 6).
+- Saat transfer berjalan, bar progres tampil di atas dan tombol tidak bisa ditekan sampai transfer selesai.
+- Untuk repo GitHub, download dan unggah hanya memproses file yang dilacak (lihat bagian 5).
 
-## 5. Layar detail
+## 5. Berkas yang disinkronkan dari GitHub
 
-- Ketuk kartu folder root Drive atau repo GitHub untuk membuka layar detail.
-- Layar detail menampilkan:
-  - tombol **Download** dan **Unggah** untuk seluruh isi folder atau repo,
-  - tombol **Jelajahi file** untuk repo GitHub dan folder Drive,
-  - bagian **Sync terakhir**: waktu, status (OK, Sebagian, Gagal), jumlah berhasil atau sudah sama, jumlah gagal, dan jumlah item tersembunyi yang dilewati.
-- Tombol kembali di top bar kembali ke Beranda.
+- Repo GitHub hanya menyinkronkan berkas yang sering Anda edit: semua berkas `.md` (termasuk `README.md`), berkas `README*`, dan seluruh isi folder `panduan`, `doc`, dan `docs` di root repo. File lain di repo tidak ikut download atau unggah.
+- Berkas dan folder berawalan titik tidak ikut sinkron.
 
-## 6. Jelajahi dan edit file GitHub
+## 6. Aturan sync manual
 
-- Repo GitHub hanya menampilkan dan menyinkronkan file yang sering Anda edit: semua berkas `.md` (termasuk `README.md`), berkas `README*`, dan seluruh isi folder `panduan`, `doc`, dan `docs` di root repo. File lain di repo tidak tampil dan tidak ikut download atau unggah.
-
-- Di layar detail repo GitHub atau folder Drive, ketuk **Jelajahi file**. Isi repo lokal tampil sebagai daftar: folder dulu, lalu file.
-- Ketuk folder untuk masuk. Tombol kembali naik satu folder, dan kembali ke detail saat sudah di folder paling atas.
-- Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan ke HP setelah berhenti mengetik. Ke GitHub hanya lewat ↑.
-- Dari daftar file, Anda bisa:
-  - membuat file atau folder baru,
-  - mengganti nama,
-  - menghapus (folder ikut terhapus beserta isinya).
-- **Riwayat**: di editor, ketuk **Riwayat** untuk melihat commit yang pernah mengubah berkas itu. Ketuk satu versi untuk melihat isinya, lalu **Pulihkan** untuk menjadikannya isi berkas sekarang. Pemulihan hanya mengubah berkas di HP. Unggah dengan ↑ untuk mengirimnya ke GitHub.
-- Berkas berukuran di atas 2 MB atau berkas biner (gambar, APK, dan sejenisnya) tidak bisa dibuka di editor.
-- Berkas dan folder berawalan titik ditandai *tidak ikut sinkron*.
-
-### Sinkron manual
-
-- Tidak ada auto-sync. Perubahan di HP tidak dikirim ke GitHub, dan perubahan di GitHub tidak ditarik, sampai Anda menekan tombol sync.
-- Di kartu repo GitHub atau folder Drive, ikon **↓** mengunduh dari sumber ke HP, dan ikon **↑** mengunggah dari HP ke sumber.
+- Tidak ada auto-sync. Perubahan di HP tidak dikirim ke GitHub, dan perubahan di GitHub tidak ditarik, sampai Anda menekan ↓ atau ↑.
 - Lotura tidak menghapus apa pun di sisi tujuan saat sync. Berkas yang hanya ada di satu tempat dibiarkan.
 - Jika file yang sama berubah di HP dan di GitHub, Lotura tidak menimpa salah satunya. Pilih arah ↓ atau ↑ sesuai versi yang ingin dipertahankan.
 - File di atas 45 MB dilewati dan dilaporkan.
@@ -72,7 +55,7 @@ Aksi download dan unggah hanya ada di layar detail, bukan di Beranda.
 
 ## 7. Hapus akun
 
-- Ketuk ikon hapus di header akun untuk memutus akun dari Lotura.
+- Ketuk ikon hapus di baris akun GitHub, atau ikon hapus di akun Drive, untuk memutus akun dari Lotura.
 - Menghapus akun hanya memutus koneksi. Berkas di perangkat, Drive, dan GitHub tidak ikut terhapus.
 
 ## 8. Rilis

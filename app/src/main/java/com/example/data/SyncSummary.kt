@@ -1,6 +1,5 @@
 package com.example.data
 
-import android.content.Context
 import com.example.sync.OpResult
 
 /** Hasil sync terakhir untuk satu folder root Drive atau satu repo GitHub. */
@@ -44,35 +43,5 @@ data class SyncSummary(
                 )
             }.getOrNull()
         }
-    }
-}
-
-/**
- * Menyimpan ringkasan sync terakhir per kunci (TreeItem.key untuk folder Drive,
- * sourceKey untuk repo GitHub). Menggantikan log sync.
- */
-class SyncSummaryStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    fun loadAll(): Map<String, SyncSummary> =
-        prefs.all.mapNotNull { (key, value) ->
-            (value as? String)?.let { SyncSummary.decode(it) }?.let { key to it }
-        }.toMap()
-
-    fun save(key: String, summary: SyncSummary) {
-        prefs.edit().putString(key, SyncSummary.encode(summary)).apply()
-    }
-
-    /** Membuang ringkasan untuk kunci yang dimiliki sumber [sourceKey]. */
-    fun removeOwned(sourceKey: String) {
-        val editor = prefs.edit()
-        prefs.all.keys
-            .filter { it == sourceKey || it.startsWith("$sourceKey|") }
-            .forEach { editor.remove(it) }
-        editor.apply()
-    }
-
-    private companion object {
-        const val PREFS = "sync_summary"
     }
 }
