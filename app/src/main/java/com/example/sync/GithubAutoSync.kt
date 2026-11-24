@@ -115,7 +115,7 @@ class GithubAutoSync(
     private suspend fun syncRepo(repo: GithubRepoEntity) = withRepoLock(repo.fullName) {
         val key = repo.fullName
         val root = File(repo.localPath)
-        val local = LocalScanner.scanFiles(root, ignoreRules)
+        val local = LocalScanner.scanFiles(root, ignoreRules).filterKeys { isTrackedRepoPath(it) }
         val current = local.mapValues { (_, file) -> fingerprint(file) }
 
         // Siklus pertama sejak proses hidup: perubahan lokal hanya dicatat, tidak didorong.
@@ -130,14 +130,14 @@ class GithubAutoSync(
             ?: throw IllegalStateException("PAT tidak ada, tambahkan ulang akun.")
         val (headCommit, treeSha) = github.getBranchHeadCommit(pat, repo.owner, repo.name, repo.defaultBranch)
         val remote = github.listBlobsInSubfolder(pat, repo.owner, repo.name, treeSha, "")
-            .filterNot { isHiddenPath(it.repoPath) }
+            .filter { isTrackedRepoPath(it.repoPath) }
             .associate { it.repoPath to it.sha }
 
         val bases = loadBases(key).toMutableMap()
         // Kandidat: berubah di perangkat, atau remote-nya beda dengan base (berubah di GitHub).
-        val candidates = LinkedHashSet<String>(changed)
+        val candidates = LinkedHashSet<String>(changed.filter { isTrackedRepoPath(it) })
         (remote.keys + bases.keys).forEach { path ->
-            if (remote[path] != bases[path]) candidates += path
+            if (isTrackedRepoPath(path) && remote[path] != bases[path]) candidates += path
         }
         if (candidates.isEmpty()) {
             snapshots[key] = current

@@ -21,6 +21,9 @@ import com.example.sync.OpResult
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
+import com.example.sync.isTrackedRepoPath
+import com.example.sync.trackedDirPaths
+import com.example.sync.LocalScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -97,7 +100,9 @@ data class BrowseState(
     val entries: List<LocalFileOps.Entry>,
     val editor: EditorState? = null,
     val repo: GithubRepoEntity? = null,
-    val history: HistoryState? = null
+    val history: HistoryState? = null,
+    /** true untuk repo GitHub: hanya berkas yang dilacak (lihat isTrackedRepoPath) yang tampil. */
+    val trackedOnly: Boolean = false
 )
 
 class SyncViewModel(application: Application) : AndroidViewModel(application) {
@@ -421,6 +426,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             val (_, treeSha) = githubApi.getBranchHeadCommit(pat, repo.owner, repo.name, repo.defaultBranch)
             val blobs: List<GithubTreeBlob> = githubApi.listBlobsInSubfolder(pat, repo.owner, repo.name, treeSha, "")
                 .filterNot { isHiddenPath(it.repoPath) }
+                .filter { isTrackedRepoPath(it.repoPath) }
             val folders = linkedSetOf<String>()
             blobs.forEach { blob ->
                 val parts = blob.repoPath.split('/')
@@ -478,8 +484,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Penjelajah file & editor (repo GitHub) ----------
 
-    /** Membuka penjelajah di salinan lokal sebuah repo atau folder Drive. */
-    fun openLocalFolder(title: String, localPath: String) {
+    /** Membuka penjelajah di salinan lokal sebuah repo atau folder Drive. [trackedOnly] untuk repo GitHub. */
+    fun openLocalFolder(title: String, localPath: String, trackedOnly: Boolean = false) {
         val root = File(localPath)
         viewModelScope.launch {
             withContext(Dispatchers.IO) { root.mkdirs() }
@@ -487,8 +493,21 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 title = title,
                 root = root,
                 dir = root,
-                entries = withContext(Dispatchers.IO) { LocalFileOps.list(root) }
+                entries = withContext(Dispatchers.IO) { listBrowse(root, root, trackedOnly) },
+                trackedOnly = trackedOnly
             )
+        }
+    }
+
+    /** Isi satu folder untuk penjelajah. Pada mode [trackedOnly], hanya berkas yang dilacak dan folder yang memuatnya. */
+    private fun listBrowse(root: File, dir: File, trackedOnly: Boolean): List<LocalFileOps.Entry> {
+        val raw = LocalFileOps.list(dir)
+        if (!trackedOnly) return raw
+        val tracked = LocalScanner.scanFiles(root, ignoreRules).keys.filter { isTrackedRepoPath(it) }.toSet()
+        val dirs = trackedDirPaths(tracked)
+        return raw.filter { e ->
+            val rel = e.file.relativeTo(root).invariantSeparatorsPath
+            if (e.isDir) rel in dirs else rel in tracked
         }
     }
 
@@ -690,8 +709,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun refreshBrowse() {
-        val dir = _browse.value?.dir ?: return
-        val result = withContext(Dispatchers.IO) { runCatching { LocalFileOps.list(dir) } }
+        val current = _browse.value ?: return
+        val dir = current.dir
+        val result = withContext(Dispatchers.IO) { runCatching { listBrowse(current.root, dir, current.trackedOnly) } }
         result.onFailure { showMessage("Gagal membaca folder: ${it.message ?: "tidak diketahui"}") }
         val entries = result.getOrDefault(emptyList())
         _browse.update { b -> if (b != null && b.dir.absolutePath == dir.absolutePath) b.copy(entries = entries) else b }

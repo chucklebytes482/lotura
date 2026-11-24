@@ -181,6 +181,7 @@ class SyncEngine(
                 result += OpResult(hidden = 1)
                 continue
             }
+            if (!isTrackedRepoPath(blob.repoPath)) continue
             val dest = File(rootDir, blob.repoPath)
             if (!SyncDecisions.shouldTransfer(sourceSize = blob.size, targetSize = dest.takeIf { it.isFile }?.length())) {
                 result += OpResult(skipped = 1)
@@ -211,7 +212,9 @@ class SyncEngine(
     ): OpResult = withContext(Dispatchers.IO) {
         val (headCommit, treeSha) = github.getBranchHeadCommit(pat, owner, repo, branch)
         val remoteBlobs: Map<String, GithubTreeBlob> =
-            github.listBlobsInSubfolder(pat, owner, repo, treeSha, "").associateBy { it.repoPath }
+            github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
+                .filter { isTrackedRepoPath(it.repoPath) }
+                .associateBy { it.repoPath }
 
         var result = OpResult()
         val changes = mutableListOf<GithubTreeChange>()
@@ -229,6 +232,7 @@ class SyncEngine(
         }
 
         for ((repoPath, file) in candidates) {
+            if (!isTrackedRepoPath(repoPath)) continue
             val remote = remoteBlobs[repoPath]
             if (!SyncDecisions.shouldTransfer(sourceSize = file.length(), targetSize = remote?.size)) {
                 result += OpResult(skipped = 1)

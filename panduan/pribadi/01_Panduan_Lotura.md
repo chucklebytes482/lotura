@@ -47,6 +47,8 @@ Panduan pemakaian Lotura: sinkronisasi manual antara perangkat Android, Google D
 
 ## 6. Jelajahi dan edit file GitHub
 
+- Repo GitHub hanya menampilkan dan menyinkronkan file yang sering Anda edit: semua berkas `.md` (termasuk `README.md`), berkas `README*`, dan seluruh isi folder `panduan`, `doc`, dan `docs` di root repo. File lain di repo tidak tampil dan tidak ikut download, unggah, atau auto-sync.
+
 - Di layar detail repo GitHub atau folder Drive, ketuk **Jelajahi file**. Isi repo lokal tampil sebagai daftar: folder dulu, lalu file.
 - Ketuk folder untuk masuk. Tombol kembali naik satu folder, dan kembali ke detail saat sudah di folder paling atas.
 - Ketuk file teks untuk membuka editor. Ubah isinya, lalu tunggu sebentar. Perubahan disimpan otomatis ke HP setelah berhenti mengetik.

@@ -265,7 +265,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                         onDownload = { viewModel.syncDetail(upload = false) },
                         onUpload = { viewModel.syncDetail(upload = true) },
                         onOpenFiles = {
-                            viewModel.openLocalFolder(current.title, current.localPath)
+                            viewModel.openLocalFolder(current.title, current.localPath, trackedOnly = current.repo != null)
                             navController.navigate(Routes.FILES)
                         }
                     )
