@@ -43,7 +43,7 @@ fun loadGuideBlocks(context: Context): List<MdBlock>? = runCatching {
     context.assets.open(GUIDE_ASSET).bufferedReader().use { parseMarkdownLite(it.readText()) }
 }.getOrNull()
 
-/** Ringkasan tataletak yang dipakai Lotura; sumbernya ada di panduan/umum/04_Standar_UI_Tema_Google.md bagian 9. */
+/** Ringkasan tataletak yang dipakai Lotura; sumbernya ada di repo panduan pusat (04_Standar_UI_Tema_Google.md bagian 9). */
 private val layoutReference = listOf(
     "Tiga tab tetap: Google Drive, GitHub, Panduan. Geser kiri atau kanan, atau ketuk nama tab.",
     "Judul sumber (akun Drive atau kartu repo) membuka log sumber itu di lembar bawah.",
