@@ -1,9 +1,23 @@
 package com.example.sync
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SyncModelsTest {
+
+    @Test
+    fun trackedRepoPath_mdAndVxenc_yes() {
+        assertTrue(isTrackedRepoPath("encrypt/ketikku.vxenc"))
+        assertTrue(isTrackedRepoPath("catatan.md"))
+    }
+
+    @Test
+    fun trackedRepoPath_otherOrHidden_no() {
+        assertFalse(isTrackedRepoPath("gambar.png"))
+        assertFalse(isTrackedRepoPath(".rahasia/ketikku.vxenc"))
+    }
 
     @Test
     fun skip_sameSize_countsAsSkippedWithReason() {

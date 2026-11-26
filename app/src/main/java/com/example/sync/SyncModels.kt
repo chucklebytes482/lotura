@@ -23,10 +23,11 @@ enum class SyncMode { ADD_BOTH, SYNC }
 fun isHiddenPath(path: String): Boolean = path.split('/').any { it.startsWith(".") }
 
 /**
- * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan: hanya berkas .md di mana pun di repo.
- * Selain itu, dan semua path tersembunyi, diabaikan saat tampil, download/unggah, maupun auto-sync.
+ * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan: berkas .md dan .vxenc (berkas terenkripsi)
+ * di mana pun di repo. Selain itu, dan semua path tersembunyi, diabaikan saat tampil, download/unggah, maupun auto-sync.
  */
-fun isTrackedRepoPath(path: String): Boolean = !isHiddenPath(path) && path.endsWith(".md")
+fun isTrackedRepoPath(path: String): Boolean =
+    !isHiddenPath(path) && (path.endsWith(".md") || path.endsWith(".vxenc"))
 
 /** Semua folder (relatif, memakai '/') yang berisi setidaknya satu path yang dilacak. */
 fun trackedDirPaths(trackedFilePaths: Collection<String>): Set<String> {
