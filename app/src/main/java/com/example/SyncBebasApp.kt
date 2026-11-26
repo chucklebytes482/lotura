@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import com.example.data.RoomSyncStateStore
 import com.example.data.SyncRepository
 import com.example.data.db.SyncDatabase
 import com.example.data.secure.SecureTokenStore
@@ -8,6 +9,7 @@ import com.example.drive.DriveApiClient
 import com.example.drive.GoogleAuthManager
 import com.example.github.GithubApiClient
 import com.example.sync.SyncEngine
+import com.example.sync.SyncStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +35,9 @@ class SyncBebasApp : Application() {
     lateinit var syncEngine: SyncEngine
         private set
 
+    lateinit var syncStateStore: SyncStateStore
+        private set
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -42,6 +47,7 @@ class SyncBebasApp : Application() {
         repository = SyncRepository(database, secureTokenStore)
         driveApiClient = DriveApiClient()
         githubApiClient = GithubApiClient()
+        syncStateStore = RoomSyncStateStore(database.syncStateDao())
         syncEngine = SyncEngine(
             drive = driveApiClient,
             github = githubApiClient,

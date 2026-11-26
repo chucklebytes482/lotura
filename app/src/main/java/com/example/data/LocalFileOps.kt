@@ -108,6 +108,20 @@ object LocalFileOps {
         return name
     }
 
+    /** MD5 isi berkas dalam hex kecil, sama dengan md5Checksum yang dikirim Drive. */
+    fun md5Hex(file: File): String {
+        val md = MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
     /** SHA-1 seperti Git: sha1("blob <ukuran>\0" + isi). Sama dengan sha blob di GitHub. */
     fun gitBlobSha(file: File): String {
         val md = MessageDigest.getInstance("SHA-1")

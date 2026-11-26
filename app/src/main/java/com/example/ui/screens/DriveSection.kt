@@ -26,8 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -93,7 +91,7 @@ internal fun LazyListScope.driveSection(
     onConnectDrive: () -> Unit,
     onReloadDrive: (String) -> Unit,
     onRemoveDrive: (String) -> Unit,
-    onSyncFolder: (TreeItem, Boolean) -> Unit,
+    onSyncFolder: (TreeItem) -> Unit,
     onCancelSync: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
@@ -125,7 +123,7 @@ internal fun LazyListScope.driveSection(
                 FolderRow(
                     item = folder,
                     enabled = activity == RowActivity.IDLE,
-                    onSync = { upload -> onSyncFolder(folder, upload) }
+                    onSync = { onSyncFolder(folder) }
                 )
             }
         }

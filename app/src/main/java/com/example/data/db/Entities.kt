@@ -46,3 +46,16 @@ data class GithubRepoEntity(
     val archived: Boolean,
     val localPath: String
 )
+
+/**
+ * Keadaan satu path setelah sync dua arah berhasil. Dipakai sebagai base untuk menghitung perubahan.
+ * Kunci (sourceKey, path). localHash/remoteHash/remoteRef null = tidak ada di sisi itu saat sync terakhir.
+ */
+@Entity(tableName = "sync_state", primaryKeys = ["sourceKey", "path"])
+data class SyncStateEntity(
+    val sourceKey: String,
+    val path: String,
+    val localHash: String?,
+    val remoteHash: String?,
+    val remoteRef: String?
+)

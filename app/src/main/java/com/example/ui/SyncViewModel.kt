@@ -222,11 +222,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ---------- Transfer (lewat ikon ↓ dan ↑ per folder dasar atau per repo) ----------
+    // ---------- Sync dua arah (lewat tombol sync per folder dasar atau per repo) ----------
 
-    /** Download/unggah satu folder dasar, termasuk seluruh isinya. */
-    fun syncFolder(item: TreeItem, upload: Boolean) {
-        runItems(listOf(item), upload, label = item.name)
+    /** Sync dua arah satu folder dasar, termasuk seluruh isinya. */
+    fun syncFolder(item: TreeItem) {
+        runItems(listOf(item), label = item.name)
     }
 
     /** Menghentikan sync sumber [sourceKey], baik yang sedang berjalan maupun yang masih antre. */
@@ -235,10 +235,10 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Download/unggah seluruh repo: semua item dasar (folder dan file dasar).
+     * Sync dua arah seluruh repo: semua item dasar (folder dan file dasar).
      * File dasar tetap ikut walau tidak ditampilkan. Pohon dimuat dulu bila belum ada.
      */
-    fun syncRepo(repo: GithubRepoEntity, upload: Boolean) {
+    fun syncRepo(repo: GithubRepoEntity) {
         viewModelScope.launch {
             val sourceKey = SourceKeys.github(repo.fullName)
             if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
@@ -247,7 +247,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 logLoadFailure(sourceKey, repo.name, "Repo ${repo.name} kosong atau gagal dimuat")
                 return@launch
             }
-            runItems(rootItems, upload, label = repo.name)
+            runItems(rootItems, label = repo.name)
         }
     }
 
@@ -255,7 +255,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
      * Memasukkan sync ke antrean. Satu sumber hanya boleh sekali dalam antrean atau berjalan.
      * Sync dijalankan lewat [syncMutex], jadi satu per satu.
      */
-    private fun runItems(items: List<TreeItem>, upload: Boolean, label: String) {
+    private fun runItems(items: List<TreeItem>, label: String) {
         if (items.isEmpty()) return
         val sourceKey = items.first().sourceKey
         val state = _uiState.value
@@ -271,7 +271,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(queuedSources = it.queuedSources - sourceKey, busySources = it.busySources + sourceKey)
                     }
-                    executeSync(sourceKey, items, upload, label)
+                    executeSync(sourceKey, items, label)
                 }
             } finally {
                 _uiState.update {
@@ -284,11 +284,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         job.start()
     }
 
-    private suspend fun executeSync(sourceKey: String, items: List<TreeItem>, upload: Boolean, label: String) {
+    private suspend fun executeSync(sourceKey: String, items: List<TreeItem>, label: String) {
         var cancelled = false
         var errorMessage: String? = null
         val result = try {
-            runOperation(sourceKey, items, upload)
+            runOperation(sourceKey, items)
         } catch (e: CancellationException) {
             cancelled = true
             OpResult()
@@ -301,7 +301,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         appendLog(
             sourceKey = sourceKey,
             label = label,
-            upload = upload,
             status = status,
             result = result,
             error = if (cancelled) "Dibatalkan oleh pengguna" else errorMessage
@@ -314,7 +313,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         appendLog(
             sourceKey = sourceKey,
             label = label,
-            upload = false,
             status = SyncStatus.GAGAL,
             result = OpResult(),
             error = message
@@ -325,7 +323,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private fun appendLog(
         sourceKey: String,
         label: String,
-        upload: Boolean,
         status: SyncStatus,
         result: OpResult,
         error: String?
@@ -335,7 +332,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             sourceKey = sourceKey,
             source = SourceTreeRules.sourceLabel(sourceKey),
             label = label,
-            upload = upload,
             status = status,
             transferred = result.transferred,
             skipped = result.skipped,
@@ -414,15 +410,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun runOperation(sourceKey: String, items: List<TreeItem>, upload: Boolean): OpResult {
+    private suspend fun runOperation(sourceKey: String, items: List<TreeItem>): OpResult {
         if (SourceTreeRules.isDriveSource(sourceKey)) {
             val email = SourceTreeRules.driveEmailOf(sourceKey)
             val root = LocalPathHelper.driveRoot(email)
-            return if (upload) {
-                engine.uploadDrive(email, root, ignoreRules, items)
-            } else {
-                engine.downloadDrive(email, root, items)
-            }
+            return engine.syncDrive(email, root, ignoreRules, items, app.syncStateStore, sourceKey)
         }
         val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
         val repo = repos.value.firstOrNull { it.fullName == fullName }
@@ -430,15 +422,22 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val pat = repository.getGithubPat(repo.accountId)
             ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
         val root = File(repo.localPath)
-        return if (upload) {
-            engine.uploadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, ignoreRules, items)
-        } else {
-            engine.downloadGithub(pat, repo.owner, repo.name, repo.defaultBranch, root, items)
-        }
+        return engine.syncGithub(
+            pat = pat,
+            owner = repo.owner,
+            repo = repo.name,
+            branch = repo.defaultBranch,
+            rootDir = root,
+            ignoreRules = ignoreRules,
+            items = items,
+            stateStore = app.syncStateStore,
+            sourceKey = sourceKey
+        )
     }
 
-    /** Membuang semua state pohon untuk satu sumber. Log sync tetap disimpan sebagai riwayat. */
-    private fun dropSource(sourceKey: String) {
+    /** Membuang state pohon dan base sync untuk satu sumber. Log sync tetap disimpan sebagai riwayat. */
+    private suspend fun dropSource(sourceKey: String) {
+        app.syncStateStore.deleteSource(sourceKey)
         _uiState.update { st ->
             st.copy(
                 trees = st.trees - sourceKey,

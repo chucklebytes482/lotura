@@ -1,0 +1,139 @@
+package com.example.sync
+
+/**
+ * Perencana sinkron dua arah (murni Kotlin, tanpa Android).
+ *
+ * Tiga sumber kebenaran per path:
+ *  - local: hash file di perangkat sekarang (git blob sha untuk GitHub, md5 untuk Drive).
+ *  - remote: hash file di sumber sekarang (blob sha untuk GitHub, md5 untuk Drive).
+ *  - base: keadaan kedua sisi setelah sync berhasil terakhir.
+ *
+ * Perubahan dihitung dari base: sisi yang hash-nya berbeda dari base dianggap berubah.
+ * Hash lokal dan remote tidak pernah dibandingkan langsung, kecuali saat base belum ada.
+ */
+
+/** Berkas lokal. [hash] sesuai jenis sumber (lihat catatan di atas). */
+data class LocalFile(val hash: String)
+
+/**
+ * Berkas di sisi remote.
+ *  - ref: id file Drive, atau path file di repo GitHub.
+ *  - hash: md5 (Drive) atau blob sha (GitHub). null untuk Google Workspace native (Docs/Sheets/Slides),
+ *    yang isinya tidak bisa dibandingkan dengan file lokal.
+ *  - nativeMime: tipe Google Workspace bila berkas native, null untuk file biasa.
+ */
+data class RemoteFile(val ref: String, val hash: String?, val nativeMime: String?)
+
+/**
+ * Keadaan satu path setelah sync berhasil.
+ * remoteRef null berarti path itu tidak ada di remote pada saat sync terakhir.
+ */
+data class PathState(val localHash: String?, val remoteHash: String?, val remoteRef: String?)
+
+/** Aksi yang diputuskan planner untuk satu path. */
+sealed interface PlannedAction {
+    val path: String
+
+    /** Unduh dari remote (atau ekspor untuk native) ke perangkat. */
+    data class Download(override val path: String, val remote: RemoteFile) : PlannedAction
+
+    /** Unggah dari perangkat ke remote. remote diisi bila file sudah ada di sana (untuk memperbarui). */
+    data class Upload(override val path: String, val local: LocalFile, val remote: RemoteFile?) : PlannedAction
+
+    /** Remote sudah dihapus dan lokal tidak berubah: pindahkan lokal ke trash. */
+    data class TrashLocal(override val path: String) : PlannedAction
+
+    /** Lokal sudah dihapus dan remote tidak berubah: hapus remote (ke trash remote). */
+    data class TrashRemote(override val path: String, val remote: RemoteFile) : PlannedAction
+
+    /** Kedua sisi berubah dan isinya berbeda: lokal dipindah jadi salinan konflik, remote diunduh. */
+    data class Conflict(override val path: String, val local: LocalFile, val remote: RemoteFile) : PlannedAction
+
+    /** Kedua sisi sudah sama: cukup catat state. */
+    data class Record(override val path: String, val local: LocalFile, val remote: RemoteFile) : PlannedAction
+
+    /** Tidak ada di kedua sisi lagi: hapus state-nya. */
+    data class Forget(override val path: String) : PlannedAction
+
+    /** Tidak ada perubahan. */
+    data class Unchanged(override val path: String) : PlannedAction
+}
+
+object TwoWayPlanner {
+
+    /**
+     * Rencana untuk semua path. [local], [remote], dan [base] sudah dibatasi ke ruang lingkup sync.
+     * Hasil diurutkan menurut path.
+     */
+    fun planAll(
+        local: Map<String, LocalFile>,
+        remote: Map<String, RemoteFile>,
+        base: Map<String, PathState>
+    ): List<PlannedAction> {
+        val paths = (local.keys + remote.keys + base.keys).toSortedSet()
+        return paths.map { plan(it, local[it], remote[it], base[it]) }
+    }
+
+    /** Aturan untuk satu path. Lihat komentar di [PlannedAction] untuk arti tiap aksi. */
+    fun plan(path: String, l: LocalFile?, r: RemoteFile?, b: PathState?): PlannedAction {
+        val native = r?.nativeMime != null
+
+        if (b == null) {
+            // Belum pernah sync untuk path ini.
+            return when {
+                l == null && r == null -> PlannedAction.Unchanged(path)
+                l != null && r == null -> PlannedAction.Upload(path, l, null)
+                l == null && r != null -> PlannedAction.Download(path, r)
+                l != null && r != null && (native || l.hash == r.hash) -> PlannedAction.Record(path, l, r)
+                l != null && r != null -> PlannedAction.Conflict(path, l, r)
+                else -> PlannedAction.Unchanged(path)
+            }
+        }
+
+        val lChanged = l?.hash != b.localHash
+        val remotePresentBefore = b.remoteRef != null
+        val rChanged = when {
+            (r != null) != remotePresentBefore -> true
+            r == null -> false
+            native -> false // Native: isinya tidak bisa dibandingkan, hanya keberadaannya.
+            else -> r.hash != b.remoteHash
+        }
+
+        return when {
+            l != null && r != null -> when {
+                lChanged && rChanged ->
+                    if (native || l.hash == r.hash) PlannedAction.Record(path, l, r)
+                    else PlannedAction.Conflict(path, l, r)
+                lChanged -> PlannedAction.Upload(path, l, r)
+                rChanged -> PlannedAction.Download(path, r)
+                else -> PlannedAction.Unchanged(path)
+            }
+            l != null && r == null -> when {
+                // Remote dihapus sementara lokal diedit: edit lokal menang, file dibuat ulang di remote.
+                remotePresentBefore && !lChanged -> PlannedAction.TrashLocal(path)
+                else -> PlannedAction.Upload(path, l, null)
+            }
+            l == null && r != null -> when {
+                // Lokal dihapus dan remote tidak berubah. Native tidak pernah dihapus dari remote
+                // lewat sisi lokal, karena yang ada di perangkat hanya salinan ekspornya.
+                b.localHash != null && !rChanged && !native -> PlannedAction.TrashRemote(path, r)
+                else -> PlannedAction.Download(path, r)
+            }
+            else -> if (b.localHash != null || remotePresentBefore) PlannedAction.Forget(path)
+            else PlannedAction.Unchanged(path)
+        }
+    }
+
+    /**
+     * Nama salinan konflik: `nama (konflik yyyyMMdd-HHmmss).ext`, di folder yang sama.
+     * Ekstensi dipisah dari titik terakhir pada nama, kecuali titik di awal nama.
+     */
+    fun conflictCopyPath(path: String, stamp: String): String {
+        val dir = path.substringBeforeLast('/', "")
+        val name = path.substringAfterLast('/')
+        val dot = name.lastIndexOf('.')
+        val (stem, ext) = if (dot > 0) name.substring(0, dot) to name.substring(dot) else name to ""
+        val copy = "$stem (konflik $stamp)$ext"
+        return if (dir.isEmpty()) copy else "$dir/$copy"
+    }
+}

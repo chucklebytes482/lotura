@@ -13,8 +13,8 @@ data class SyncLogEntry(
     val source: String,
     /** Nama folder atau repo yang di-sync. */
     val label: String,
-    /** true = unggah (perangkat ke sumber), false = download (sumber ke perangkat). */
-    val upload: Boolean,
+    /** Tidak dipakai lagi (sync sekarang dua arah). Hanya ada supaya log lama tetap terbaca. */
+    val upload: Boolean = false,
     val status: SyncStatus,
     val transferred: Int,
     val skipped: Int,
@@ -39,7 +39,6 @@ data class SyncLogEntry(
             .put("sourceKey", sourceKey)
             .put("source", source)
             .put("label", label)
-            .put("upload", upload)
             .put("status", status.name)
             .put("transferred", transferred)
             .put("skipped", skipped)
@@ -60,7 +59,7 @@ data class SyncLogEntry(
                 sourceKey = o.optString("sourceKey", ""),
                 source = o.getString("source"),
                 label = o.getString("label"),
-                upload = o.getBoolean("upload"),
+                upload = o.optBoolean("upload", false),
                 status = SyncStatus.valueOf(o.getString("status")),
                 transferred = o.getInt("transferred"),
                 skipped = o.getInt("skipped"),

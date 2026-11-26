@@ -38,6 +38,8 @@ interface DriveRemote {
         nativeWorkspaceMimeType: String? = null
     ): DriveFileItem
     suspend fun trashFile(accessToken: String, fileId: String)
+    /** Metadata satu file Drive (md5 terbaru, ukuran, mime). Dipakai saat sync dua arah. */
+    suspend fun getFile(accessToken: String, fileId: String): DriveFileItem
 }
 
 /** Satu entri isi folder Drive (folder atau file), untuk pohon di UI dan unduhan terpilih. */
@@ -369,6 +371,30 @@ class DriveApiClient(
             nativeWorkspaceMimeType = if (exportSpec != null) returnedMime else nativeWorkspaceMimeType
         )
     }
+
+    override suspend fun getFile(accessToken: String, fileId: String): DriveFileItem =
+        withContext(Dispatchers.IO) {
+            val fields = URLEncoder.encode("id,name,mimeType,modifiedTime,size,md5Checksum,trashed", "UTF-8")
+            val req = Request.Builder()
+                .url("$FILES_URL/$fileId?fields=$fields&supportsAllDrives=true")
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            val obj = JSONObject(executeString(req))
+            val mime = obj.optString("mimeType", "")
+            val exportSpec = DriveMimeTypes.exportSpecFor(mime)
+            DriveFileItem(
+                id = obj.getString("id"),
+                name = obj.optString("name", ""),
+                relativePath = obj.optString("name", ""),
+                mimeType = exportSpec?.exportMimeType ?: mime,
+                modifiedTimeMillis = DriveJsonParser.parseRfc3339Millis(obj.optString("modifiedTime", "")),
+                size = obj.optString("size", "").toLongOrNull() ?: 0L,
+                md5Checksum = obj.optString("md5Checksum", "").takeIf { it.isNotBlank() },
+                trashed = obj.optBoolean("trashed", false),
+                nativeWorkspaceMimeType = if (exportSpec != null) mime else null
+            )
+        }
 
     override suspend fun trashFile(accessToken: String, fileId: String) =
         withContext(Dispatchers.IO) {

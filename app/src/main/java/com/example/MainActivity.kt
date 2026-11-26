@@ -174,8 +174,8 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
             onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
             onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
-            onSyncFolder = { item, upload -> viewModel.syncFolder(item, upload) },
-            onSyncRepo = { repo, upload -> viewModel.syncRepo(repo, upload) },
+            onSyncFolder = { item -> viewModel.syncFolder(item) },
+            onSyncRepo = { repo -> viewModel.syncRepo(repo) },
             onCancelSync = { key -> viewModel.cancelSync(key) }
         )
     }

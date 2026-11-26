@@ -26,8 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -100,7 +99,7 @@ internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Str
  * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan tampil di atas keduanya.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
- * Ikon ↓ (download) dan ↑ (unggah) langsung menjalankan sinkron.
+ * Ikon sinkron langsung menjalankan sinkron dua arah (unduh, unggah, dan hapus sesuai perubahan).
  * Sync berjalan satu per satu; sumber yang sedang antre atau berjalan bisa dibatalkan.
  */
 @Composable
@@ -127,8 +126,8 @@ fun HomeScreen(
     onAddGithubAccount: (String, () -> Unit) -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onSyncFolder: (TreeItem, Boolean) -> Unit,
-    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit,
+    onSyncFolder: (TreeItem) -> Unit,
+    onSyncRepo: (GithubRepoEntity) -> Unit,
     onCancelSync: (String) -> Unit
 ) {
     // Disimpan saat rotasi. PAT sengaja tidak disimpan di state yang tersimpan.
@@ -278,8 +277,8 @@ internal fun LogRow(entry: SyncLogEntry) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = if (entry.upload) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
-                    contentDescription = if (entry.upload) "Unggah" else "Download",
+                    imageVector = Icons.Filled.Sync,
+                    contentDescription = "Sinkron",
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
@@ -356,7 +355,7 @@ internal fun LogRow(entry: SyncLogEntry) {
 internal fun RepoCard(
     repo: GithubRepoEntity,
     activity: RowActivity,
-    onSync: (Boolean) -> Unit,
+    onSync: () -> Unit,
     onCancel: () -> Unit,
     onOpenLog: () -> Unit
 ) {
@@ -392,7 +391,7 @@ internal fun RepoCard(
                 }
             }
             if (activity == RowActivity.IDLE) {
-                SyncArrows(enabled = true, onDownload = { onSync(false) }, onUpload = { onSync(true) })
+                SyncButton(enabled = true, onSync = onSync)
             } else {
                 ActivityStatus(activity, onCancel)
             }
@@ -470,16 +469,11 @@ internal fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
     }
 }
 
-/** Ikon kecil di pojok kanan kartu: ↓ = download (sumber ke perangkat), ↑ = unggah (perangkat ke sumber). */
+/** Ikon kecil di pojok kanan kartu: satu tombol sinkron dua arah. */
 @Composable
-internal fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onDownload, enabled = enabled, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.ArrowDownward, contentDescription = "Download", modifier = Modifier.size(16.dp))
-        }
-        IconButton(onClick = onUpload, enabled = enabled, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.ArrowUpward, contentDescription = "Unggah", modifier = Modifier.size(16.dp))
-        }
+internal fun SyncButton(enabled: Boolean, onSync: () -> Unit) {
+    IconButton(onClick = onSync, enabled = enabled, modifier = Modifier.size(28.dp)) {
+        Icon(Icons.Filled.Sync, contentDescription = "Sinkron", modifier = Modifier.size(16.dp))
     }
 }
 
@@ -487,7 +481,7 @@ internal fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () -
 internal fun FolderRow(
     item: TreeItem,
     enabled: Boolean,
-    onSync: (Boolean) -> Unit
+    onSync: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -512,7 +506,7 @@ internal fun FolderRow(
                 }
             }
             // Dinonaktifkan selama sumber ini antre atau berjalan; statusnya ada di header akun.
-            SyncArrows(enabled = enabled, onDownload = { onSync(false) }, onUpload = { onSync(true) })
+            SyncButton(enabled = enabled, onSync = onSync)
         }
     }
     HorizontalDivider()
@@ -604,7 +598,8 @@ internal fun statusText(status: SyncStatus): String = when (status) {
 
 /** Label pendek untuk satu alasan skip. */
 internal fun skipReasonLabel(reason: SkipReason): String = when (reason) {
-    SkipReason.SAME_SIZE -> "ukuran sama, dianggap sudah sinkron"
+    SkipReason.SAME_CONTENT -> "isi sama, dilewati"
+    SkipReason.SAME_SIZE -> "ukuran sama (sync lama)"
     SkipReason.NOT_A_LOCAL_FILE -> "tidak ada sebagai file di perangkat"
     SkipReason.TOO_LARGE_FOR_GITHUB -> "lebih dari 45 MB, melewati batas aman GitHub"
     SkipReason.HIDDEN -> "nama diawali titik, tersembunyi"
@@ -613,7 +608,8 @@ internal fun skipReasonLabel(reason: SkipReason): String = when (reason) {
 /** Ringkasan jumlah per alasan, mis. "7 ukuran sama, 3 lebih dari 45 MB". */
 internal fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
     val parts = mutableListOf<String>()
-    counts[SkipReason.SAME_SIZE]?.takeIf { it > 0 }?.let { parts += "$it ukuran sama" }
+    counts[SkipReason.SAME_CONTENT]?.takeIf { it > 0 }?.let { parts += "$it isi sama" }
+    counts[SkipReason.SAME_SIZE]?.takeIf { it > 0 }?.let { parts += "$it ukuran sama (sync lama)" }
     counts[SkipReason.NOT_A_LOCAL_FILE]?.takeIf { it > 0 }?.let { parts += "$it tidak ada di perangkat" }
     counts[SkipReason.TOO_LARGE_FOR_GITHUB]?.takeIf { it > 0 }?.let { parts += "$it lebih dari 45 MB" }
     val hiddenCount = counts[SkipReason.HIDDEN] ?: hidden

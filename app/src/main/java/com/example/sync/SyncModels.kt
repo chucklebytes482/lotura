@@ -48,19 +48,11 @@ data class TreeItem(
         otherPath == path || (isFolder && otherPath.startsWith("$path/"))
 }
 
-/** Aturan perbandingan: sama jika ukuran sumber dan target sama. Ukuran null selalu ditransfer. */
-object SyncDecisions {
-    /**
-     * @param sourceSize ukuran file yang akan dikirim (null jika tidak diketahui / native).
-     * @param targetSize ukuran file di sisi tujuan (null jika belum ada atau native).
-     */
-    fun shouldTransfer(sourceSize: Long?, targetSize: Long?): Boolean =
-        sourceSize == null || targetSize == null || sourceSize != targetSize
-}
-
 /** Alasan satu item dilewati. */
 enum class SkipReason {
-    /** Ukuran di sumber dan tujuan sama, jadi dianggap sudah sinkron. */
+    /** Isi sama dengan sisi lain (hash cocok), jadi tidak perlu dikirim ulang. */
+    SAME_CONTENT,
+    /** Log lama: ukuran sama dianggap sudah sinkron. Tidak dihasilkan lagi, hanya dibaca dari log lama. */
     SAME_SIZE,
     /** Bukan file biasa di perangkat (mis. folder kosong atau tidak ada), tidak bisa diunggah. */
     NOT_A_LOCAL_FILE,
