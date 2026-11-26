@@ -1,7 +1,5 @@
 package com.example
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -184,14 +182,6 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     context.startActivity(StoragePermissionHelper.buildAllFilesSettingsIntent(context))
                 }.onFailure {
                     viewModel.showMessage("Buka Pengaturan Android -> Akses Semua File untuk Lotura.")
-                }
-            },
-            onOpenWebGuide = {
-                val guideUrl = context.getString(R.string.web_guide_url)
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(guideUrl)))
-                }.onFailure {
-                    viewModel.showMessage("Gagal membuka browser.")
                 }
             },
             onConnectDrive = startDriveAuth,

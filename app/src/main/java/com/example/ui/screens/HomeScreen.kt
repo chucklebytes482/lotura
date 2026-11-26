@@ -75,6 +75,7 @@ import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
 import com.example.update.ApkState
+import com.example.ui.update.apkUpdateSection
 import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -83,8 +84,7 @@ import java.util.Locale
 
 private enum class HomeTab(val title: String) {
     DRIVE("Google Drive"),
-    GITHUB("GitHub"),
-    PANDUAN("Panduan")
+    GITHUB("GitHub")
 }
 
 /** Keadaan satu sumber: menunggu giliran, sedang sync, atau sedang memuat pohon. */
@@ -99,7 +99,7 @@ private fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Stri
     }
 
 /**
- * Beranda dengan tiga tab: Google Drive, GitHub, dan Panduan.
+ * Beranda dengan dua tab: Google Drive dan GitHub. Kartu pembaruan APK tampil di atas keduanya.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
  * Ikon ↓ (download) dan ↑ (unggah) langsung menjalankan sinkron.
@@ -124,7 +124,6 @@ fun HomeScreen(
     isOnline: Boolean,
     apkState: ApkState,
     onRequestStoragePermission: () -> Unit,
-    onOpenWebGuide: () -> Unit,
     onDownloadApk: () -> Unit,
     onRetryApkInstall: () -> Unit,
     onOpenUnknownSourcesSettings: () -> Unit,
@@ -147,8 +146,6 @@ fun HomeScreen(
     val busy = busySources.isNotEmpty()
     val pagerState = rememberPagerState(pageCount = { HomeTab.entries.size })
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val guideBlocks = remember { loadGuideBlocks(context) }
 
     Column(modifier.fillMaxSize()) {
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -172,6 +169,14 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                apkUpdateSection(
+                    apkState = apkState,
+                    onDownload = onDownloadApk,
+                    onRetryInstall = onRetryApkInstall,
+                    onOpenUnknownSourcesSettings = onOpenUnknownSourcesSettings,
+                    onDismissPermissionPrompt = onDismissApkPrompt,
+                    onDismissError = onDismissApkError
+                )
                 noticeItems(
                     isOnline = isOnline,
                     hasStoragePermission = hasStoragePermission,
@@ -206,16 +211,6 @@ fun HomeScreen(
                         onSyncRepo = onSyncRepo,
                         onCancelSync = onCancelSync,
                         onOpenLog = { key -> logSheetKey = key }
-                    )
-                    HomeTab.PANDUAN -> guideSection(
-                        blocks = guideBlocks,
-                        apkState = apkState,
-                        onDownloadApk = onDownloadApk,
-                        onRetryInstall = onRetryApkInstall,
-                        onOpenUnknownSourcesSettings = onOpenUnknownSourcesSettings,
-                        onDismissPermissionPrompt = onDismissApkPrompt,
-                        onDismissApkError = onDismissApkError,
-                        onOpenWebGuide = onOpenWebGuide
                     )
                 }
             }
