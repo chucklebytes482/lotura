@@ -7,6 +7,13 @@ object SourceKeys {
 }
 
 /**
+ * Mode satu operasi sync.
+ *  - ADD_BOTH: hanya menambah dan menyalin. Tidak pernah memindah ke trash.
+ *  - SYNC: dua arah penuh, termasuk edit dan hapus (pindah ke trash).
+ */
+enum class SyncMode { ADD_BOTH, SYNC }
+
+/**
  * Satu baris di pohon file.
  *  - path: relatif terhadap root sumber, memakai '/'. Untuk file Google Docs sudah memakai nama ekspor (mis. `Laporan.docx`).
  *  - size: ukuran byte. null untuk folder dan Google Docs/Sheets/Slides (native).

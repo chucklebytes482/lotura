@@ -19,14 +19,58 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Data GitHub yang dibutuhkan saat eksekusi: commit dan tree yang dipakai saat scan. */
+internal data class GithubTarget(
+    val pat: String,
+    val owner: String,
+    val repo: String,
+    val branch: String,
+    val headCommit: String,
+    val treeSha: String
+)
+
 /**
- * Sinkron dua arah untuk satu sumber (akun Drive atau repo GitHub).
+ * Hasil fase scan: rencana per path, tanpa menulis apa pun.
+ * Tombol "Sinkron" menampilkan [plan] sebagai dry-run, lalu [SyncEngine.execute] menjalankan rencana yang sama.
+ */
+class SyncScan internal constructor(
+    val sourceKey: String,
+    val rootDir: File,
+    val mode: SyncMode,
+    val base: Map<String, PathState>,
+    val actions: List<PlannedAction>,
+    /** Jumlah file lokal dalam ruang lingkup sync (sebelum planner). */
+    val localFileCount: Int,
+    internal val driveEmail: String?,
+    internal val github: GithubTarget?
+) {
+    val plan: SyncPlan = SyncPlan(actions)
+
+    /** Ada base, tapi folder lokal tidak punya satu file pun. Bisa berarti file terhapus tidak sengaja. */
+    val localEmptyWithBase: Boolean get() = mode == SyncMode.SYNC && base.isNotEmpty() && localFileCount == 0
+
+    /** Trash melewati batas: lebih dari [TRASH_CONFIRM_MIN] file, atau lebih dari [TRASH_CONFIRM_PERCENT] persen base. */
+    val trashOverLimit: Boolean
+        get() = plan.trashTotal > TRASH_CONFIRM_MIN ||
+            (base.isNotEmpty() && plan.trashTotal * 100 > base.size * TRASH_CONFIRM_PERCENT)
+
+    /** Konfirmasi tambahan wajib: trash melewati batas, atau folder lokal kosong padahal base ada. */
+    val needsStrongConfirm: Boolean get() = trashOverLimit || localEmptyWithBase
+
+    companion object {
+        const val TRASH_CONFIRM_MIN = 10
+        const val TRASH_CONFIRM_PERCENT = 20
+    }
+}
+
+/**
+ * Sinkron untuk satu sumber (akun Drive atau repo GitHub), dibagi dua fase:
+ *  1. scan*: baca lokal, remote, dan base lalu hasilkan [SyncScan]. Tidak menulis apa pun.
+ *  2. [execute]: jalankan rencana dari scan. Dipakai sama untuk mode tambah dan sinkron.
  *
- * Alur tiap sync:
- *  1. Scan lokal, ambil daftar remote, baca base (state sync terakhir) dari [SyncStateStore].
- *  2. [TwoWayPlanner] memutuskan aksi per path.
- *  3. Fase lokal: unduh, pindah ke trash lokal, salinan konflik, catat state.
- *  4. Fase remote: unggah dan hapus ke trash remote. GitHub memakai satu commit untuk semuanya.
+ * Eksekusi:
+ *  - Fase lokal: unduh, pindah ke trash lokal, salinan konflik, catat state.
+ *  - Fase remote: unggah dan hapus ke trash remote. GitHub memakai satu commit untuk semuanya.
  *
  * Hapus tidak pernah permanen: file dipindah ke `.trash/<waktu>/<path>` di kedua sisi.
  */
@@ -44,14 +88,15 @@ class SyncEngine(
 
     // ---------- Google Drive ----------
 
-    suspend fun syncDrive(
+    suspend fun scanDrive(
         email: String,
         rootDir: File,
         ignoreRules: IgnoreRules,
         items: List<TreeItem>,
         stateStore: SyncStateStore,
-        sourceKey: String
-    ): OpResult = withContext(Dispatchers.IO) {
+        sourceKey: String,
+        mode: SyncMode
+    ): SyncScan = withContext(Dispatchers.IO) {
         val token = driveTokenProvider(email)
         val base = scopedBase(stateStore, sourceKey, items)
         val scanned = scanLocal(rootDir, items, ignoreRules) { !isHiddenPath(it) }
@@ -77,49 +122,16 @@ class SyncEngine(
             }
         }
 
-        val actions = TwoWayPlanner.planAll(local, remote, base)
-        val stamp = stampNow()
-        val phase1 = applyLocalSide(
+        SyncScan(
             sourceKey = sourceKey,
             rootDir = rootDir,
-            stateStore = stateStore,
-            actions = actions,
-            stamp = stamp,
-            hashOf = LocalFileOps::md5Hex
-        ) { r, dest -> downloadDriveRemote(token, r, dest) }
-
-        var result = phase1.result
-        for (action in phase1.remoteWork) {
-            if (!currentCoroutineContext().isActive) break
-            try {
-                when (action) {
-                    is PlannedAction.Upload -> {
-                        val uploaded = drive.uploadFile(
-                            accessToken = token,
-                            rootFolderId = "root",
-                            relativePath = action.path,
-                            existingFileId = action.remote?.ref,
-                            sourceFile = File(rootDir, action.path),
-                            nativeWorkspaceMimeType = action.remote?.nativeMime
-                        )
-                        val r = driveRemote(uploaded)
-                        stateStore.put(sourceKey, action.path, PathState(action.local.hash, r.hash, r.ref))
-                        result += OpResult(transferred = 1)
-                    }
-                    is PlannedAction.TrashRemote -> {
-                        drive.trashFile(token, action.remote.ref)
-                        stateStore.delete(sourceKey, action.path)
-                        result += OpResult(transferred = 1)
-                    }
-                    else -> Unit
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                result += OpResult(failed = 1)
-            }
-        }
-        result
+            mode = mode,
+            base = base,
+            actions = planFor(mode, local, remote, base),
+            localFileCount = local.size,
+            driveEmail = email,
+            github = null
+        )
     }
 
     private suspend fun downloadDriveRemote(token: String, remote: RemoteFile, dest: File) {
@@ -149,7 +161,7 @@ class SyncEngine(
 
     // ---------- GitHub ----------
 
-    suspend fun syncGithub(
+    suspend fun scanGithub(
         pat: String,
         owner: String,
         repo: String,
@@ -158,8 +170,9 @@ class SyncEngine(
         ignoreRules: IgnoreRules,
         items: List<TreeItem>,
         stateStore: SyncStateStore,
-        sourceKey: String
-    ): OpResult = withContext(Dispatchers.IO) {
+        sourceKey: String,
+        mode: SyncMode
+    ): SyncScan = withContext(Dispatchers.IO) {
         val base = scopedBase(stateStore, sourceKey, items)
         val scanned = scanLocal(rootDir, items, ignoreRules, ::isTrackedRepoPath)
         val local = scanned.mapValues { LocalFile(LocalFileOps.gitBlobSha(it.value)) }
@@ -171,18 +184,93 @@ class SyncEngine(
             .filter { blob -> items.any { it.covers(blob.repoPath) } && !ignoreRules.isIgnored(blob.repoPath) }
             .associate { it.repoPath to RemoteFile(it.repoPath, it.sha, null) }
 
-        val actions = TwoWayPlanner.planAll(local, remote, base)
-        val stamp = stampNow()
-        val phase1 = applyLocalSide(
+        SyncScan(
             sourceKey = sourceKey,
             rootDir = rootDir,
+            mode = mode,
+            base = base,
+            actions = planFor(mode, local, remote, base),
+            localFileCount = local.size,
+            driveEmail = null,
+            github = GithubTarget(pat, owner, repo, branch, headCommit, treeSha)
+        )
+    }
+
+    // ---------- Eksekusi ----------
+
+    /**
+     * Menjalankan rencana dari [scan]. Dipanggil setelah user melihat dry-run dari scan yang sama.
+     * Hasil scan tidak dihitung ulang di sini.
+     */
+    suspend fun execute(scan: SyncScan, stateStore: SyncStateStore): OpResult = withContext(Dispatchers.IO) {
+        val stamp = stampNow()
+        val gh = scan.github
+        if (gh != null) executeGithub(scan, gh, stateStore, stamp)
+        else executeDrive(scan, stateStore, stamp)
+    }
+
+    private suspend fun executeDrive(scan: SyncScan, stateStore: SyncStateStore, stamp: String): OpResult {
+        val email = scan.driveEmail ?: error("Scan Drive tanpa email")
+        val token = driveTokenProvider(email)
+        val phase1 = applyLocalSide(
+            sourceKey = scan.sourceKey,
+            rootDir = scan.rootDir,
             stateStore = stateStore,
-            actions = actions,
+            actions = scan.actions,
+            stamp = stamp,
+            hashOf = LocalFileOps::md5Hex
+        ) { r, dest -> downloadDriveRemote(token, r, dest) }
+
+        var result = phase1.result
+        for (action in phase1.remoteWork) {
+            if (!currentCoroutineContext().isActive) break
+            try {
+                when (action) {
+                    is PlannedAction.Upload -> {
+                        val uploaded = drive.uploadFile(
+                            accessToken = token,
+                            rootFolderId = "root",
+                            relativePath = action.path,
+                            existingFileId = action.remote?.ref,
+                            sourceFile = File(scan.rootDir, action.path),
+                            nativeWorkspaceMimeType = action.remote?.nativeMime
+                        )
+                        val r = driveRemote(uploaded)
+                        stateStore.put(scan.sourceKey, action.path, PathState(action.local.hash, r.hash, r.ref))
+                        result += OpResult(transferred = 1)
+                    }
+                    is PlannedAction.TrashRemote -> {
+                        drive.trashFile(token, action.remote.ref)
+                        stateStore.delete(scan.sourceKey, action.path)
+                        result += OpResult(transferred = 1)
+                    }
+                    else -> Unit
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                result += OpResult(failed = 1)
+            }
+        }
+        return result
+    }
+
+    private suspend fun executeGithub(
+        scan: SyncScan,
+        gh: GithubTarget,
+        stateStore: SyncStateStore,
+        stamp: String
+    ): OpResult {
+        val phase1 = applyLocalSide(
+            sourceKey = scan.sourceKey,
+            rootDir = scan.rootDir,
+            stateStore = stateStore,
+            actions = scan.actions,
             stamp = stamp,
             hashOf = LocalFileOps::gitBlobSha
         ) { r, dest ->
             val sha = r.hash ?: error("Blob ${r.ref} tidak punya sha")
-            github.downloadBlobToFile(pat, owner, repo, sha, dest)
+            github.downloadBlobToFile(gh.pat, gh.owner, gh.repo, sha, dest)
         }
 
         var result = phase1.result
@@ -194,11 +282,11 @@ class SyncEngine(
             try {
                 when (action) {
                     is PlannedAction.Upload -> {
-                        val file = File(rootDir, action.path)
+                        val file = File(scan.rootDir, action.path)
                         if (file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
                             result += OpResult.skip(SkipReason.TOO_LARGE_FOR_GITHUB, action.path)
                         } else {
-                            val blobSha = github.createBlobFromFile(pat, owner, repo, file)
+                            val blobSha = github.createBlobFromFile(gh.pat, gh.owner, gh.repo, file)
                             changes += GithubTreeChange(repoPath = action.path, blobSha = blobSha)
                             uploaded += action.path to PathState(action.local.hash, blobSha, action.path)
                         }
@@ -223,18 +311,18 @@ class SyncEngine(
             val count = uploaded.size + removed.size
             try {
                 github.createAtomicCommit(
-                    pat = pat,
-                    owner = owner,
-                    repo = repo,
-                    branch = branch,
-                    parentCommitSha = headCommit,
-                    baseTreeSha = treeSha,
+                    pat = gh.pat,
+                    owner = gh.owner,
+                    repo = gh.repo,
+                    branch = gh.branch,
+                    parentCommitSha = gh.headCommit,
+                    baseTreeSha = gh.treeSha,
                     changes = changes,
                     message = "Sinkron Lotura: ${uploaded.size} unggah, ${removed.size} pindah ke trash"
                 )
                 // State hanya dicatat setelah commit berhasil.
-                uploaded.forEach { (path, state) -> stateStore.put(sourceKey, path, state) }
-                removed.forEach { stateStore.delete(sourceKey, it) }
+                uploaded.forEach { (path, state) -> stateStore.put(scan.sourceKey, path, state) }
+                removed.forEach { stateStore.delete(scan.sourceKey, it) }
                 result += OpResult(transferred = count)
             } catch (e: CancellationException) {
                 throw e
@@ -242,10 +330,19 @@ class SyncEngine(
                 result += OpResult(failed = count)
             }
         }
-        result
+        return result
     }
 
     // ---------- Bersama ----------
+
+    private fun planFor(
+        mode: SyncMode,
+        local: Map<String, LocalFile>,
+        remote: Map<String, RemoteFile>,
+        base: Map<String, PathState>
+    ): List<PlannedAction> =
+        if (mode == SyncMode.ADD_BOTH) TwoWayPlanner.planAddAll(local, remote, base)
+        else TwoWayPlanner.planAll(local, remote, base)
 
     private data class Phase1Outcome(
         val result: OpResult,

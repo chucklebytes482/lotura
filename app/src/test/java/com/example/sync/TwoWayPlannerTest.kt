@@ -169,4 +169,94 @@ class TwoWayPlannerTest {
     fun conflictCopy_rootLevelFile() {
         assertEquals("b (konflik S).txt", TwoWayPlanner.conflictCopyPath("b.txt", "S"))
     }
+
+    // ---------- Mode tambah dari kedua sisi (planAdd) ----------
+
+    @Test
+    fun add_noBase_localOnly_uploads() {
+        assertEquals(PlannedAction.Upload("a.md", local("h1"), null), TwoWayPlanner.planAdd("a.md", local("h1"), null, null))
+    }
+
+    @Test
+    fun add_noBase_remoteOnly_downloads() {
+        assertEquals(PlannedAction.Download("a.md", remote("r1")), TwoWayPlanner.planAdd("a.md", null, remote("r1"), null))
+    }
+
+    @Test
+    fun add_noBase_sameContent_records() {
+        assertTrue(TwoWayPlanner.planAdd("a.md", local("same"), remote("same"), null) is PlannedAction.Record)
+    }
+
+    @Test
+    fun add_noBase_differentContent_isConflict() {
+        assertTrue(TwoWayPlanner.planAdd("a.md", local("h1"), remote("r1"), null) is PlannedAction.Conflict)
+    }
+
+    @Test
+    fun add_withBase_bothChangedDifferently_isConflict() {
+        assertTrue(TwoWayPlanner.planAdd("a.md", local("h2"), remote("r2"), base("h1", "r1")) is PlannedAction.Conflict)
+    }
+
+    @Test
+    fun add_withBase_noChanges_isUnchanged() {
+        assertEquals(PlannedAction.Unchanged("a.md"), TwoWayPlanner.planAdd("a.md", local("h1"), remote("r1"), base("h1", "r1")))
+    }
+
+    @Test
+    fun add_withBase_localEditedOnly_isUnchanged_notUploaded() {
+        assertEquals(PlannedAction.Unchanged("a.md"), TwoWayPlanner.planAdd("a.md", local("h2"), remote("r1"), base("h1", "r1")))
+    }
+
+    @Test
+    fun add_withBase_remoteDeleted_isUnchanged_noTrash() {
+        assertEquals(PlannedAction.Unchanged("a.md"), TwoWayPlanner.planAdd("a.md", local("h1"), null, base("h1", "r1")))
+    }
+
+    @Test
+    fun add_withBase_localDeleted_isUnchanged_noTrash() {
+        assertEquals(PlannedAction.Unchanged("a.md"), TwoWayPlanner.planAdd("a.md", null, remote("r1"), base("h1", "r1")))
+    }
+
+    @Test
+    fun add_bothGone_isUnchanged_noForget() {
+        assertEquals(PlannedAction.Unchanged("a.md"), TwoWayPlanner.planAdd("a.md", null, null, base("h1", "r1")))
+    }
+
+    @Test
+    fun addAll_neverProducesTrashOrForget() {
+        val actions = TwoWayPlanner.planAddAll(
+            local = mapOf("a.md" to local("h1"), "b.md" to local("hb")),
+            remote = mapOf("c.md" to remote("rc")),
+            base = mapOf(
+                "a.md" to base("h1", "r1"),
+                "c.md" to base("hc", "rc"),
+                "d.md" to base("hd", "rd")
+            )
+        )
+        assertTrue(actions.none { it is PlannedAction.TrashLocal || it is PlannedAction.TrashRemote || it is PlannedAction.Forget })
+        assertEquals(listOf("a.md", "b.md", "c.md", "d.md"), actions.map { it.path })
+    }
+
+    // ---------- SyncPlan: hitungan ----------
+
+    @Test
+    fun syncPlan_countsEachKind() {
+        val plan = SyncPlan(
+            listOf(
+                PlannedAction.Upload("u.md", local("h"), null),
+                PlannedAction.Download("d.md", remote("r")),
+                PlannedAction.Conflict("c.md", local("h1"), remote("r1")),
+                PlannedAction.TrashLocal("tl.md"),
+                PlannedAction.TrashRemote("tr.md", remote("r")),
+                PlannedAction.Record("rec.md", local("h"), remote("h")),
+                PlannedAction.Unchanged("un.md")
+            )
+        )
+        assertEquals(1, plan.uploads)
+        assertEquals(1, plan.downloads)
+        assertEquals(1, plan.conflicts)
+        assertEquals(1, plan.trashLocal)
+        assertEquals(1, plan.trashRemote)
+        assertEquals(2, plan.trashTotal)
+    }
 }

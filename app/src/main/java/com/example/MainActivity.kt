@@ -174,8 +174,12 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
             onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
             onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
             onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
-            onSyncFolder = { item -> viewModel.syncFolder(item) },
-            onSyncRepo = { repo -> viewModel.syncRepo(repo) },
+            armedSources = uiState.armedSources,
+            pendingPlan = uiState.pendingPlan,
+            onAddBothSides = { key, label -> viewModel.addBothSides(key, label) },
+            onPreviewSync = { key, label -> viewModel.previewSync(key, label) },
+            onConfirmSync = { viewModel.confirmSync() },
+            onCancelPendingSync = { viewModel.cancelPendingSync() },
             onCancelSync = { key -> viewModel.cancelSync(key) }
         )
     }

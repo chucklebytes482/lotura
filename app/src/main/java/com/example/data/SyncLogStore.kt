@@ -27,7 +27,9 @@ data class SyncLogEntry(
     /** Jumlah item yang dilewati per alasan. Dipakai untuk ringkasan di log. */
     val skipCounts: Map<SkipReason, Int> = emptyMap(),
     /** Kunci sumber, mis. "drive:email" atau "github:owner/repo". Kosong untuk log lama. */
-    val sourceKey: String = ""
+    val sourceKey: String = "",
+    /** "ADD_BOTH" (Tambah dari kedua sisi) atau "SYNC" (Sinkron). Log lama tanpa field ini dibaca sebagai SYNC. */
+    val mode: String = "SYNC"
 ) {
     fun toJson(): JSONObject {
         val details = JSONArray()
@@ -37,6 +39,7 @@ data class SyncLogEntry(
         return JSONObject()
             .put("at", atMillis)
             .put("sourceKey", sourceKey)
+            .put("mode", mode)
             .put("source", source)
             .put("label", label)
             .put("status", status.name)
@@ -57,6 +60,7 @@ data class SyncLogEntry(
             return SyncLogEntry(
                 atMillis = o.getLong("at"),
                 sourceKey = o.optString("sourceKey", ""),
+                mode = o.optString("mode", "SYNC"),
                 source = o.getString("source"),
                 label = o.getString("label"),
                 upload = o.optBoolean("upload", false),

@@ -59,6 +59,17 @@ sealed interface PlannedAction {
     data class Unchanged(override val path: String) : PlannedAction
 }
 
+/** Ringkasan rencana untuk dry-run. */
+data class SyncPlan(val actions: List<PlannedAction>) {
+    val uploads: Int get() = actions.count { it is PlannedAction.Upload }
+    val downloads: Int get() = actions.count { it is PlannedAction.Download }
+    val conflicts: Int get() = actions.count { it is PlannedAction.Conflict }
+    val trashLocal: Int get() = actions.count { it is PlannedAction.TrashLocal }
+    val trashRemote: Int get() = actions.count { it is PlannedAction.TrashRemote }
+    /** Jumlah file yang akan dipindah ke trash, di kedua sisi. */
+    val trashTotal: Int get() = trashLocal + trashRemote
+}
+
 object TwoWayPlanner {
 
     /**
@@ -72,6 +83,32 @@ object TwoWayPlanner {
     ): List<PlannedAction> {
         val paths = (local.keys + remote.keys + base.keys).toSortedSet()
         return paths.map { plan(it, local[it], remote[it], base[it]) }
+    }
+
+    /**
+     * Rencana mode "Tambah dari kedua sisi": hanya menambah dan menyalin.
+     * Tidak pernah menghasilkan TrashLocal, TrashRemote, atau Forget.
+     * Path yang sudah ada di base tidak ditransfer, kecuali kedua sisi berubah dan isinya beda (konflik).
+     */
+    fun planAddAll(
+        local: Map<String, LocalFile>,
+        remote: Map<String, RemoteFile>,
+        base: Map<String, PathState>
+    ): List<PlannedAction> {
+        val paths = (local.keys + remote.keys + base.keys).toSortedSet()
+        return paths.map { planAdd(it, local[it], remote[it], base[it]) }
+    }
+
+    /** Aturan mode tambah untuk satu path. Lihat [planAddAll]. */
+    fun planAdd(path: String, l: LocalFile?, r: RemoteFile?, b: PathState?): PlannedAction {
+        // Belum pernah sync: Upload, Download, Record, Conflict, atau Unchanged. Tidak ada trash.
+        if (b == null) return plan(path, l, r, null)
+        // Sudah pernah sync tapi satu sisi hilang: jangan transfer (edit/hapus diurus mode Sinkron).
+        if (l == null || r == null) return PlannedAction.Unchanged(path)
+        return when (val a = plan(path, l, r, b)) {
+            is PlannedAction.Conflict, is PlannedAction.Record -> a
+            else -> PlannedAction.Unchanged(path)
+        }
     }
 
     /** Aturan untuk satu path. Lihat komentar di [PlannedAction] untuk arti tiap aksi. */

@@ -72,7 +72,6 @@ import com.example.sync.SkipDetail
 import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
-import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -91,7 +90,9 @@ internal fun LazyListScope.driveSection(
     onConnectDrive: () -> Unit,
     onReloadDrive: (String) -> Unit,
     onRemoveDrive: (String) -> Unit,
-    onSyncFolder: (TreeItem) -> Unit,
+    armedSources: Set<String>,
+    onAddBothSides: (sourceKey: String, label: String) -> Unit,
+    onPreviewSync: (sourceKey: String, label: String) -> Unit,
     onCancelSync: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
@@ -115,17 +116,10 @@ internal fun LazyListScope.driveSection(
                 onReload = { onReloadDrive(account.email) },
                 onRemove = { onRemoveDrive(account.email) },
                 onCancel = { onCancelSync(sourceKey) },
-                onOpenLog = { onOpenLog(sourceKey) }
+                onOpenLog = { onOpenLog(sourceKey) },
+                onAddBoth = { onAddBothSides(sourceKey, account.email) },
+                onSync = { onPreviewSync(sourceKey, account.email) }
             )
-        }
-        rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
-            item(key = folder.key) {
-                FolderRow(
-                    item = folder,
-                    enabled = activity == RowActivity.IDLE,
-                    onSync = { onSyncFolder(folder) }
-                )
-            }
         }
     }
 }

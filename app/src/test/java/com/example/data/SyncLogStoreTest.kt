@@ -113,4 +113,28 @@ class SyncLogStoreTest {
             .put("error", JSONObject.NULL)
         assertEquals("", SyncLogEntry.fromJson(old).sourceKey)
     }
+
+    @Test
+    fun mode_roundTripsAsAddOrSync() {
+        val store = SyncLogStore(context)
+        store.append(entry(1).copy(mode = "ADD_BOTH"))
+        store.append(entry(2).copy(mode = "SYNC"))
+        val modes = SyncLogStore(context).loadAll().map { it.mode }
+        assertEquals(listOf("SYNC", "ADD_BOTH"), modes)
+    }
+
+    @Test
+    fun fromJson_oldEntryWithoutMode_readsAsSync() {
+        val old = JSONObject()
+            .put("at", 7L)
+            .put("source", "Drive · a@b.c")
+            .put("label", "f")
+            .put("upload", false)
+            .put("status", "OK")
+            .put("transferred", 1)
+            .put("skipped", 0)
+            .put("failed", 0)
+            .put("error", JSONObject.NULL)
+        assertEquals("SYNC", SyncLogEntry.fromJson(old).mode)
+    }
 }

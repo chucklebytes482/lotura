@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CallMerge
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -70,9 +71,11 @@ import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.sync.SkipDetail
+import com.example.sync.SyncScan
 import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
+import com.example.ui.PendingSync
 import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -99,7 +102,8 @@ internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Str
  * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan tampil di atas keduanya.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
- * Ikon sinkron langsung menjalankan sinkron dua arah (unduh, unggah, dan hapus sesuai perubahan).
+ * Dua tombol per sumber: "Tambah dari kedua sisi" (hanya menambah, tidak pernah memindah ke trash) dan
+ * "Sinkron" (dua arah penuh, terkunci sampai tombol pertama sukses). Sinkron selalu lewat dry-run dulu.
  * Sync berjalan satu per satu; sumber yang sedang antre atau berjalan bisa dibatalkan.
  */
 @Composable
@@ -126,8 +130,12 @@ fun HomeScreen(
     onAddGithubAccount: (String, () -> Unit) -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onSyncFolder: (TreeItem) -> Unit,
-    onSyncRepo: (GithubRepoEntity) -> Unit,
+    armedSources: Set<String>,
+    pendingPlan: PendingSync?,
+    onAddBothSides: (sourceKey: String, label: String) -> Unit,
+    onPreviewSync: (sourceKey: String, label: String) -> Unit,
+    onConfirmSync: () -> Unit,
+    onCancelPendingSync: () -> Unit,
     onCancelSync: (String) -> Unit
 ) {
     // Disimpan saat rotasi. PAT sengaja tidak disimpan di state yang tersimpan.
@@ -179,7 +187,9 @@ fun HomeScreen(
                         onConnectDrive = onConnectDrive,
                         onReloadDrive = onReloadDrive,
                         onRemoveDrive = onRemoveDrive,
-                        onSyncFolder = onSyncFolder,
+                        armedSources = armedSources,
+                        onAddBothSides = onAddBothSides,
+                        onPreviewSync = onPreviewSync,
                         onCancelSync = onCancelSync,
                         onOpenLog = { key -> logSheetKey = key }
                     )
@@ -192,7 +202,9 @@ fun HomeScreen(
                         onAddClick = { showAddGithub = true },
                         onRefreshRepos = onRefreshRepos,
                         onDeleteGithubAccount = onDeleteGithubAccount,
-                        onSyncRepo = onSyncRepo,
+                        armedSources = armedSources,
+                        onAddBothSides = onAddBothSides,
+                        onPreviewSync = onPreviewSync,
                         onCancelSync = onCancelSync,
                         onOpenLog = { key -> logSheetKey = key }
                     )
@@ -208,6 +220,14 @@ fun HomeScreen(
                 logs = logs.filter { it.sourceKey == key }
             )
         }
+    }
+
+    pendingPlan?.let { pending ->
+        SyncPlanDialog(
+            pending = pending,
+            onConfirm = onConfirmSync,
+            onCancel = onCancelPendingSync
+        )
     }
 
     if (showAddGithub) {
@@ -355,6 +375,7 @@ internal fun LogRow(entry: SyncLogEntry) {
 internal fun RepoCard(
     repo: GithubRepoEntity,
     activity: RowActivity,
+    onAddBoth: () -> Unit,
     onSync: () -> Unit,
     onCancel: () -> Unit,
     onOpenLog: () -> Unit
@@ -391,7 +412,7 @@ internal fun RepoCard(
                 }
             }
             if (activity == RowActivity.IDLE) {
-                SyncButton(enabled = true, onSync = onSync)
+                SyncActions(onAddBoth = onAddBoth, onSync = onSync)
             } else {
                 ActivityStatus(activity, onCancel)
             }
@@ -416,7 +437,9 @@ internal fun AccountHeader(
     onReload: () -> Unit,
     onRemove: () -> Unit,
     onCancel: () -> Unit,
-    onOpenLog: (() -> Unit)?
+    onOpenLog: (() -> Unit)?,
+    onAddBoth: (() -> Unit)? = null,
+    onSync: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -437,6 +460,9 @@ internal fun AccountHeader(
                     .then(if (onOpenLog != null) Modifier.clickable(onClick = onOpenLog) else Modifier)
             )
             if (activity == RowActivity.IDLE) {
+                if (onAddBoth != null && onSync != null) {
+                    SyncActions(onAddBoth = onAddBoth, onSync = onSync)
+                }
                 IconButton(onClick = onReload) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang")
                 }
@@ -469,47 +495,78 @@ internal fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
     }
 }
 
-/** Ikon kecil di pojok kanan kartu: satu tombol sinkron dua arah. */
+/**
+ * Dua tombol per sumber. Kiri: "Tambah dari kedua sisi" (ikon CallMerge). Kanan: "Sinkron" (dua arah, dry-run dulu).
+ * Tombol "Sinkron" tetap bisa ditekan; kalau sumber belum dibuka kuncinya, pesan "Tambah dari kedua sisi dulu" muncul.
+ */
 @Composable
-internal fun SyncButton(enabled: Boolean, onSync: () -> Unit) {
-    IconButton(onClick = onSync, enabled = enabled, modifier = Modifier.size(28.dp)) {
-        Icon(Icons.Filled.Sync, contentDescription = "Sinkron", modifier = Modifier.size(16.dp))
+internal fun SyncActions(onAddBoth: () -> Unit, onSync: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onAddBoth, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.CallMerge, contentDescription = "Tambah dari kedua sisi", modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onSync, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Sync, contentDescription = "Sinkron", modifier = Modifier.size(16.dp))
+        }
     }
 }
 
+/** Dry-run sebelum sinkron dijalankan: jumlah unggah, unduh, konflik, dan trash. */
 @Composable
-internal fun FolderRow(
-    item: TreeItem,
-    enabled: Boolean,
-    onSync: () -> Unit
+internal fun SyncPlanDialog(
+    pending: PendingSync,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = item.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                if (item.archived) {
-                    Spacer(Modifier.width(6.dp))
-                    Tag("Archived")
+    val scan = pending.scan
+    val plan = scan.plan
+    val nothingToDo = plan.uploads + plan.downloads + plan.conflicts + plan.trashTotal == 0
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Dry-run sinkron") },
+        text = {
+            Column {
+                Text(pending.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                if (nothingToDo) {
+                    Text("Tidak ada yang perlu diubah.", fontSize = 13.sp)
+                } else {
+                    Text("Unggah: ${plan.uploads} file", fontSize = 13.sp)
+                    Text("Unduh: ${plan.downloads} file", fontSize = 13.sp)
+                    Text("Konflik: ${plan.conflicts} file (disimpan dua-duanya)", fontSize = 13.sp)
+                    Text("Pindah ke trash: ${plan.trashTotal} file (lokal ${plan.trashLocal}, remote ${plan.trashRemote})", fontSize = 13.sp)
+                }
+                if (scan.localEmptyWithBase) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Folder lokal kosong, tapi ada riwayat sync. File remote bisa ikut pindah ke trash.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else if (scan.trashOverLimit) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Jumlah trash melewati batas (lebih dari ${SyncScan.TRASH_CONFIRM_MIN} file atau ${SyncScan.TRASH_CONFIRM_PERCENT}% dari yang sudah tersinkron). Periksa dulu.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
-            // Dinonaktifkan selama sumber ini antre atau berjalan; statusnya ada di header akun.
-            SyncButton(enabled = enabled, onSync = onSync)
+        },
+        confirmButton = {
+            if (nothingToDo) {
+                TextButton(onClick = onCancel) { Text("Tutup") }
+            } else {
+                val strong = scan.needsStrongConfirm
+                Button(onClick = onConfirm) {
+                    Text(if (strong) "Ya, jalankan" else "Jalankan")
+                }
+            }
+        },
+        dismissButton = {
+            if (!nothingToDo) TextButton(onClick = onCancel) { Text("Batal") }
         }
-    }
-    HorizontalDivider()
+    )
 }
 
 @Composable

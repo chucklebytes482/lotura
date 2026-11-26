@@ -89,7 +89,9 @@ internal fun LazyListScope.githubSection(
     onAddClick: () -> Unit,
     onRefreshRepos: (GithubAccountEntity) -> Unit,
     onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onSyncRepo: (GithubRepoEntity) -> Unit,
+    armedSources: Set<String>,
+    onAddBothSides: (sourceKey: String, label: String) -> Unit,
+    onPreviewSync: (sourceKey: String, label: String) -> Unit,
     onCancelSync: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
@@ -126,7 +128,8 @@ internal fun LazyListScope.githubSection(
                 RepoCard(
                     repo = repo,
                     activity = activityOf(sourceKey, loading, queuedSources, busySources),
-                    onSync = { onSyncRepo(repo) },
+                    onAddBoth = { onAddBothSides(sourceKey, repo.fullName) },
+                    onSync = { onPreviewSync(sourceKey, repo.fullName) },
                     onCancel = { onCancelSync(sourceKey) },
                     onOpenLog = { onOpenLog(sourceKey) }
                 )

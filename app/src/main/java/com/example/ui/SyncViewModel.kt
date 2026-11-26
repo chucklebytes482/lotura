@@ -20,6 +20,8 @@ import com.example.sync.IgnoreRules
 import com.example.sync.OpResult
 import com.example.sync.SourceKeys
 import com.example.sync.SourceTreeRules
+import com.example.sync.SyncMode
+import com.example.sync.SyncScan
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
 import com.example.sync.isTrackedRepoPath
@@ -40,6 +42,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 
+/** Dry-run yang menunggu konfirmasi user sebelum tombol "Sinkron" dijalankan. */
+data class PendingSync(
+    val sourceKey: String,
+    val label: String,
+    val scan: SyncScan
+)
+
 /**
  * Satu akun = satu koneksi (Drive) atau satu repo (GitHub).
  * Pohon disimpan flat per sumber; induk-anak dihitung dari path.
@@ -50,10 +59,18 @@ data class SyncUiState(
     /** Kunci yang isi anaknya sudah dimuat: sourceKey (akar) atau TreeItem.key (folder). */
     val loaded: Set<String> = emptySet(),
     val loading: Set<String> = emptySet(),
-    /** sourceKey yang sedang diunduh/diunggah. */
+    /** sourceKey yang sedang diunduh/diunggah/dipindai. */
     val busySources: Set<String> = emptySet(),
     /** sourceKey yang menunggu giliran sync (sync lain sedang berjalan). */
     val queuedSources: Set<String> = emptySet(),
+    /**
+     * sourceKey yang sudah lolos "Tambah dari kedua sisi" dan boleh menjalankan "Sinkron".
+     * Disimpan di memori: hilang saat app ditutup, jadi setiap sesi harus mulai dari "Tambah".
+     * Dihapus lagi setiap kali "Sinkron" dijalankan (berhasil, sebagian, atau gagal).
+     */
+    val armedSources: Set<String> = emptySet(),
+    /** Dry-run sinkron yang menunggu konfirmasi. Null bila tidak ada. */
+    val pendingPlan: PendingSync? = null,
     val isConnectingDrive: Boolean = false,
     val isAddingGithub: Boolean = false,
     val driveAuthError: String? = null,
@@ -72,9 +89,9 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private val logStore = SyncLogStore(application)
     private val ignoreRules = IgnoreRules(IgnoreRules.DEFAULT_PATTERNS)
 
-    /** Semua sync berjalan satu per satu, supaya dua sumber tidak saling berebut jaringan dan file. */
+    /** Semua operasi sync berjalan satu per satu, supaya dua sumber tidak saling berebut jaringan dan file. */
     private val syncMutex = Mutex()
-    /** Job sync per sumber (yang sedang antre atau berjalan), untuk tombol batal. */
+    /** Job per sumber (yang sedang antre atau berjalan), untuk tombol batal. */
     private val syncJobs = mutableMapOf<String, Job>()
 
     val driveAccounts: StateFlow<List<DriveAccountEntity>> = repository.driveAccounts
@@ -222,11 +239,67 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ---------- Sync dua arah (lewat tombol sync per folder dasar atau per repo) ----------
+    // ---------- Sync dua arah: dua tombol per sumber ----------
 
-    /** Sync dua arah satu folder dasar, termasuk seluruh isinya. */
-    fun syncFolder(item: TreeItem) {
-        runItems(listOf(item), label = item.name)
+    /**
+     * Tombol 1 "Tambah dari kedua sisi": untuk seluruh akun Drive atau seluruh repo.
+     * Hanya menambah dan menyalin, tidak pernah memindah ke trash. Sukses tanpa error membuka kunci tombol 2.
+     */
+    fun addBothSides(sourceKey: String, label: String) {
+        if (pendingPlanFor(sourceKey)) return
+        enqueue(sourceKey, label) {
+            if (!ensureTreeLoaded(sourceKey)) return@enqueue
+            val items = rootItems(sourceKey)
+            if (items.isEmpty()) {
+                showMessage("Tidak ada file di $label")
+                return@enqueue
+            }
+            val ok = runAndLog(sourceKey, label, SyncMode.ADD_BOTH, items)
+            if (ok) _uiState.update { it.copy(armedSources = it.armedSources + sourceKey) }
+        }
+    }
+
+    /**
+     * Tombol 2 "Sinkron": hanya jalan kalau sumber sudah dibuka kuncinya lewat [addBothSides].
+     * Membuat dry-run dulu. Eksekusi baru terjadi di [confirmSync].
+     */
+    fun previewSync(sourceKey: String, label: String) {
+        if (sourceKey !in _uiState.value.armedSources) {
+            showMessage("Klik \"Tambah dari kedua sisi\" dulu sebelum sinkron.")
+            return
+        }
+        if (pendingPlanFor(sourceKey)) return
+        enqueue(sourceKey, label) {
+            if (!ensureTreeLoaded(sourceKey)) return@enqueue
+            val items = rootItems(sourceKey)
+            if (items.isEmpty()) {
+                showMessage("Tidak ada file di $label")
+                return@enqueue
+            }
+            val scan = scanOrLog(sourceKey, label, SyncMode.SYNC, items) ?: return@enqueue
+            _uiState.update { it.copy(pendingPlan = PendingSync(sourceKey, label, scan)) }
+        }
+    }
+
+    /**
+     * Menjalankan rencana dry-run yang sedang ditampilkan. Kunci dibuka lagi setelah ini, apa pun hasilnya,
+     * supaya setiap sinkron selalu didahului "Tambah dari kedua sisi".
+     */
+    fun confirmSync() {
+        val pending = _uiState.value.pendingPlan ?: return
+        _uiState.update { it.copy(pendingPlan = null) }
+        enqueue(pending.sourceKey, pending.label) {
+            try {
+                executeAndLog(pending.sourceKey, pending.label, SyncMode.SYNC, pending.scan)
+            } finally {
+                _uiState.update { it.copy(armedSources = it.armedSources - pending.sourceKey) }
+            }
+        }
+    }
+
+    /** Membatalkan dry-run. Kunci tetap terbuka, user bisa langsung klik "Sinkron" lagi. */
+    fun cancelPendingSync() {
+        _uiState.update { it.copy(pendingPlan = null) }
     }
 
     /** Menghentikan sync sumber [sourceKey], baik yang sedang berjalan maupun yang masih antre. */
@@ -234,30 +307,17 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         syncJobs[sourceKey]?.cancel()
     }
 
-    /**
-     * Sync dua arah seluruh repo: semua item dasar (folder dan file dasar).
-     * File dasar tetap ikut walau tidak ditampilkan. Pohon dimuat dulu bila belum ada.
-     */
-    fun syncRepo(repo: GithubRepoEntity) {
-        viewModelScope.launch {
-            val sourceKey = SourceKeys.github(repo.fullName)
-            if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
-            val rootItems = _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
-            if (rootItems.isEmpty()) {
-                logLoadFailure(sourceKey, repo.name, "Repo ${repo.name} kosong atau gagal dimuat")
-                return@launch
-            }
-            runItems(rootItems, label = repo.name)
-        }
+    private fun pendingPlanFor(sourceKey: String): Boolean {
+        if (_uiState.value.pendingPlan?.sourceKey != sourceKey) return false
+        showMessage("Selesaikan dulu dry-run sinkron yang sedang ditampilkan.")
+        return true
     }
 
     /**
-     * Memasukkan sync ke antrean. Satu sumber hanya boleh sekali dalam antrean atau berjalan.
-     * Sync dijalankan lewat [syncMutex], jadi satu per satu.
+     * Memasukkan operasi ke antrean. Satu sumber hanya boleh sekali dalam antrean atau berjalan.
+     * Operasi dijalankan lewat [syncMutex], jadi satu per satu.
      */
-    private fun runItems(items: List<TreeItem>, label: String) {
-        if (items.isEmpty()) return
-        val sourceKey = items.first().sourceKey
+    private fun enqueue(sourceKey: String, label: String, block: suspend () -> Unit) {
         val state = _uiState.value
         if (sourceKey in state.busySources || sourceKey in state.queuedSources) {
             _uiState.update { it.copy(snackbarMessage = "$label sudah dalam antrean atau sedang berjalan") }
@@ -271,7 +331,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(queuedSources = it.queuedSources - sourceKey, busySources = it.busySources + sourceKey)
                     }
-                    executeSync(sourceKey, items, label)
+                    block()
                 }
             } finally {
                 _uiState.update {
@@ -284,26 +344,96 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         job.start()
     }
 
-    private suspend fun executeSync(sourceKey: String, items: List<TreeItem>, label: String) {
+    /** Item akar sumber (folder dan file di level paling atas). Scan rekursif dilakukan engine. */
+    private fun rootItems(sourceKey: String): List<TreeItem> =
+        _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
+
+    /** Memastikan pohon sumber sudah dimuat. Mengembalikan false kalau gagal (sudah dicatat dan diberi tahu). */
+    private suspend fun ensureTreeLoaded(sourceKey: String): Boolean {
+        if (sourceKey in _uiState.value.loaded) return true
+        if (SourceTreeRules.isDriveSource(sourceKey)) {
+            fetchDriveLevel(SourceTreeRules.driveEmailOf(sourceKey), parent = null, remaining = DRIVE_PRELOAD_LEVELS)
+        } else {
+            val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
+            val repo = repos.value.firstOrNull { it.fullName == fullName }
+            if (repo == null) {
+                logLoadFailure(sourceKey, fullName, "Repo $fullName tidak ditemukan")
+                return false
+            }
+            loadRepoTree(repo)
+        }
+        return sourceKey in _uiState.value.loaded
+    }
+
+    /** Scan lalu eksekusi langsung (mode tambah). Mengembalikan true kalau sukses tanpa error dan tidak dibatalkan. */
+    private suspend fun runAndLog(sourceKey: String, label: String, mode: SyncMode, items: List<TreeItem>): Boolean {
+        val scan = scanOrLog(sourceKey, label, mode, items) ?: return false
+        return executeAndLog(sourceKey, label, mode, scan)
+    }
+
+    /** Scan saja. Gagal atau dibatalkan dicatat di log, lalu mengembalikan null. */
+    private suspend fun scanOrLog(sourceKey: String, label: String, mode: SyncMode, items: List<TreeItem>): SyncScan? {
+        return try {
+            scanFor(sourceKey, items, mode)
+        } catch (e: CancellationException) {
+            appendLog(sourceKey, label, mode, SyncStatus.DIBATALKAN, OpResult(), "Dibatalkan oleh pengguna")
+            throw e
+        } catch (e: Exception) {
+            val message = e.message ?: "Scan gagal"
+            _uiState.update { it.copy(snackbarMessage = message) }
+            appendLog(sourceKey, label, mode, SyncStatus.GAGAL, OpResult(failed = 1), message)
+            null
+        }
+    }
+
+    /** Menjalankan rencana [scan] dan mencatat hasilnya. Mengembalikan true kalau sukses tanpa error. */
+    private suspend fun executeAndLog(sourceKey: String, label: String, mode: SyncMode, scan: SyncScan): Boolean {
         var cancelled = false
         var errorMessage: String? = null
         val result = try {
-            runOperation(sourceKey, items)
+            engine.execute(scan, app.syncStateStore)
         } catch (e: CancellationException) {
             cancelled = true
             OpResult()
         } catch (e: Exception) {
             errorMessage = e.message ?: "Operasi gagal"
-            OpResult(failed = items.size)
+            OpResult(failed = 1)
         }
         if (!currentCoroutineContext().isActive) cancelled = true
         val status = if (cancelled) SyncStatus.DIBATALKAN else SyncSummary.fromResult(result, System.currentTimeMillis()).status
         appendLog(
             sourceKey = sourceKey,
             label = label,
+            mode = mode,
             status = status,
             result = result,
             error = if (cancelled) "Dibatalkan oleh pengguna" else errorMessage
+        )
+        return !cancelled && errorMessage == null && result.failed == 0
+    }
+
+    private suspend fun scanFor(sourceKey: String, items: List<TreeItem>, mode: SyncMode): SyncScan {
+        if (SourceTreeRules.isDriveSource(sourceKey)) {
+            val email = SourceTreeRules.driveEmailOf(sourceKey)
+            val root = LocalPathHelper.driveRoot(email)
+            return engine.scanDrive(email, root, ignoreRules, items, app.syncStateStore, sourceKey, mode)
+        }
+        val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
+        val repo = repos.value.firstOrNull { it.fullName == fullName }
+            ?: error("Repo $fullName tidak ditemukan")
+        val pat = repository.getGithubPat(repo.accountId)
+            ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
+        return engine.scanGithub(
+            pat = pat,
+            owner = repo.owner,
+            repo = repo.name,
+            branch = repo.defaultBranch,
+            rootDir = File(repo.localPath),
+            ignoreRules = ignoreRules,
+            items = items,
+            stateStore = app.syncStateStore,
+            sourceKey = sourceKey,
+            mode = mode
         )
     }
 
@@ -313,6 +443,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         appendLog(
             sourceKey = sourceKey,
             label = label,
+            mode = SyncMode.SYNC,
             status = SyncStatus.GAGAL,
             result = OpResult(),
             error = message
@@ -323,6 +454,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     private fun appendLog(
         sourceKey: String,
         label: String,
+        mode: SyncMode,
         status: SyncStatus,
         result: OpResult,
         error: String?
@@ -339,7 +471,8 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             error = error,
             hidden = result.hidden,
             skipDetails = result.skipDetails.take(SyncLogStore.MAX_SKIP_DETAILS),
-            skipCounts = result.skipDetails.groupingBy { it.reason }.eachCount()
+            skipCounts = result.skipDetails.groupingBy { it.reason }.eachCount(),
+            mode = mode.name
         )
         _logs.value = logStore.append(entry)
     }
@@ -410,38 +543,15 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun runOperation(sourceKey: String, items: List<TreeItem>): OpResult {
-        if (SourceTreeRules.isDriveSource(sourceKey)) {
-            val email = SourceTreeRules.driveEmailOf(sourceKey)
-            val root = LocalPathHelper.driveRoot(email)
-            return engine.syncDrive(email, root, ignoreRules, items, app.syncStateStore, sourceKey)
-        }
-        val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
-        val repo = repos.value.firstOrNull { it.fullName == fullName }
-            ?: error("Repo $fullName tidak ditemukan")
-        val pat = repository.getGithubPat(repo.accountId)
-            ?: error("PAT untuk @${repo.owner} tidak ada. Tambahkan ulang akun.")
-        val root = File(repo.localPath)
-        return engine.syncGithub(
-            pat = pat,
-            owner = repo.owner,
-            repo = repo.name,
-            branch = repo.defaultBranch,
-            rootDir = root,
-            ignoreRules = ignoreRules,
-            items = items,
-            stateStore = app.syncStateStore,
-            sourceKey = sourceKey
-        )
-    }
-
-    /** Membuang state pohon dan base sync untuk satu sumber. Log sync tetap disimpan sebagai riwayat. */
+    /** Membuang state pohon, kunci, dan base sync untuk satu sumber. Log sync tetap disimpan sebagai riwayat. */
     private suspend fun dropSource(sourceKey: String) {
         app.syncStateStore.deleteSource(sourceKey)
         _uiState.update { st ->
             st.copy(
                 trees = st.trees - sourceKey,
-                loaded = SourceTreeRules.loadedWithoutSource(st.loaded, sourceKey)
+                loaded = SourceTreeRules.loadedWithoutSource(st.loaded, sourceKey),
+                armedSources = st.armedSources - sourceKey,
+                pendingPlan = st.pendingPlan?.takeIf { it.sourceKey != sourceKey }
             )
         }
     }
