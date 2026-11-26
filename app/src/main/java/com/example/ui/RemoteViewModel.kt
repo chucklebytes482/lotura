@@ -12,6 +12,7 @@ import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.remote.Location
+import com.example.remote.PickedFolder
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteFiles
 import com.example.remote.Source
@@ -24,6 +25,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+internal data class FolderUploadQueue(
+    val folders: List<PickedFolder> = emptyList(),
+    val picking: Boolean = false,
+    val error: String? = null
+)
+
 internal data class BrowserState(
     val location: Location? = null,
     val entries: List<RemoteEntry> = emptyList(),
@@ -34,6 +41,7 @@ internal data class BrowserState(
     val isAddingGithub: Boolean = false,
     val driveAuthError: String? = null,
     val githubAccountError: String? = null,
+    val folderUpload: FolderUploadQueue? = null,
     val snackbarMessage: String? = null,
     val isOnline: Boolean = true
 )
@@ -90,10 +98,67 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun uploadSelected(uris: List<Uri>) {
+        if (_uiState.value.folderUpload != null) return
         val target = pickerTarget ?: return
         pickerTarget = null
         if (uris.isNotEmpty() && target == _uiState.value.location) {
-            runBusy(target, refresh = true) { files.upload(target, uris) }
+            runBusy(target, refresh = true) { files.uploadFiles(target, uris) }
+        }
+    }
+
+    fun beginFolderUpload(): Boolean {
+        if (!preparePicker()) return false
+        _uiState.update { it.copy(folderUpload = FolderUploadQueue()) }
+        return true
+    }
+
+    fun beginAddingFolder(): Boolean {
+        val queue = _uiState.value.folderUpload ?: return false
+        if (queue.picking) return false
+        _uiState.update { it.copy(folderUpload = queue.copy(picking = true, error = null)) }
+        return true
+    }
+
+    fun onFolderPicked(uri: Uri?, error: String? = null) {
+        val queue = _uiState.value.folderUpload?.takeIf { it.picking } ?: return
+        if (uri == null) {
+            _uiState.update { it.copy(folderUpload = queue.copy(picking = false, error = error)) }
+            return
+        }
+        viewModelScope.launch {
+            val loaded = try {
+                val folder = files.pickFolder(uri)
+                when {
+                    queue.folders.any { it.tree == uri } -> queue.copy(error = "Folder ini sudah dipilih.")
+                    queue.folders.any { it.name == folder.name } -> queue.copy(error = "Sudah ada folder bernama ${folder.name} dalam pilihan.")
+                    else -> queue.copy(folders = queue.folders + folder, error = null)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                queue.copy(error = e.message ?: "Folder tidak dapat dibaca.")
+            }
+            _uiState.update { it.copy(folderUpload = loaded.copy(picking = false)) }
+        }
+    }
+
+    fun removePickedFolder(folder: PickedFolder) {
+        val queue = _uiState.value.folderUpload?.takeUnless { it.picking } ?: return
+        _uiState.update { it.copy(folderUpload = queue.copy(folders = queue.folders - folder, error = null)) }
+    }
+
+    fun cancelFolderUpload() {
+        if (_uiState.value.folderUpload?.picking != false) return
+        pickerTarget = null
+        _uiState.update { it.copy(folderUpload = null) }
+    }
+
+    fun uploadPickedFolders() {
+        val queue = _uiState.value.folderUpload?.takeUnless { it.picking || it.folders.isEmpty() } ?: return
+        val target = pickerTarget ?: return
+        cancelFolderUpload()
+        if (target == _uiState.value.location) {
+            runBusy(target, refresh = true) { files.uploadFolders(target, queue.folders) }
         }
     }
 

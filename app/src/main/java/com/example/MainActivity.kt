@@ -33,6 +33,7 @@ import com.example.drive.findActivity
 import com.example.remote.RemoteEntry
 import com.example.ui.RemoteViewModel
 import com.example.ui.components.StoragePermissionHelper
+import com.example.ui.screens.FolderUploadDialog
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.SyncBebasTheme
 
@@ -138,6 +139,21 @@ private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
         viewModel.uploadSelected(it)
     }
 
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
+        viewModel.onFolderPicked(it)
+    }
+    val addFolder: () -> Unit = {
+        if (viewModel.beginAddingFolder()) {
+            runCatching { folderPicker.launch(null) }.onFailure {
+                viewModel.onFolderPicked(null, "Pemilih folder Android tidak tersedia.")
+            }
+        }
+    }
+    uiState.folderUpload?.let { queue ->
+        FolderUploadDialog(queue, viewModel::cancelFolderUpload, addFolder, viewModel::removePickedFolder,
+            viewModel::uploadPickedFolders)
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -151,7 +167,7 @@ private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
             repos = repos,
             viewModel = viewModel,
             onConnectDrive = startDriveAuth,
-            onUpload = {
+            onUploadFiles = {
                 if (viewModel.preparePicker()) {
                     runCatching { filePicker.launch(arrayOf("*/*")) }.onFailure {
                         viewModel.uploadSelected(emptyList())
@@ -159,6 +175,7 @@ private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
                     }
                 }
             },
+            onUploadFolders = { if (viewModel.beginFolderUpload()) addFolder() },
             onDownload = { entry ->
                 if (hasStoragePermission) viewModel.download(entry)
                 else {

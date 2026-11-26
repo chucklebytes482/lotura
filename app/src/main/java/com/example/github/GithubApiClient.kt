@@ -151,8 +151,7 @@ class GithubApiClient(
             val prefix = "{\"message\":${JSONObject.quote(message)},\"content\":\""
             val body = base64Body(file, prefix, "\"}")
             val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/contents/$encoded").put(body).build()
-            executeString(req)
-            Unit
+            JSONObject(executeString(req)).getJSONObject("commit").getString("sha")
         }
 
     private fun base64Body(file: File?, prefix: String, suffix: String) = object : RequestBody() {

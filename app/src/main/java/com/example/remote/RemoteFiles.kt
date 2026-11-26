@@ -1,9 +1,7 @@
 package com.example.remote
 
-import android.content.Context
 import android.net.Uri
 import android.os.Environment
-import android.provider.OpenableColumns
 import com.example.SyncBebasApp
 import com.example.data.db.GithubRepoEntity
 import com.example.drive.DriveMimeTypes
@@ -78,23 +76,37 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         }
     }
 
-    suspend fun upload(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
-        check(location.writable && uris.isNotEmpty())
-        val files = uris.distinct().map { it to uploadName(app, it) }
-        requireAvailable(emptyList(), files.map { it.second })
-        // The picker name is validated before reading or sending any content.
+    private val picker = UploadPicker(app.contentResolver)
+
+    suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) { picker.folder(uri) }
+
+    suspend fun uploadFiles(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
+        upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children))
+    }
+
+    suspend fun uploadFolders(location: Location, folders: List<PickedFolder>): String = withContext(Dispatchers.IO) {
+        val roots = folders.map { picker.folder(it.tree) }.map {
+            UploadDocument(it.name, picker.rootUri(it.tree), isFolder = true)
+        }
+        upload(location, scanUploadTrees(roots, picker::children))
+    }
+
+    private suspend fun upload(location: Location, tree: UploadTree<Uri>): String {
+        check(location.writable && tree.items.isNotEmpty())
         val scratch = mutableListOf<File>()
         try {
-            val staged = files.map { (uri, name) ->
-                ensureActive()
+            // Validate all names and stage all selected files before changing the remote.
+            val limit = if (location.source is Source.Github) GithubUploadLimit else Long.MAX_VALUE
+            val staged = tree.items.mapUploadFiles { item ->
+                coroutineContext.ensureActive()
+                val (name, uri) = item
                 val temp = File.createTempFile("lotura-upload-", ".tmp", app.cacheDir).also { scratch += it }
-                val limit = if (location.source is Source.Github) GithubUploadLimit else Long.MAX_VALUE
                 checkNotNull(app.contentResolver.openInputStream(uri)) { "File $name tidak bisa dibaca." }.use { input ->
                     temp.outputStream().use { out ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         var count = 0L
                         while (true) {
-                            ensureActive()
+                            coroutineContext.ensureActive()
                             val n = input.read(buffer)
                             if (n < 0) break
                             count += n
@@ -103,53 +115,80 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                         }
                     }
                 }
-                name to temp
+                temp
             }
             when (val source = location.source) {
-                is Source.Drive -> {
-                    val token = app.resolveDriveToken(source.email)
-                    requireAvailable(driveEntries(token, location.ref).map { it.name }, staged.map { it.first })
-                    var completed = 0
-                    try {
-                        for ((name, file) in staged) {
-                            ensureActive()
-                            drive.uploadFile(token, location.ref, name, file)
-                            completed++
-                        }
-                    } catch (e: Exception) {
-                        ensureActive()
-                        error("$completed dari ${staged.size} file terunggah. ${e.message.orEmpty()}")
+                is Source.Drive -> uploadToDrive(location, source, staged)
+                is Source.Github -> uploadToGithub(location, source, staged)
+            }
+            val folderCount = staged.count { it is UploadItem.Folder }
+            val message = if (folderCount == 0) "${scratch.size} file terunggah."
+                else "$folderCount folder terunggah (${scratch.size} file)."
+            return message + if (tree.skipped > 0) " ${tree.skipped} item tersembunyi dilewati." else ""
+        } finally {
+            scratch.forEach { it.delete() }
+        }
+    }
+
+    private suspend fun uploadToDrive(location: Location, source: Source.Drive, items: List<UploadItem<File>>) {
+        val token = app.resolveDriveToken(source.email)
+        requireAvailable(driveEntries(token, location.ref).map { it.name }, items.map { it.name })
+        var foldersCreated = 0
+        var filesUploaded = 0
+        suspend fun uploadItems(parent: String, entries: List<UploadItem<File>>) {
+            for (item in entries) {
+                coroutineContext.ensureActive()
+                when (item) {
+                    is UploadItem.File -> {
+                        drive.uploadFile(token, parent, item.name, item.content)
+                        filesUploaded++
                     }
-                }
-                is Source.Github -> with(git(source)) {
-                    var snapshot = folder(location)
-                    requireAvailable(snapshot.entries.map { it.name }, staged.map { it.first })
-                    var remaining = staged
-                    if (snapshot.head == null) {
-                        val (name, file) = staged.first()
-                        github.createInitialFile(token, repo.owner, repo.name, name, "Lotura: Unggah file pertama", file)
-                        remaining = staged.drop(1)
-                    }
-                    if (remaining.isNotEmpty()) {
-                        try {
-                            if (snapshot.head == null) snapshot = folder(location)
-                            requireAvailable(snapshot.entries.map { it.name }, remaining.map { it.first })
-                            val changes = remaining.map { (name, file) ->
-                                val sha = github.createBlobFromFile(token, repo.owner, repo.name, file)
-                                GithubTreeChange(childPath(location.ref, name), sha)
-                            }
-                            commit(snapshot, changes, "Lotura: Unggah ${changes.size} file")
-                        } catch (e: Exception) {
-                            ensureActive()
-                            if (remaining.size == staged.size) throw e
-                            error("1 dari ${staged.size} file terunggah. ${e.message.orEmpty()}")
-                        }
+                    is UploadItem.Folder -> {
+                        val id = drive.createFolder(token, parent, item.name)
+                        foldersCreated++
+                        uploadItems(id.id, item.children)
                     }
                 }
             }
-            "${staged.size} file terunggah."
-        } finally {
-            scratch.forEach { it.delete() }
+        }
+        try {
+            uploadItems(location.ref, items)
+        } catch (e: Exception) {
+            coroutineContext.ensureActive()
+            if (foldersCreated == 0 && filesUploaded == 0) throw e
+            error("Unggah belum selesai: $foldersCreated folder dibuat, $filesUploaded file terunggah. ${e.message.orEmpty()}")
+        }
+    }
+
+    private suspend fun uploadToGithub(location: Location, source: Source.Github, items: List<UploadItem<File>>) {
+        with(git(source)) {
+            var snapshot = folder(location)
+            requireAvailable(snapshot.entries.map { it.name }, items.map { it.name })
+            val leaves = items.gitUploadFiles()
+            var initialized = false
+            try {
+                val remaining = if (snapshot.head == null) {
+                    val first = leaves.first()
+                    val initialHead = github.createInitialFile(token, repo.owner, repo.name, first.path,
+                        "Lotura: Tambahkan item pertama", first.content)
+                    initialized = true
+                    if (leaves.size == 1) return
+                    snapshot = folder(location)
+                    check(snapshot.head == initialHead) { changed }
+                    leaves.drop(1)
+                } else leaves
+                val changes = remaining.map { (path, file) ->
+                    coroutineContext.ensureActive()
+                    val sha = if (file == null) github.createEmptyBlob(token, repo.owner, repo.name)
+                        else github.createBlobFromFile(token, repo.owner, repo.name, file)
+                    GithubTreeChange(childPath(location.ref, path), sha)
+                }
+                commit(snapshot, changes, "Lotura: Unggah ${items.size} item")
+            } catch (e: Exception) {
+                coroutineContext.ensureActive()
+                if (!initialized) throw e
+                error("Unggah belum selesai. Item pertama sudah disimpan di repo. ${e.message.orEmpty()}")
+            }
         }
     }
 
@@ -298,14 +337,6 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         fun requireAvailable(existing: List<String>, names: List<String>) {
             val seen = existing.toMutableSet()
             for (name in names) require(seen.add(name)) { "Sudah ada item bernama $name. Tidak ada file yang ditimpa." }
-        }
-        fun uploadName(context: Context, uri: Uri): String {
-            val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            require(name != null && RemoteNames.validNewName(name)) {
-                "Pilihan berisi nama tersembunyi, tidak diketahui, atau tidak valid. Tidak ada file yang diunggah."
-            }
-            return name
         }
     }
 }

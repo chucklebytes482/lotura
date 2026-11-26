@@ -78,6 +78,29 @@ class RemoteApiContractTest {
         } finally { file.delete() }
     }
 
+    @Test fun githubInitialUploadReturnsCommitForNestedPath() = runBlocking {
+        val api = GithubApiClient(mock { request ->
+            assertEquals("PUT", request.method)
+            assertEquals("/repos/a/b/contents/Folder%20baru/empty/.gitkeep", request.url.encodedPath)
+            assertEquals("", JSONObject(body(request)).getString("content"))
+            """{"commit":{"sha":"initial-head"}}"""
+        })
+        assertEquals("initial-head", api.createInitialFile("test-token", "a", "b", "Folder baru/empty/.gitkeep", "test", null))
+    }
+
+    @Test fun driveCreatesNestedFoldersWithTheRequestedParent() = runBlocking {
+        val api = DriveApiClient(mock { request ->
+            assertEquals("POST", request.method)
+            assertEquals("/drive/v3/files", request.url.encodedPath)
+            val body = JSONObject(body(request))
+            assertEquals("Remote folder ID", body.getJSONArray("parents").getString(0))
+            assertEquals("child", body.getString("name"))
+            assertEquals("application/vnd.google-apps.folder", body.getString("mimeType"))
+            """{"id":"child-folder-id","name":"child"}"""
+        })
+        assertEquals("child-folder-id", api.createFolder("test-token", "Remote folder ID", "child").id)
+    }
+
     @Test fun driveListsPagesAndTrashesActualId() = runBlocking {
         val api = DriveApiClient(mock { request ->
             if (request.method == "PATCH") {

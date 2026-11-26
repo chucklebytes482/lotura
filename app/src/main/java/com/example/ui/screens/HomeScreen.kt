@@ -45,7 +45,8 @@ internal fun HomeScreen(
     repos: List<GithubRepoEntity>,
     viewModel: RemoteViewModel,
     onConnectDrive: () -> Unit,
-    onUpload: () -> Unit,
+    onUploadFiles: () -> Unit,
+    onUploadFolders: () -> Unit,
     onDownload: (RemoteEntry) -> Unit
 ) {
     val pager = rememberPagerState { 2 }
@@ -53,7 +54,7 @@ internal fun HomeScreen(
     val location = state.location
     if (location != null) {
         BackHandler { viewModel.back() }
-        BrowserScreen(modifier, state, location, viewModel, onUpload, onDownload)
+        BrowserScreen(modifier, state, location, viewModel, onUploadFiles, onUploadFolders, onDownload)
         return
     }
 
@@ -182,8 +183,11 @@ private fun PatDialog(state: BrowserState, onDismiss: () -> Unit, onAdd: (String
 @Composable
 private fun BrowserScreen(
     modifier: Modifier, state: BrowserState, location: Location, viewModel: RemoteViewModel,
-    onUpload: () -> Unit, onDownload: (RemoteEntry) -> Unit
+    onUploadFiles: () -> Unit,
+    onUploadFolders: () -> Unit,
+    onDownload: (RemoteEntry) -> Unit
 ) {
+    var uploadMenu by remember(location) { mutableStateOf(false) }
     var search by remember(location) { mutableStateOf("") }
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
@@ -204,8 +208,20 @@ private fun BrowserScreen(
                 IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
                     Icon(Icons.Default.CreateNewFolder, "Buat folder baru")
                 }
-                IconButton(onClick = onUpload, enabled = canEdit, modifier = Modifier.testTag("upload_files")) {
-                    Icon(Icons.Default.Upload, "Unggah file")
+                Box {
+                    IconButton(onClick = { uploadMenu = true }, enabled = canEdit, modifier = Modifier.testTag("upload_menu")) {
+                        Icon(Icons.Default.Upload, "Unggah")
+                    }
+                    DropdownMenu(expanded = uploadMenu, onDismissRequest = { uploadMenu = false }) {
+                        DropdownMenuItem(text = { Text("Unggah file") }, onClick = {
+                            uploadMenu = false
+                            onUploadFiles()
+                        }, modifier = Modifier.testTag("upload_files"))
+                        DropdownMenuItem(text = { Text("Unggah folder") }, onClick = {
+                            uploadMenu = false
+                            onUploadFolders()
+                        }, modifier = Modifier.testTag("upload_folders"))
+                    }
                 }
             }
         }
