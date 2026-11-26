@@ -1,32 +1,49 @@
 package com.example.sync
 
 import java.io.File
+import java.io.IOException
 
-/**
- * Memindai folder lokal hanya untuk ukuran file. Tidak ada hash:
- * perbandingan antara lokal dan remote memakai `size` saja.
- */
-object LocalScanner {
+internal data class LocalTree(
+    val files: Map<String, File>,
+    val folders: Set<String>,
+    val blocked: Set<String>
+)
 
-    /** Map relativePath (pakai '/') -> File, untuk semua file di bawah [rootDir] yang tidak diabaikan. */
-    fun scanFiles(rootDir: File, ignoreRules: IgnoreRules): Map<String, File> {
-        if (!rootDir.exists() || !rootDir.isDirectory) return emptyMap()
-        val result = linkedMapOf<String, File>()
-        walk(rootDir, rootDir, ignoreRules, result)
-        return result
-    }
+internal object LocalScanner {
+    fun scan(root: File, ignoreRules: IgnoreRules, hasBase: Boolean): LocalTree {
+        val files = linkedMapOf<String, File>()
+        val folders = linkedSetOf<String>()
+        val blocked = linkedSetOf<String>()
+        val parent = root.absoluteFile.parentFile ?: error("Folder sumber tidak valid.")
+        if (!root.exists()) {
+            check(!hasBase) { "Folder sumber ${root.name} tidak ditemukan. Sinkron dibatalkan demi keamanan." }
+            // A missing parent is normal for a repo/account on its first sync.
+            var existing = parent
+            while (!existing.exists()) existing = existing.parentFile ?: error("Penyimpanan tidak tersedia.")
+            check(existing.list() != null) { "Penyimpanan lokal tidak dapat dibaca." }
+            return LocalTree(files, folders, blocked)
+        }
+        check(root.isDirectory && root.canonicalFile == File(parent.canonicalFile, root.name)) {
+            "Folder sumber ${root.name} tidak dapat digunakan."
+        }
 
-    private fun walk(root: File, dir: File, ignoreRules: IgnoreRules, out: MutableMap<String, File>) {
-        val children = dir.listFiles() ?: return
-        for (child in children.sortedBy { it.name.lowercase() }) {
-            val rel = child.relativeTo(root).invariantSeparatorsPath
-            if (rel.isEmpty()) continue
-            if (child.name.startsWith(".")) continue
-            if (ignoreRules.isIgnored(rel, isDirectory = child.isDirectory)) continue
-            when {
-                child.isDirectory -> walk(root, child, ignoreRules, out)
-                child.isFile -> out[rel] = child
+        fun walk(dir: File, prefix: String) {
+            val children = dir.listFiles() ?: throw IOException("Folder ${dir.name} tidak dapat dibaca.")
+            for (child in children) {
+                val path = SourceTreeRules.childPath(prefix, child.name)
+                when {
+                    !isSyncPath(path) || child.isHidden || child.canonicalFile != File(dir.canonicalFile, child.name) ||
+                        ignoreRules.isIgnored(path, child.isDirectory) -> blocked += path
+                    child.isDirectory -> {
+                        folders += path
+                        walk(child, path)
+                    }
+                    child.isFile -> files[path] = child
+                    else -> blocked += path
+                }
             }
         }
+        walk(root, "")
+        return LocalTree(files, folders, blocked)
     }
 }

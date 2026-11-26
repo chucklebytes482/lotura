@@ -164,11 +164,12 @@ class GithubApiClient(
             .get()
             .build()
         val root = JSONObject(executeString(req))
-        val treeArr = root.optJSONArray("tree") ?: return@withContext emptyList()
+        check(!root.optBoolean("truncated")) { "Pohon GitHub terpotong. Sinkron dibatalkan demi keamanan." }
+        val treeArr = root.getJSONArray("tree")
         val blobs = mutableListOf<GithubTreeBlob>()
         for (i in 0 until treeArr.length()) {
             val item = treeArr.optJSONObject(i) ?: continue
-            if (item.optString("type") != "blob") continue
+            if (item.optString("type") !in listOf("blob", "commit")) continue
             val repoPath = item.optString("path", "")
             if (repoPath.isBlank()) continue
             if (prefix.isNotEmpty() && !repoPath.startsWith(prefix)) continue
@@ -179,7 +180,8 @@ class GithubApiClient(
                     repoPath = repoPath,
                     relativePath = relative,
                     sha = item.getString("sha"),
-                    size = item.optLong("size", 0L)
+                    size = item.optLong("size", 0L),
+                    mode = item.getString("mode")
                 )
             )
         }
@@ -252,7 +254,7 @@ class GithubApiClient(
         changes.forEach { change ->
             val entry = JSONObject().apply {
                 put("path", change.repoPath)
-                put("mode", "100644")
+                put("mode", change.mode)
                 put("type", "blob")
                 if (change.blobSha != null) {
                     put("sha", change.blobSha)

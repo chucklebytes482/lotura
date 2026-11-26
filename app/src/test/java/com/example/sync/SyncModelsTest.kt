@@ -8,17 +8,22 @@ import org.junit.Test
 class SyncModelsTest {
 
     @Test
-    fun trackedRepoPath_mdAndVxenc_yes() {
-        assertTrue(isTrackedRepoPath("encrypt/ketikku.vxenc"))
-        assertTrue(isTrackedRepoPath("catatan.md"))
-        assertTrue(isTrackedRepoPath("disk/brankas.hc"))
-        assertTrue(isTrackedRepoPath("Brankas.VXENC"))
+    fun syncPath_allExtensionsAndNoExtension_yes() {
+        assertTrue(isSyncPath("encrypt/ketikku.vxenc"))
+        assertTrue(isSyncPath("catatan.md"))
+        assertTrue(isSyncPath("disk/brankas.hc"))
+        assertTrue(isSyncPath("Brankas.VXENC"))
+        assertTrue(isSyncPath("gambar.png"))
+        assertTrue(isSyncPath("README"))
+        assertTrue(isSyncPath("nested/a.tmp"))
     }
 
     @Test
-    fun trackedRepoPath_otherOrHidden_no() {
-        assertFalse(isTrackedRepoPath("gambar.png"))
-        assertFalse(isTrackedRepoPath(".rahasia/ketikku.vxenc"))
+    fun syncPath_hiddenOrInvalid_no() {
+        assertFalse(isSyncPath("a/.env"))
+        assertFalse(isSyncPath("a/../file"))
+        assertFalse(isSyncPath("/absolute/file"))
+        assertFalse(isSyncPath(".rahasia/ketikku.vxenc"))
     }
 
     @Test

@@ -533,22 +533,22 @@ internal fun SyncPlanDialog(
                 if (nothingToDo) {
                     Text("Tidak ada yang perlu diubah.", fontSize = 13.sp)
                 } else {
-                    Text("Unggah: ${plan.uploads} file", fontSize = 13.sp)
-                    Text("Unduh: ${plan.downloads} file", fontSize = 13.sp)
+                    Text("Unggah: ${plan.uploads} item", fontSize = 13.sp)
+                    Text("Unduh: ${plan.downloads} item", fontSize = 13.sp)
                     Text("Konflik: ${plan.conflicts} file (remote menang, lokal ke trash)", fontSize = 13.sp)
-                    Text("Pindah ke trash: ${plan.trashTotal} file (lokal ${plan.trashLocal}, remote ${plan.trashRemote})", fontSize = 13.sp)
+                    Text("Pindah ke trash: ${plan.trashTotal} item (lokal ${plan.trashLocal}, remote ${plan.trashRemote})", fontSize = 13.sp)
                 }
                 if (scan.localEmptyWithBase) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Folder lokal kosong, tapi ada riwayat sync. File remote bisa ikut pindah ke trash.",
+                        "Folder lokal kosong, tapi ada riwayat sync. Item remote bisa ikut pindah ke trash.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.error
                     )
                 } else if (scan.trashOverLimit) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Jumlah trash melewati batas (lebih dari ${SyncScan.TRASH_CONFIRM_MIN} file atau ${SyncScan.TRASH_CONFIRM_PERCENT}% dari yang sudah tersinkron). Periksa dulu.",
+                        "Jumlah trash melewati batas (lebih dari ${SyncScan.TRASH_CONFIRM_MIN} item atau ${SyncScan.TRASH_CONFIRM_PERCENT}% dari yang sudah tersinkron). Periksa dulu.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.error
                     )

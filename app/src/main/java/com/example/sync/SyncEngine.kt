@@ -5,6 +5,7 @@ import com.example.drive.DriveChild
 import com.example.drive.DriveFileItem
 import com.example.drive.DriveMimeTypes
 import com.example.drive.DriveRemote
+import com.example.drive.RawDriveEntry
 import com.example.github.GithubApiClient
 import com.example.github.GithubRemote
 import com.example.github.GithubTreeChange
@@ -14,7 +15,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,15 +39,16 @@ class SyncScan internal constructor(
     val mode: SyncMode,
     val base: Map<String, PathState>,
     val actions: List<PlannedAction>,
-    /** Jumlah file lokal dalam ruang lingkup sync (sebelum planner). */
-    val localFileCount: Int,
+    /** Jumlah item lokal dalam ruang lingkup sync (sebelum planner). */
+    val localItemCount: Int,
     internal val driveEmail: String?,
+    internal val driveFolders: Map<String, String> = emptyMap(),
     internal val github: GithubTarget?
 ) {
     val plan: SyncPlan = SyncPlan(actions)
 
     /** Ada base, tapi folder lokal tidak punya satu file pun. Bisa berarti file terhapus tidak sengaja. */
-    val localEmptyWithBase: Boolean get() = mode == SyncMode.SYNC && base.isNotEmpty() && localFileCount == 0
+    val localEmptyWithBase: Boolean get() = mode == SyncMode.SYNC && base.isNotEmpty() && localItemCount == 0
 
     /** Trash melewati batas: lebih dari [TRASH_CONFIRM_MIN] file, atau lebih dari [TRASH_CONFIRM_PERCENT] persen base. */
     val trashOverLimit: Boolean
@@ -92,44 +93,35 @@ class SyncEngine(
         email: String,
         rootDir: File,
         ignoreRules: IgnoreRules,
-        items: List<TreeItem>,
         stateStore: SyncStateStore,
         sourceKey: String,
         mode: SyncMode
     ): SyncScan = withContext(Dispatchers.IO) {
         val token = driveTokenProvider(email)
-        val base = scopedBase(stateStore, sourceKey, items)
-        val scanned = scanLocal(rootDir, items, ignoreRules) { !isHiddenPath(it) }
-        val local = scanned.mapValues { LocalFile(LocalFileOps.md5Hex(it.value)) }
-        guardLocal(rootDir, items, base)
-
-        val remote = linkedMapOf<String, RemoteFile>()
-        for (item in items) {
-            if (item.isFolder) {
-                val folderId = item.remoteId ?: error("Folder ${item.path} tidak punya id Drive.")
-                for (f in drive.listFilesRecursive(token, folderId)) {
-                    if (isHiddenPath(f.relativePath)) continue
-                    val path = "${item.path}/${f.relativePath}"
-                    if (ignoreRules.isIgnored(path)) continue
-                    remote[path] = driveRemote(f)
-                }
-            } else {
-                val fileId = item.remoteId ?: continue
-                val fresh = fetchDriveFileOrNull(token, fileId) ?: continue
-                if (!fresh.trashed && !isHiddenPath(item.path) && !ignoreRules.isIgnored(item.path)) {
-                    remote[item.path] = driveRemote(fresh)
-                }
-            }
-        }
+        val saved = stateStore.getAll(sourceKey)
+        val scanned = LocalScanner.scan(rootDir, ignoreRules, saved.isNotEmpty())
+        val driveTree = scanDriveTree(token, ignoreRules)
+        val local = scanned.files.mapValues { LocalFile(LocalFileOps.md5Hex(it.value)) } +
+            scanned.folders.associateWith { LocalFile(FOLDER_STATE) }
+        val remote = driveTree.entries
+        verifyNoTypeCollision(scanned.files.keys, scanned.folders, remote)
+        val base = eligibleBase(saved, ignoreRules, scanned.blocked + driveTree.blocked).toMutableMap()
+        inferLegacyFolders(local, remote, base)
+        val actions = planFor(mode, local, remote, base)
+        val safeActions = guardFolderDeletes(
+            actions.filterNot { isBlocked(it.path, scanned.blocked) || isBlocked(it.path, driveTree.blocked) },
+            local, remote, scanned.blocked, driveTree.blocked
+        )
 
         SyncScan(
             sourceKey = sourceKey,
             rootDir = rootDir,
             mode = mode,
             base = base,
-            actions = planFor(mode, local, remote, base),
-            localFileCount = local.size,
+            actions = safeActions,
+            localItemCount = local.size,
             driveEmail = email,
+            driveFolders = remote.filterValues { it.isFolder }.mapValues { it.value.ref },
             github = null
         )
     }
@@ -151,13 +143,40 @@ class SyncEngine(
         return RemoteFile(ref = f.id, hash = hash, nativeMime = native)
     }
 
-    /** File Drive yang sudah tidak ada (404) dianggap tidak ada di remote. Error lain tetap dilempar. */
-    private suspend fun fetchDriveFileOrNull(token: String, fileId: String): DriveFileItem? =
-        try {
-            drive.getFile(token, fileId)
-        } catch (e: IllegalStateException) {
-            if (e.message?.contains("(404)") == true) null else throw e
+    private data class DriveTree(val entries: Map<String, RemoteFile>, val blocked: Set<String>)
+
+    private suspend fun scanDriveTree(token: String, ignoreRules: IgnoreRules): DriveTree {
+        val entries = linkedMapOf<String, RemoteFile>()
+        val blocked = linkedSetOf<String>()
+        suspend fun walk(parentId: String, prefix: String) {
+            val children = drive.listSyncChildren(token, parentId)
+            // Drive permits '/' inside one name; it cannot be mapped to one local segment.
+            if (prefix.isNotEmpty() && children.any { '/' in it.name }) blocked += "$prefix/.lotura-unmapped"
+            val byPath = children.filterNot { '/' in it.name }.groupBy { entry ->
+                SourceTreeRules.childPath(prefix, DriveMimeTypes.localFileNameForDriveItem(entry.name, entry.mimeType))
+            }
+            for ((path, group) in byPath) {
+                val entry = group.first()
+                val folder = entry.mimeType == DriveMimeTypes.FOLDER
+                val native = DriveMimeTypes.exportSpecFor(entry.mimeType) != null
+                when {
+                    group.size != 1 || !isSyncPath(path) || ignoreRules.isIgnored(path, folder) ||
+                        (!folder && !native && entry.mimeType.startsWith("application/vnd.google-apps.")) -> blocked += path
+                    folder -> {
+                        entries[path] = RemoteFile(entry.id, FOLDER_STATE, null)
+                        walk(entry.id, path)
+                    }
+                    else -> entries[path] = RemoteFile(
+                        entry.id,
+                        if (native) null else (entry.md5Checksum ?: "size:${entry.size}"),
+                        entry.mimeType.takeIf { native }
+                    )
+                }
+            }
         }
+        walk("root", "")
+        return DriveTree(entries, blocked)
+    }
 
     // ---------- GitHub ----------
 
@@ -168,29 +187,35 @@ class SyncEngine(
         branch: String,
         rootDir: File,
         ignoreRules: IgnoreRules,
-        items: List<TreeItem>,
         stateStore: SyncStateStore,
         sourceKey: String,
         mode: SyncMode
     ): SyncScan = withContext(Dispatchers.IO) {
-        val base = scopedBase(stateStore, sourceKey, items)
-        val scanned = scanLocal(rootDir, items, ignoreRules, ::isTrackedRepoPath)
-        val local = scanned.mapValues { LocalFile(LocalFileOps.gitBlobSha(it.value)) }
-        guardLocal(rootDir, items, base)
+        val saved = stateStore.getAll(sourceKey)
+        val scanned = LocalScanner.scan(rootDir, ignoreRules, saved.isNotEmpty())
+        val local = scanned.files.mapValues { LocalFile(LocalFileOps.gitBlobSha(it.value)) }
 
         val (headCommit, treeSha) = github.getBranchHeadCommit(pat, owner, repo, branch)
-        val remote = github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
-            .filter { isTrackedRepoPath(it.repoPath) }
-            .filter { blob -> items.any { it.covers(blob.repoPath) } && !ignoreRules.isIgnored(blob.repoPath) }
-            .associate { it.repoPath to RemoteFile(it.repoPath, it.sha, null) }
+        val blobs = github.listBlobsInSubfolder(pat, owner, repo, treeSha, "")
+        val remote = blobs.asSequence()
+            .filter { it.isRegularFile && isSyncPath(it.repoPath) && !ignoreRules.isIgnored(it.repoPath) }
+            .associate { it.repoPath to RemoteFile(it.repoPath, it.sha, null, it.mode) }
+        val allRemoteDirs = trackedDirPaths(blobs.map { it.repoPath })
+        check(scanned.files.keys.none { it in allRemoteDirs } &&
+            blobs.none { it.repoPath in scanned.folders && isSyncPath(it.repoPath) }) {
+            "Sinkron dibatalkan: satu jalur dipakai sebagai file dan folder."
+        }
+        val blocked = scanned.blocked + (blobs.map { it.repoPath }.toSet() - remote.keys)
+        val base = eligibleBase(saved, ignoreRules, blocked)
 
         SyncScan(
             sourceKey = sourceKey,
             rootDir = rootDir,
             mode = mode,
             base = base,
-            actions = planFor(mode, local, remote, base),
-            localFileCount = local.size,
+            actions = planFor(mode, local, remote, base)
+                .filterNot { isBlocked(it.path, blocked) },
+            localItemCount = local.size,
             driveEmail = null,
             github = GithubTarget(pat, owner, repo, branch, headCommit, treeSha)
         )
@@ -203,6 +228,9 @@ class SyncEngine(
      * Hasil scan tidak dihitung ulang di sini.
      */
     suspend fun execute(scan: SyncScan, stateStore: SyncStateStore): OpResult = withContext(Dispatchers.IO) {
+        if (scan.base.isNotEmpty() && scan.plan.trashTotal > 0) {
+            check(checkedLocalPath(scan.rootDir, "").list() != null) { "Folder sumber lokal tidak dapat dibaca." }
+        }
         val stamp = stampNow()
         val gh = scan.github
         if (gh != null) executeGithub(scan, gh, stateStore, stamp)
@@ -217,9 +245,22 @@ class SyncEngine(
             rootDir = scan.rootDir,
             stateStore = stateStore,
             actions = scan.actions,
+            base = scan.base,
             stamp = stamp,
             hashOf = LocalFileOps::md5Hex
         ) { r, dest -> downloadDriveRemote(token, r, dest) }
+        val folderIds = scan.driveFolders.toMutableMap()
+        val checkedChildren = mutableMapOf<String, Map<String, RawDriveEntry>>()
+        suspend fun currentChildren(path: String): Map<String, RawDriveEntry> {
+            checkedChildren[path]?.let { return it }
+            val id = if (path.isEmpty()) "root" else folderIds.getValue(path).also { id ->
+                val actual = currentChildren(path.substringBeforeLast('/', ""))[id]
+                check(actual?.mimeType == DriveMimeTypes.FOLDER && actual.name == path.substringAfterLast('/')) {
+                    "Folder Drive berubah setelah scan."
+                }
+            }
+            return drive.listSyncChildren(token, id).associateBy { it.id }.also { checkedChildren[path] = it }
+        }
 
         var result = phase1.result
         for (action in phase1.remoteWork) {
@@ -227,19 +268,34 @@ class SyncEngine(
             try {
                 when (action) {
                     is PlannedAction.Upload -> {
-                        val uploaded = drive.uploadFile(
-                            accessToken = token,
-                            rootFolderId = "root",
-                            relativePath = action.path,
-                            existingFileId = action.remote?.ref,
-                            sourceFile = File(scan.rootDir, action.path),
-                            nativeWorkspaceMimeType = action.remote?.nativeMime
-                        )
-                        val r = driveRemote(uploaded)
+                        val src = checkedLocalPath(scan.rootDir, action.path)
+                        val parent = action.path.substringBeforeLast('/', "")
+                        val parentId = if (parent.isEmpty()) "root" else folderIds[parent]
+                            ?: error("Folder induk $parent belum tersedia di Drive.")
+                        val r = if (action.local.isFolder) {
+                            check(src.isDirectory) { "Folder lokal berubah setelah scan." }
+                            val id = drive.createFolder(token, parentId, src.name).id
+                            folderIds[action.path] = id
+                            RemoteFile(id, FOLDER_STATE, null)
+                        } else {
+                            check(src.isFile && LocalFileOps.md5Hex(src) == action.local.hash) { "File lokal berubah setelah scan." }
+                            driveRemote(drive.uploadFile(token, parentId, action.path, action.remote?.ref, src, action.remote?.nativeMime))
+                        }
                         stateStore.put(scan.sourceKey, action.path, PathState(action.local.hash, r.hash, r.ref))
                         result += OpResult(transferred = 1)
                     }
                     is PlannedAction.TrashRemote -> {
+                        check(!checkedLocalPath(scan.rootDir, action.path).exists()) { "Jalur lokal muncul lagi setelah scan." }
+                        val parent = action.path.substringBeforeLast('/', "")
+                        val fresh = currentChildren(parent)[action.remote.ref]
+                        check(fresh != null && fresh.name == action.path.substringAfterLast('/') &&
+                            (if (action.remote.isFolder) fresh.mimeType == DriveMimeTypes.FOLDER
+                            else fresh.md5Checksum == action.remote.hash && fresh.md5Checksum != null)) {
+                            "Item Drive berubah setelah scan."
+                        }
+                        if (action.remote.isFolder) check(drive.listSyncChildren(token, action.remote.ref).isEmpty()) {
+                            "Folder Drive tidak kosong."
+                        }
                         drive.trashFile(token, action.remote.ref)
                         stateStore.delete(scan.sourceKey, action.path)
                         result += OpResult(transferred = 1)
@@ -266,8 +322,10 @@ class SyncEngine(
             rootDir = scan.rootDir,
             stateStore = stateStore,
             actions = scan.actions,
+            base = scan.base,
             stamp = stamp,
-            hashOf = LocalFileOps::gitBlobSha
+            hashOf = LocalFileOps::gitBlobSha,
+            pruneEmptyParents = true
         ) { r, dest ->
             val sha = r.hash ?: error("Blob ${r.ref} tidak punya sha")
             github.downloadBlobToFile(gh.pat, gh.owner, gh.repo, sha, dest)
@@ -282,19 +340,22 @@ class SyncEngine(
             try {
                 when (action) {
                     is PlannedAction.Upload -> {
-                        val file = File(scan.rootDir, action.path)
+                        val file = checkedLocalPath(scan.rootDir, action.path)
+                        check(file.isFile) { "File lokal berubah setelah scan." }
                         if (file.length() > GithubApiClient.MAX_GITHUB_FILE_BYTES) {
                             result += OpResult.skip(SkipReason.TOO_LARGE_FOR_GITHUB, action.path)
                         } else {
                             val blobSha = github.createBlobFromFile(gh.pat, gh.owner, gh.repo, file)
-                            changes += GithubTreeChange(repoPath = action.path, blobSha = blobSha)
-                            uploaded += action.path to PathState(action.local.hash, blobSha, action.path)
+                            check(blobSha == action.local.hash) { "File lokal berubah setelah scan." }
+                            changes += GithubTreeChange(action.path, blobSha, action.remote?.gitMode ?: "100644")
+                            uploaded += action.path to PathState(blobSha, blobSha, action.path)
                         }
                     }
                     is PlannedAction.TrashRemote -> {
+                        check(!checkedLocalPath(scan.rootDir, action.path).exists()) { "Jalur lokal muncul lagi setelah scan." }
                         val sha = action.remote.hash ?: error("Blob ${action.path} tidak punya sha")
-                        changes += GithubTreeChange(repoPath = action.path, blobSha = null)
-                        changes += GithubTreeChange(repoPath = ".trash/$stamp/${action.path}", blobSha = sha)
+                        changes += GithubTreeChange(action.path, null, action.remote.gitMode)
+                        changes += GithubTreeChange(".trash/$stamp/${action.path}", sha, action.remote.gitMode)
                         removed += action.path
                     }
                     else -> Unit
@@ -358,34 +419,60 @@ class SyncEngine(
         rootDir: File,
         stateStore: SyncStateStore,
         actions: List<PlannedAction>,
+        base: Map<String, PathState>,
         stamp: String,
         hashOf: (File) -> String,
+        pruneEmptyParents: Boolean = false,
         download: suspend (RemoteFile, File) -> Unit
     ): Phase1Outcome {
         var result = OpResult()
         val deferred = mutableListOf<PlannedAction>()
-        for (action in actions) {
+        val ordered = actions.sortedWith(compareBy<PlannedAction> {
+            when (it) {
+                is PlannedAction.TrashLocal, is PlannedAction.TrashRemote -> 1
+                else -> 0
+            }
+        }.thenBy { if (it is PlannedAction.TrashLocal || it is PlannedAction.TrashRemote) -it.path.count { c -> c == '/' } else 0 })
+        for (action in ordered) {
             if (!currentCoroutineContext().isActive) break
             try {
                 when (action) {
                     is PlannedAction.Download -> {
-                        val dest = File(rootDir, action.path)
-                        dest.parentFile?.mkdirs()
-                        download(action.remote, dest)
+                        val dest = checkedLocalPath(rootDir, action.path)
+                        if (action.remote.isFolder) {
+                            check(dest.isDirectory || dest.mkdirs()) { "Folder lokal tidak dapat dibuat." }
+                        } else {
+                            dest.parentFile?.mkdirs()
+                            download(action.remote, dest)
+                        }
                         stateStore.put(
                             sourceKey,
                             action.path,
-                            PathState(hashOf(dest), action.remote.hash, action.remote.ref)
+                            PathState(if (action.remote.isFolder) FOLDER_STATE else hashOf(dest), action.remote.hash, action.remote.ref)
                         )
                         result += OpResult(transferred = 1)
                     }
                     is PlannedAction.TrashLocal -> {
-                        moveToTrash(rootDir, action.path, stamp)
+                        val src = checkedLocalPath(rootDir, action.path)
+                        if (action.isFolder) {
+                            // Do not overwrite the matching folder already created in .trash for child files.
+                            check(!src.exists() || (src.list()?.isEmpty() == true && src.delete())) {
+                                "Folder lokal tidak kosong atau tidak dapat dihapus."
+                            }
+                        } else {
+                            if (src.exists()) check(src.isFile && hashOf(src) == base.getValue(action.path).localHash) {
+                                "File lokal berubah setelah scan."
+                            }
+                            moveToTrash(rootDir, action.path, stamp)
+                            if (pruneEmptyParents) pruneParents(rootDir, src.parentFile)
+                        }
                         stateStore.delete(sourceKey, action.path)
                         result += OpResult(transferred = 1)
                     }
                     is PlannedAction.Conflict -> {
                         // Remote menang: lokal ke trash (tidak permanen), remote diunduh ke path asli.
+                        val src = checkedLocalPath(rootDir, action.path)
+                        check(src.isFile && hashOf(src) == action.local.hash) { "File lokal berubah setelah scan." }
                         moveToTrash(rootDir, action.path, stamp)
                         download(action.remote, File(rootDir, action.path).also { it.parentFile?.mkdirs() })
                         stateStore.put(
@@ -419,59 +506,100 @@ class SyncEngine(
     private fun moveToTrash(rootDir: File, path: String, stamp: String) {
         val src = File(rootDir, path)
         if (!src.exists()) return
-        val dest = File(rootDir, ".trash/$stamp/$path")
+        val dest = checkedLocalPath(rootDir, ".trash/$stamp/$path")
         dest.parentFile?.mkdirs()
         if (!src.renameTo(dest)) {
             src.copyTo(dest, overwrite = true)
-            src.delete()
+            check(src.delete()) { "File lokal tidak dapat dipindahkan ke trash." }
         }
     }
 
-    /** Base untuk sumber ini, dibatasi ke path yang dicakup item terpilih. */
-    private suspend fun scopedBase(
-        stateStore: SyncStateStore,
-        sourceKey: String,
-        items: List<TreeItem>
-    ): Map<String, PathState> =
-        stateStore.getAll(sourceKey).filterKeys { path -> items.any { it.covers(path) } }
+    private fun checkedLocalPath(root: File, path: String): File {
+        val parent = root.absoluteFile.parentFile ?: error("Folder sumber tidak valid.")
+        val canonicalRoot = File(parent.canonicalFile, root.name)
+        val dest = File(root, path)
+        check(root.canonicalFile == canonicalRoot && dest.canonicalFile == File(canonicalRoot, path)) {
+            "Jalur lokal tidak aman: $path"
+        }
+        return dest
+    }
 
-    /** Hasil scan lokal untuk item terpilih. [accept] menyaring path yang boleh ikut (mis. hanya .md di GitHub). */
-    private fun scanLocal(
-        rootDir: File,
-        items: List<TreeItem>,
-        ignoreRules: IgnoreRules,
-        accept: (String) -> Boolean
-    ): Map<String, File> {
-        val out = linkedMapOf<String, File>()
-        for (item in items) {
-            if (item.isFolder) {
-                LocalScanner.scanFiles(File(rootDir, item.path), ignoreRules).forEach { (rel, file) ->
-                    val path = "${item.path}/$rel"
-                    if (accept(path) && !ignoreRules.isIgnored(path)) out[path] = file
+    private fun pruneParents(root: File, start: File?) {
+        var dir = start
+        while (dir != null && dir != root && dir.list()?.isEmpty() == true && dir.delete()) dir = dir.parentFile
+    }
+
+    private fun eligibleBase(base: Map<String, PathState>, rules: IgnoreRules, blocked: Set<String>) =
+        base.filterKeys { isSyncPath(it) && !rules.isIgnored(it) && !isBlocked(it, blocked) }
+
+    private fun isBlocked(path: String, blocked: Set<String>): Boolean {
+        var current = path
+        while (current.isNotEmpty()) {
+            if (current in blocked) return true
+            current = current.substringBeforeLast('/', "")
+        }
+        return false
+    }
+
+    private fun verifyNoTypeCollision(files: Set<String>, folders: Set<String>, remote: Map<String, RemoteFile>) {
+        check(files.none { remote[it]?.isFolder == true } && folders.none { remote[it]?.isFolder == false }) {
+            "Sinkron dibatalkan: satu jalur dipakai sebagai file dan folder."
+        }
+    }
+
+    /** Older versions recorded only files. Infer deleted parents from known, unchanged children. */
+    private fun inferLegacyFolders(
+        local: Map<String, LocalFile>,
+        remote: Map<String, RemoteFile>,
+        base: MutableMap<String, PathState>
+    ) {
+        for ((path, state) in base.toMap()) {
+            if (state.localHash == FOLDER_STATE || state.remoteHash == FOLDER_STATE) continue
+            val action = TwoWayPlanner.plan(path, local[path], remote[path], state)
+            if (action !is PlannedAction.TrashRemote && action !is PlannedAction.TrashLocal) continue
+            var parent = path.substringBeforeLast('/', "")
+            while (parent.isNotEmpty()) {
+                if (action is PlannedAction.TrashRemote && parent !in local && remote[parent]?.isFolder == true) {
+                    base.putIfAbsent(parent, PathState(FOLDER_STATE, FOLDER_STATE, remote.getValue(parent).ref))
+                } else if (action is PlannedAction.TrashLocal && parent !in remote && local[parent]?.isFolder == true) {
+                    base.putIfAbsent(parent, PathState(FOLDER_STATE, FOLDER_STATE, "legacy-folder"))
                 }
-            } else {
-                val file = File(rootDir, item.path)
-                if (file.isFile && accept(item.path) && !ignoreRules.isIgnored(item.path)) out[item.path] = file
-            }
-        }
-        return out
-    }
-
-    /**
-     * Pengaman: kalau base ada tapi folder lokal hilang, jangan anggap semua file remote sudah dihapus lokal.
-     * Sync dibatalkan. Folder kosong (yang masih ada) tetap diproses seperti biasa.
-     */
-    private fun guardLocal(rootDir: File, items: List<TreeItem>, base: Map<String, PathState>) {
-        if (base.isEmpty()) return
-        if (!rootDir.isDirectory) {
-            throw IllegalStateException("Folder ${rootDir.name} tidak ada. Sync dibatalkan supaya file di sumber tidak terhapus.")
-        }
-        items.filter { item -> item.isFolder && base.keys.any { item.covers(it) } }.forEach { item ->
-            if (!File(rootDir, item.path).isDirectory) {
-                throw IllegalStateException("Folder ${item.path} tidak ada di perangkat. Sync dibatalkan supaya file di sumber tidak terhapus.")
+                parent = parent.substringBeforeLast('/', "")
             }
         }
     }
 
-    private fun stampNow(): String = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+    /** Only remove a folder when all children will be removed on that side. */
+    private fun guardFolderDeletes(
+        actions: List<PlannedAction>,
+        local: Map<String, LocalFile>,
+        remote: Map<String, RemoteFile>,
+        blockedLocal: Set<String>,
+        blockedRemote: Set<String>
+    ): List<PlannedAction> {
+        val localChildren = (local.keys + blockedLocal).groupBy { it.substringBeforeLast('/', "") }
+        val remoteChildren = (remote.keys + blockedRemote).groupBy { it.substringBeforeLast('/', "") }
+        val safe = actions.associateBy { it.path }.toMutableMap()
+        for (action in actions.sortedByDescending { it.path.count { c -> c == '/' } }) {
+            val path = action.path
+            if (action is PlannedAction.TrashLocal && action.isFolder) {
+                val children = localChildren[path].orEmpty()
+                if (children.all { safe[it] is PlannedAction.TrashLocal }) continue
+                if (children.any { safe[it] is PlannedAction.Upload }) {
+                    // An edited or newly added local child survived a remote folder deletion.
+                    safe[path] = PlannedAction.Upload(path, local.getValue(path), null)
+                } else safe.remove(path)
+            }
+            if (action is PlannedAction.TrashRemote && action.remote.isFolder) {
+                val children = remoteChildren[path].orEmpty()
+                if (children.all { safe[it] is PlannedAction.TrashRemote }) continue
+                if (children.any { safe[it] is PlannedAction.Download }) {
+                    safe[path] = PlannedAction.Download(path, action.remote)
+                } else safe.remove(path)
+            }
+        }
+        return actions.mapNotNull { safe[it.path] }
+    }
+
+    private fun stampNow(): String = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
 }

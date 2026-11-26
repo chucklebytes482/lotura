@@ -504,11 +504,11 @@
       <h2>3. Melihat folder</h2>
       <ul>
         <li>Layar utama punya dua tab: <em>Google Drive</em> (folder utama tiap akun) dan <em>GitHub</em> (repo tiap akun). Geser layar untuk pindah tab. Di atas keduanya ada kartu <em>Unduh aplikasi terbaru</em> untuk memasang versi baru dari HP.</li>
-        <li>Ketuk ikon <em>↓</em> untuk mengunduh dan <em>↑</em> untuk mengunggah. Ketuk kartu atau baris tidak melakukan apa-apa.</li>
+        <li>Gunakan <em>Tambah dari kedua sisi</em> untuk menyalin item baru dan <em>Sinkron</em> untuk meninjau perubahan dua arah.</li>
         <li>Ketuk judul akun Drive atau nama repo GitHub untuk membuka log sumber itu di lembar bawah: arah, waktu, status (OK, Sebagian, Gagal, Dibatalkan), dan jumlah file. Ketuk entri untuk melihat file yang dilewati beserta alasannya.</li>
         <li>Untuk memperbarui daftar repo, ketuk ikon <em>muat ulang</em> di bagian akun GitHub.</li>
         <li>
-          Dokumen Google (Docs, Sheets, Slides) selalu disalin ulang, karena ukurannya tidak bisa dicek.
+          Dokumen Google (Docs, Sheets, Slides) disalin ke HP sebagai berkas Office.
         </li>
       </ul>
     </section>
@@ -516,16 +516,8 @@
     <section id="salin" class="card">
       <h2>4. Unduh dan unggah</h2>
       <ul>
-        <li>
-          <strong>Unduh</strong> menyalin folder dari Google Drive atau GitHub ke HP Anda.
-        </li>
-        <li>
-          <strong>Unggah</strong> menyalin folder dari HP Anda ke Google Drive atau GitHub. File baru di dalam folder
-          itu ikut tersalin.
-        </li>
-        <li>
-          Lotura hanya menyalin file yang berbeda. File yang sama akan dilewati.
-        </li>
+        <li><strong>Tambah dari kedua sisi</strong> menyalin item baru antara folder HP dan sumbernya, tanpa menerapkan penghapusan.</li>
+        <li><strong>Sinkron</strong> menampilkan rencana perubahan dua arah. Periksa rencana sebelum menyetujuinya.</li>
         <li>Selama proses berjalan, tombol tidak bisa ditekan. Tunggu sampai selesai.</li>
       </ul>
     </section>
@@ -533,10 +525,10 @@
     <section id="jelajah" class="card">
       <h2>5. Aturan sinkron</h2>
       <ul>
-        <li>Repo GitHub hanya menyinkronkan berkas <em>.md</em> di mana pun dalam repo. File lain diabaikan.</li>
-        <li>Tidak ada auto-sync. Sinkron hanya manual lewat ikon <em>↓</em> dan <em>↑</em>. Tidak ada yang dihapus di sisi tujuan.</li>
-        <li>Jika file yang sama berubah di HP dan di GitHub, Lotura tidak menimpa salah satunya. Pilih arah <em>↓</em> atau <em>↑</em> sesuai versi yang ingin dipertahankan.</li>
-        <li>File di atas 45 MB dilewati dan dilaporkan.</li>
+        <li>Semua jenis file biasa, termasuk file tanpa ekstensi, bisa disinkronkan. File dan folder berawalan titik dilewati.</li>
+        <li>Sinkron dilakukan manual untuk seluruh folder sumber. Folder baru, pemindahan, dan penghapusan bisa ikut tersinkron ke sisi lain. Penghapusan hanya diterapkan pada item yang telah tersinkron dan tidak berubah di sisi lain. Jika folder sumber utama di HP hilang atau tidak bisa dibaca, sinkron dibatalkan demi keamanan.</li>
+        <li>File yang dihapus dipindah ke Sampah Drive atau ke folder <code>.trash</code> di GitHub dan HP. Folder Drive hanya masuk sampah jika sudah kosong; dokumen Google asli tidak dihapus saat salinan lokalnya dihapus.</li>
+        <li>GitHub tidak menyimpan folder kosong. Batas unggah Lotura ke GitHub tetap 45 MB per file.</li>
       </ul>
     </section>
 

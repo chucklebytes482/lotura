@@ -23,8 +23,7 @@ import com.example.sync.SourceTreeRules
 import com.example.sync.SyncMode
 import com.example.sync.SyncScan
 import com.example.sync.TreeItem
-import com.example.sync.isHiddenPath
-import com.example.sync.isTrackedRepoPath
+import com.example.sync.isSyncPath
 import com.example.sync.trackedDirPaths
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -248,13 +247,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     fun addBothSides(sourceKey: String, label: String) {
         if (pendingPlanFor(sourceKey)) return
         enqueue(sourceKey, label) {
-            if (!ensureTreeLoaded(sourceKey)) return@enqueue
-            val items = rootItems(sourceKey)
-            if (items.isEmpty()) {
-                showMessage("Tidak ada file di $label")
-                return@enqueue
-            }
-            val ok = runAndLog(sourceKey, label, SyncMode.ADD_BOTH, items)
+            val ok = runAndLog(sourceKey, label, SyncMode.ADD_BOTH)
             if (ok) _uiState.update { it.copy(armedSources = it.armedSources + sourceKey) }
         }
     }
@@ -270,13 +263,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (pendingPlanFor(sourceKey)) return
         enqueue(sourceKey, label) {
-            if (!ensureTreeLoaded(sourceKey)) return@enqueue
-            val items = rootItems(sourceKey)
-            if (items.isEmpty()) {
-                showMessage("Tidak ada file di $label")
-                return@enqueue
-            }
-            val scan = scanOrLog(sourceKey, label, SyncMode.SYNC, items) ?: return@enqueue
+            val scan = scanOrLog(sourceKey, label, SyncMode.SYNC) ?: return@enqueue
             _uiState.update { it.copy(pendingPlan = PendingSync(sourceKey, label, scan)) }
         }
     }
@@ -344,37 +331,16 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         job.start()
     }
 
-    /** Item akar sumber (folder dan file di level paling atas). Scan rekursif dilakukan engine. */
-    private fun rootItems(sourceKey: String): List<TreeItem> =
-        _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
-
-    /** Memastikan pohon sumber sudah dimuat. Mengembalikan false kalau gagal (sudah dicatat dan diberi tahu). */
-    private suspend fun ensureTreeLoaded(sourceKey: String): Boolean {
-        if (sourceKey in _uiState.value.loaded) return true
-        if (SourceTreeRules.isDriveSource(sourceKey)) {
-            fetchDriveLevel(SourceTreeRules.driveEmailOf(sourceKey), parent = null, remaining = DRIVE_PRELOAD_LEVELS)
-        } else {
-            val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
-            val repo = repos.value.firstOrNull { it.fullName == fullName }
-            if (repo == null) {
-                logLoadFailure(sourceKey, fullName, "Repo $fullName tidak ditemukan")
-                return false
-            }
-            loadRepoTree(repo)
-        }
-        return sourceKey in _uiState.value.loaded
-    }
-
     /** Scan lalu eksekusi langsung (mode tambah). Mengembalikan true kalau sukses tanpa error dan tidak dibatalkan. */
-    private suspend fun runAndLog(sourceKey: String, label: String, mode: SyncMode, items: List<TreeItem>): Boolean {
-        val scan = scanOrLog(sourceKey, label, mode, items) ?: return false
+    private suspend fun runAndLog(sourceKey: String, label: String, mode: SyncMode): Boolean {
+        val scan = scanOrLog(sourceKey, label, mode) ?: return false
         return executeAndLog(sourceKey, label, mode, scan)
     }
 
     /** Scan saja. Gagal atau dibatalkan dicatat di log, lalu mengembalikan null. */
-    private suspend fun scanOrLog(sourceKey: String, label: String, mode: SyncMode, items: List<TreeItem>): SyncScan? {
+    private suspend fun scanOrLog(sourceKey: String, label: String, mode: SyncMode): SyncScan? {
         return try {
-            scanFor(sourceKey, items, mode)
+            scanFor(sourceKey, mode)
         } catch (e: CancellationException) {
             appendLog(sourceKey, label, mode, SyncStatus.DIBATALKAN, OpResult(), "Dibatalkan oleh pengguna")
             throw e
@@ -409,14 +375,21 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             result = result,
             error = if (cancelled) "Dibatalkan oleh pengguna" else errorMessage
         )
+        if (!cancelled && result.transferred > 0) {
+            if (SourceTreeRules.isDriveSource(sourceKey)) {
+                fetchDriveLevel(SourceTreeRules.driveEmailOf(sourceKey), parent = null, remaining = DRIVE_PRELOAD_LEVELS)
+            } else {
+                repos.value.firstOrNull { it.fullName == SourceTreeRules.githubFullNameOf(sourceKey) }?.let { loadRepoTree(it) }
+            }
+        }
         return !cancelled && errorMessage == null && result.failed == 0
     }
 
-    private suspend fun scanFor(sourceKey: String, items: List<TreeItem>, mode: SyncMode): SyncScan {
+    private suspend fun scanFor(sourceKey: String, mode: SyncMode): SyncScan {
         if (SourceTreeRules.isDriveSource(sourceKey)) {
             val email = SourceTreeRules.driveEmailOf(sourceKey)
             val root = LocalPathHelper.driveRoot(email)
-            return engine.scanDrive(email, root, ignoreRules, items, app.syncStateStore, sourceKey, mode)
+            return engine.scanDrive(email, root, ignoreRules, app.syncStateStore, sourceKey, mode)
         }
         val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
         val repo = repos.value.firstOrNull { it.fullName == fullName }
@@ -430,7 +403,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             branch = repo.defaultBranch,
             rootDir = File(repo.localPath),
             ignoreRules = ignoreRules,
-            items = items,
             stateStore = app.syncStateStore,
             sourceKey = sourceKey,
             mode = mode
@@ -526,8 +498,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             val pat = repository.getGithubPat(repo.accountId) ?: error("PAT tidak ada, tambahkan ulang akun.")
             val (_, treeSha) = githubApi.getBranchHeadCommit(pat, repo.owner, repo.name, repo.defaultBranch)
             val blobs: List<GithubTreeBlob> = githubApi.listBlobsInSubfolder(pat, repo.owner, repo.name, treeSha, "")
-                .filterNot { isHiddenPath(it.repoPath) }
-                .filter { isTrackedRepoPath(it.repoPath) }
+                .filter { it.isRegularFile && isSyncPath(it.repoPath) }
             val items = trackedDirPaths(blobs.map { it.repoPath }).map { path ->
                 TreeItem(sourceKey, path, path.substringAfterLast('/'), true, null, null, null, repo.archived)
             } + blobs.map { blob ->

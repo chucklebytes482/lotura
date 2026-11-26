@@ -119,6 +119,7 @@ object DriveJsonParser {
 
     fun parseFilePage(jsonStr: String): DriveFilePage {
         val root = JSONObject(jsonStr)
+        check(!root.optBoolean("incompleteSearch")) { "Daftar Drive tidak lengkap. Sinkron dibatalkan demi keamanan." }
         val nextToken = root.optString("nextPageToken", "").takeIf { it.isNotBlank() }
         val arr = root.optJSONArray("files")
         val list = mutableListOf<RawDriveEntry>()

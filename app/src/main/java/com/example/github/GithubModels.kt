@@ -19,12 +19,16 @@ data class GithubTreeBlob(
     val repoPath: String,
     val relativePath: String,
     val sha: String,
-    val size: Long
-)
+    val size: Long,
+    val mode: String = "100644"
+) {
+    val isRegularFile: Boolean get() = mode == "100644" || mode == "100755"
+}
 
 data class GithubTreeChange(
     val repoPath: String,
-    val blobSha: String? // null means delete file in Git tree
+    val blobSha: String?, // null means delete file in Git tree
+    val mode: String = "100644"
 )
 
 data class GithubCommitEntry(

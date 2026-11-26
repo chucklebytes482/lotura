@@ -21,7 +21,7 @@ interface DriveRemote {
     suspend fun listFolders(accessToken: String, parentId: String = "root"): List<DriveFolderItem>
     suspend fun createFolder(accessToken: String, parentId: String, name: String): DriveFolderItem
     suspend fun listChildren(accessToken: String, folderId: String): List<DriveChild>
-    suspend fun listFilesRecursive(accessToken: String, rootFolderId: String): List<DriveFileItem>
+    suspend fun listSyncChildren(accessToken: String, folderId: String): List<RawDriveEntry>
     suspend fun downloadFile(accessToken: String, fileId: String, destFile: File)
     suspend fun exportGoogleWorkspaceFile(
         accessToken: String,
@@ -31,15 +31,13 @@ interface DriveRemote {
     )
     suspend fun uploadFile(
         accessToken: String,
-        rootFolderId: String,
+        parentFolderId: String,
         relativePath: String,
         existingFileId: String?,
         sourceFile: File,
         nativeWorkspaceMimeType: String? = null
     ): DriveFileItem
     suspend fun trashFile(accessToken: String, fileId: String)
-    /** Metadata satu file Drive (md5 terbaru, ukuran, mime). Dipakai saat sync dua arah. */
-    suspend fun getFile(accessToken: String, fileId: String): DriveFileItem
 }
 
 /** Satu entri isi folder Drive (folder atau file), untuk pohon di UI dan unduhan terpilih. */
@@ -65,7 +63,7 @@ class DriveApiClient(
         private const val UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
         private const val ABOUT_URL = "https://www.googleapis.com/drive/v3/about"
         private const val LIST_FIELDS =
-            "nextPageToken,files(id,name,mimeType,modifiedTime,size,md5Checksum,trashed,shortcutDetails)"
+            "nextPageToken,incompleteSearch,files(id,name,mimeType,modifiedTime,size,md5Checksum,trashed,shortcutDetails)"
     }
 
     override suspend fun fetchUserInfo(accessToken: String): DriveUserInfo =
@@ -122,7 +120,7 @@ class DriveApiClient(
         name: String
     ): DriveFolderItem = withContext(Dispatchers.IO) {
         val metadata = JSONObject().apply {
-            put("name", name.trim())
+            put("name", name)
             put("mimeType", DriveMimeTypes.FOLDER)
             put("parents", JSONArray().apply { put(parentId) })
         }
@@ -141,144 +139,74 @@ class DriveApiClient(
 
     /**
      * Isi satu folder (tidak rekursif). Dipakai untuk pohon di UI.
-     * Nama file memakai nama lokal (Google Docs diberi ekstensi ekspor), sama dengan [listFilesRecursive].
+     * Nama file memakai nama lokal (Google Docs diberi ekstensi ekspor).
      * Native Google Docs/Sheets/Slides tidak punya ukuran, jadi [DriveChild.size] = null.
      */
     override suspend fun listChildren(
         accessToken: String,
         folderId: String
     ): List<DriveChild> = withContext(Dispatchers.IO) {
-        val query = "'$folderId' in parents and trashed = false"
         val result = mutableListOf<DriveChild>()
-        var pageToken: String? = null
-        do {
-            val encodedQ = URLEncoder.encode(query, "UTF-8")
-            val tokenParam = if (pageToken != null) "&pageToken=${URLEncoder.encode(pageToken, "UTF-8")}" else ""
-            val req = Request.Builder()
-                .url("$FILES_URL?q=$encodedQ&orderBy=folder,name&pageSize=200&fields=${URLEncoder.encode(LIST_FIELDS, "UTF-8")}$tokenParam&supportsAllDrives=true&includeItemsFromAllDrives=true")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .get()
-                .build()
-            val page = DriveJsonParser.parseFilePage(executeString(req))
-            for (entry in page.files) {
-                val effectiveMime = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
-                    entry.shortcutTargetMimeType ?: entry.mimeType
-                } else {
-                    entry.mimeType
-                }
-                val effectiveId = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
-                    entry.shortcutTargetId ?: entry.id
-                } else {
-                    entry.id
-                }
-                if (effectiveMime == DriveMimeTypes.FOLDER) {
-                    result.add(
-                        DriveChild(
-                            id = effectiveId,
-                            name = entry.name,
-                            isFolder = true,
-                            size = null,
-                            nativeMime = null,
-                            modifiedTimeMillis = entry.modifiedTimeMillis
-                        )
-                    )
-                    continue
-                }
-                val exportSpec = DriveMimeTypes.exportSpecFor(effectiveMime)
-                if (effectiveMime.startsWith("application/vnd.google-apps.") && exportSpec == null) continue
-                val isNative = exportSpec != null
+        for (entry in listSyncChildren(accessToken, folderId)) {
+            val effectiveMime = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
+                entry.shortcutTargetMimeType ?: entry.mimeType
+            } else {
+                entry.mimeType
+            }
+            val effectiveId = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
+                entry.shortcutTargetId ?: entry.id
+            } else {
+                entry.id
+            }
+            if (effectiveMime == DriveMimeTypes.FOLDER) {
                 result.add(
                     DriveChild(
                         id = effectiveId,
-                        name = DriveMimeTypes.localFileNameForDriveItem(entry.name, effectiveMime),
-                        isFolder = false,
-                        size = if (isNative) null else entry.size,
-                        nativeMime = if (isNative) effectiveMime else null,
+                        name = entry.name,
+                        isFolder = true,
+                        size = null,
+                        nativeMime = null,
                         modifiedTimeMillis = entry.modifiedTimeMillis
                     )
                 )
+                continue
             }
-            pageToken = page.nextPageToken
-        } while (pageToken != null)
+            val exportSpec = DriveMimeTypes.exportSpecFor(effectiveMime)
+            if (effectiveMime.startsWith("application/vnd.google-apps.") && exportSpec == null) continue
+            val isNative = exportSpec != null
+            result.add(
+                DriveChild(
+                    id = effectiveId,
+                    name = DriveMimeTypes.localFileNameForDriveItem(entry.name, effectiveMime),
+                    isFolder = false,
+                    size = if (isNative) null else entry.size,
+                    nativeMime = if (isNative) effectiveMime else null,
+                    modifiedTimeMillis = entry.modifiedTimeMillis
+                )
+            )
+        }
         result.sortedWith(compareByDescending<DriveChild> { it.isFolder }.thenBy { it.name.lowercase() })
     }
 
-    override suspend fun listFilesRecursive(
-        accessToken: String,
-        rootFolderId: String
-    ): List<DriveFileItem> = withContext(Dispatchers.IO) {
-        val collected = mutableListOf<DriveFileItem>()
-        val visitedFolders = mutableSetOf<String>()
-        scanFolderRecursive(
-            accessToken = accessToken,
-            folderId = rootFolderId,
-            prefixPath = "",
-            visitedFolders = visitedFolders,
-            output = collected
-        )
-        collected
-    }
-
-    private fun scanFolderRecursive(
-        accessToken: String,
-        folderId: String,
-        prefixPath: String,
-        visitedFolders: MutableSet<String>,
-        output: MutableList<DriveFileItem>
-    ) {
-        if (!visitedFolders.add(folderId)) return
-        val query = "'$folderId' in parents and trashed = false"
-        var pageToken: String? = null
-        do {
+    override suspend fun listSyncChildren(accessToken: String, folderId: String): List<RawDriveEntry> =
+        withContext(Dispatchers.IO) {
+            val query = "'$folderId' in parents and trashed = false"
             val encodedQ = URLEncoder.encode(query, "UTF-8")
-            val tokenParam = if (pageToken != null) "&pageToken=${URLEncoder.encode(pageToken, "UTF-8")}" else ""
-            val req = Request.Builder()
-                .url("$FILES_URL?q=$encodedQ&pageSize=200&fields=${URLEncoder.encode(LIST_FIELDS, "UTF-8")}$tokenParam&supportsAllDrives=true&includeItemsFromAllDrives=true")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .get()
-                .build()
-            val page = DriveJsonParser.parseFilePage(executeString(req))
-            for (entry in page.files) {
-                val effectiveMime = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
-                    entry.shortcutTargetMimeType ?: entry.mimeType
-                } else {
-                    entry.mimeType
-                }
-                val effectiveId = if (entry.mimeType == DriveMimeTypes.SHORTCUT) {
-                    entry.shortcutTargetId ?: entry.id
-                } else {
-                    entry.id
-                }
-
-                if (effectiveMime == DriveMimeTypes.FOLDER) {
-                    val subPrefix = if (prefixPath.isEmpty()) entry.name else "$prefixPath/${entry.name}"
-                    scanFolderRecursive(accessToken, effectiveId, subPrefix, visitedFolders, output)
-                } else {
-                    val exportSpec = DriveMimeTypes.exportSpecFor(effectiveMime)
-                    // Skip unsupported native Google Workspace types (e.g., Forms, Jamboard)
-                    if (effectiveMime.startsWith("application/vnd.google-apps.") && exportSpec == null) {
-                        continue
-                    }
-                    val localName = DriveMimeTypes.localFileNameForDriveItem(entry.name, effectiveMime)
-                    val relPath = if (prefixPath.isEmpty()) localName else "$prefixPath/$localName"
-                    output.add(
-                        DriveFileItem(
-                            id = effectiveId,
-                            name = localName,
-                            relativePath = relPath,
-                            mimeType = exportSpec?.exportMimeType ?: effectiveMime,
-                            modifiedTimeMillis = entry.modifiedTimeMillis,
-                            size = entry.size,
-                            md5Checksum = entry.md5Checksum,
-                            trashed = entry.trashed,
-                            nativeWorkspaceMimeType = if (exportSpec != null) effectiveMime else null
-                        )
-                    )
-                }
-            }
-            pageToken = page.nextPageToken
-        } while (pageToken != null)
-    }
+            val result = mutableListOf<RawDriveEntry>()
+            var pageToken: String? = null
+            do {
+                val tokenParam = pageToken?.let { "&pageToken=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
+                val req = Request.Builder()
+                    .url("$FILES_URL?q=$encodedQ&pageSize=200&fields=${URLEncoder.encode(LIST_FIELDS, "UTF-8")}$tokenParam&supportsAllDrives=true&includeItemsFromAllDrives=true")
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .get()
+                    .build()
+                val page = DriveJsonParser.parseFilePage(executeString(req))
+                result += page.files
+                pageToken = page.nextPageToken
+            } while (pageToken != null)
+            result
+        }
 
     override suspend fun downloadFile(accessToken: String, fileId: String, destFile: File) =
         withContext(Dispatchers.IO) {
@@ -307,20 +235,13 @@ class DriveApiClient(
 
     override suspend fun uploadFile(
         accessToken: String,
-        rootFolderId: String,
+        parentFolderId: String,
         relativePath: String,
         existingFileId: String?,
         sourceFile: File,
         nativeWorkspaceMimeType: String?
     ): DriveFileItem = withContext(Dispatchers.IO) {
-        val normalized = relativePath.trimStart('/')
-        val parentRelDir = normalized.substringBeforeLast('/', "")
-        val fileName = normalized.substringAfterLast('/')
-        val parentFolderId = if (existingFileId == null) {
-            ensureSubfolderPath(accessToken, rootFolderId, parentRelDir)
-        } else {
-            rootFolderId
-        }
+        val fileName = relativePath.substringAfterLast('/')
 
         val uploadContentMime = DriveMimeTypes.guessMimeType(fileName)
         val metadata = JSONObject().apply {
@@ -334,7 +255,7 @@ class DriveApiClient(
         }
 
         val multipartBody = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
+            .setType("multipart/related".toMediaType())
             .addPart(
                 metadata.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             )
@@ -363,7 +284,7 @@ class DriveApiClient(
         DriveFileItem(
             id = obj.getString("id"),
             name = fileName,
-            relativePath = normalized,
+            relativePath = relativePath,
             mimeType = exportSpec?.exportMimeType ?: returnedMime,
             modifiedTimeMillis = DriveJsonParser.parseRfc3339Millis(obj.optString("modifiedTime", "")),
             size = obj.optString("size", sourceFile.length().toString()).toLongOrNull() ?: sourceFile.length(),
@@ -371,30 +292,6 @@ class DriveApiClient(
             nativeWorkspaceMimeType = if (exportSpec != null) returnedMime else nativeWorkspaceMimeType
         )
     }
-
-    override suspend fun getFile(accessToken: String, fileId: String): DriveFileItem =
-        withContext(Dispatchers.IO) {
-            val fields = URLEncoder.encode("id,name,mimeType,modifiedTime,size,md5Checksum,trashed", "UTF-8")
-            val req = Request.Builder()
-                .url("$FILES_URL/$fileId?fields=$fields&supportsAllDrives=true")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .get()
-                .build()
-            val obj = JSONObject(executeString(req))
-            val mime = obj.optString("mimeType", "")
-            val exportSpec = DriveMimeTypes.exportSpecFor(mime)
-            DriveFileItem(
-                id = obj.getString("id"),
-                name = obj.optString("name", ""),
-                relativePath = obj.optString("name", ""),
-                mimeType = exportSpec?.exportMimeType ?: mime,
-                modifiedTimeMillis = DriveJsonParser.parseRfc3339Millis(obj.optString("modifiedTime", "")),
-                size = obj.optString("size", "").toLongOrNull() ?: 0L,
-                md5Checksum = obj.optString("md5Checksum", "").takeIf { it.isNotBlank() },
-                trashed = obj.optBoolean("trashed", false),
-                nativeWorkspaceMimeType = if (exportSpec != null) mime else null
-            )
-        }
 
     override suspend fun trashFile(accessToken: String, fileId: String) =
         withContext(Dispatchers.IO) {
@@ -407,33 +304,6 @@ class DriveApiClient(
             executeString(req)
             Unit
         }
-
-    private suspend fun ensureSubfolderPath(
-        accessToken: String,
-        rootFolderId: String,
-        relativeDir: String
-    ): String {
-        if (relativeDir.isBlank()) return rootFolderId
-        var currentParent = rootFolderId
-        val segments = relativeDir.split('/').filter { it.isNotBlank() }
-        for (segment in segments) {
-            val escaped = segment.replace("'", "\\'")
-            val query = "'$currentParent' in parents and name = '$escaped' and mimeType = '${DriveMimeTypes.FOLDER}' and trashed = false"
-            val encodedQ = URLEncoder.encode(query, "UTF-8")
-            val req = Request.Builder()
-                .url("$FILES_URL?q=$encodedQ&pageSize=1&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true")
-                .addHeader("Authorization", "Bearer $accessToken")
-                .get()
-                .build()
-            val arr = JSONObject(executeString(req)).optJSONArray("files")
-            currentParent = if (arr != null && arr.length() > 0) {
-                arr.getJSONObject(0).getString("id")
-            } else {
-                createFolder(accessToken, currentParent, segment).id
-            }
-        }
-        return currentParent
-    }
 
     private fun executeString(request: Request): String {
         httpClient.newCall(request).execute().use { response ->

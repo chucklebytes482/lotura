@@ -13,7 +13,11 @@ package com.example.sync
  */
 
 /** Berkas lokal. [hash] sesuai jenis sumber (lihat catatan di atas). */
-data class LocalFile(val hash: String)
+internal const val FOLDER_STATE = "folder"
+
+data class LocalFile(val hash: String) {
+    val isFolder: Boolean get() = hash == FOLDER_STATE
+}
 
 /**
  * Berkas di sisi remote.
@@ -22,7 +26,9 @@ data class LocalFile(val hash: String)
  *    yang isinya tidak bisa dibandingkan dengan file lokal.
  *  - nativeMime: tipe Google Workspace bila berkas native, null untuk file biasa.
  */
-data class RemoteFile(val ref: String, val hash: String?, val nativeMime: String?)
+data class RemoteFile(val ref: String, val hash: String?, val nativeMime: String?, val gitMode: String = "100644") {
+    val isFolder: Boolean get() = hash == FOLDER_STATE
+}
 
 /**
  * Keadaan satu path setelah sync berhasil.
@@ -41,7 +47,7 @@ sealed interface PlannedAction {
     data class Upload(override val path: String, val local: LocalFile, val remote: RemoteFile?) : PlannedAction
 
     /** Remote sudah dihapus dan lokal tidak berubah: pindahkan lokal ke trash. */
-    data class TrashLocal(override val path: String) : PlannedAction
+    data class TrashLocal(override val path: String, val isFolder: Boolean = false) : PlannedAction
 
     /** Lokal sudah dihapus dan remote tidak berubah: hapus remote (ke trash remote). */
     data class TrashRemote(override val path: String, val remote: RemoteFile) : PlannedAction
@@ -135,7 +141,8 @@ object TwoWayPlanner {
         val rChanged = when {
             (r != null) != remotePresentBefore -> true
             r == null -> false
-            native -> false // Native: isinya tidak bisa dibandingkan, hanya keberadaannya.
+            r.ref != b.remoteRef -> true // Path yang sama dapat menunjuk item Drive baru.
+            native -> false // Native: isinya tidak bisa dibandingkan.
             else -> r.hash != b.remoteHash
         }
 
@@ -150,7 +157,7 @@ object TwoWayPlanner {
             }
             l != null && r == null -> when {
                 // Remote dihapus sementara lokal diedit: edit lokal menang, file dibuat ulang di remote.
-                remotePresentBefore && !lChanged -> PlannedAction.TrashLocal(path)
+                remotePresentBefore && !lChanged -> PlannedAction.TrashLocal(path, l.isFolder)
                 else -> PlannedAction.Upload(path, l, null)
             }
             l == null && r != null -> when {
