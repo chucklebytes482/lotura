@@ -57,18 +57,3 @@ interface GithubRepoDao {
         insertAll(repos)
     }
 }
-
-@Dao
-interface SyncStateDao {
-    @Query("SELECT * FROM sync_state WHERE sourceKey = :sourceKey")
-    suspend fun getAll(sourceKey: String): List<SyncStateEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(state: SyncStateEntity)
-
-    @Query("DELETE FROM sync_state WHERE sourceKey = :sourceKey AND path = :path")
-    suspend fun delete(sourceKey: String, path: String)
-
-    @Query("DELETE FROM sync_state WHERE sourceKey = :sourceKey")
-    suspend fun deleteSource(sourceKey: String)
-}

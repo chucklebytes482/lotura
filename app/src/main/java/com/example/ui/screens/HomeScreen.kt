@@ -1,680 +1,270 @@
-@file:OptIn(
-    androidx.compose.foundation.ExperimentalFoundationApi::class,
-    androidx.compose.material3.ExperimentalMaterial3Api::class
-)
-
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CallMerge
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.data.SyncLogEntry
-import com.example.data.SyncLogStore
-import com.example.data.SyncStatus
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
-import com.example.sync.SkipDetail
-import com.example.sync.SyncScan
-import com.example.sync.SkipReason
-import com.example.sync.SourceKeys
-import com.example.sync.TreeItem
-import com.example.ui.PendingSync
-import com.example.ui.tree.rootVisibleItems
+import com.example.remote.Location
+import com.example.remote.RemoteEntry
+import com.example.remote.RemoteNames
+import com.example.remote.Source
+import com.example.ui.BrowserState
+import com.example.ui.RemoteViewModel
+import com.example.ui.components.CompactSearchBar
+import com.example.ui.components.BrandIcons
+import com.example.ui.theme.providerBrandColors
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-internal enum class HomeTab(val title: String) {
-    DRIVE("Google Drive"),
-    GITHUB("GitHub")
-}
-
-/** Keadaan satu sumber: menunggu giliran, sedang sync, atau sedang memuat pohon. */
-internal enum class RowActivity { IDLE, LOADING, QUEUED, RUNNING }
-
-internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<String>, busy: Set<String>): RowActivity =
-    when {
-        sourceKey in busy -> RowActivity.RUNNING
-        sourceKey in queued -> RowActivity.QUEUED
-        sourceKey in loading -> RowActivity.LOADING
-        else -> RowActivity.IDLE
-    }
-
-/**
- * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan hanya tampil di tab Google Drive.
- * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
- * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
- * Dua tombol per sumber: "Tambah dari kedua sisi" (hanya menambah, tidak pernah memindah ke trash) dan
- * "Sinkron" (dua arah penuh, terkunci sampai tombol pertama sukses). Sinkron selalu lewat dry-run dulu.
- * Sync berjalan satu per satu; sumber yang sedang antre atau berjalan bisa dibatalkan.
- */
 @Composable
-fun HomeScreen(
-    modifier: Modifier = Modifier,
+internal fun HomeScreen(
+    modifier: Modifier,
+    state: BrowserState,
     driveAccounts: List<DriveAccountEntity>,
     githubAccounts: List<GithubAccountEntity>,
     repos: List<GithubRepoEntity>,
-    trees: Map<String, List<TreeItem>>,
-    loading: Set<String>,
-    logs: List<SyncLogEntry>,
-    busySources: Set<String>,
-    queuedSources: Set<String>,
-    isConnectingDrive: Boolean,
-    driveAuthError: String?,
-    isAddingGithub: Boolean,
-    githubAccountError: String?,
-    hasStoragePermission: Boolean,
-    isOnline: Boolean,
-    onRequestStoragePermission: () -> Unit,
+    viewModel: RemoteViewModel,
     onConnectDrive: () -> Unit,
-    onRemoveDrive: (String) -> Unit,
-    onReloadDrive: (String) -> Unit,
-    onAddGithubAccount: (String, () -> Unit) -> Unit,
-    onRefreshRepos: (GithubAccountEntity) -> Unit,
-    onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    armedSources: Set<String>,
-    pendingPlan: PendingSync?,
-    onAddBothSides: (sourceKey: String, label: String) -> Unit,
-    onPreviewSync: (sourceKey: String, label: String) -> Unit,
-    onConfirmSync: () -> Unit,
-    onCancelPendingSync: () -> Unit,
-    onCancelSync: (String) -> Unit
+    onUpload: () -> Unit,
+    onDownload: (RemoteEntry) -> Unit
 ) {
-    // Disimpan saat rotasi. PAT sengaja tidak disimpan di state yang tersimpan.
-    var showAddGithub by rememberSaveable { mutableStateOf(false) }
-    // sourceKey sumber yang log-nya sedang dibuka di lembar bawah; null bila tertutup.
-    var logSheetKey by rememberSaveable { mutableStateOf<String?>(null) }
-    val busy = busySources.isNotEmpty()
-    val pagerState = rememberPagerState(pageCount = { HomeTab.entries.size })
+    val pager = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
+    val location = state.location
+    if (location != null) {
+        BackHandler { viewModel.back() }
+        BrowserScreen(modifier, state, location, viewModel, onUpload, onDownload)
+        return
+    }
 
+    var showPat by rememberSaveable { mutableStateOf(false) }
+    var disconnect by remember { mutableStateOf<Disconnect?>(null) }
+    var repoQuery by rememberSaveable { mutableStateOf("") }
     Column(modifier.fillMaxSize()) {
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-
-        TabRow(selectedTabIndex = pagerState.currentPage) {
-            HomeTab.entries.forEachIndexed { index, t ->
-                Tab(
-                    selected = pagerState.currentPage == index,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                    text = { Text(t.title, fontSize = 13.sp, maxLines = 1) }
-                )
+        TabRow(selectedTabIndex = pager.currentPage) {
+            listOf("Google Drive", "GitHub").forEachIndexed { index, title ->
+                val brand = providerBrandColors(isGithub = index == 1)
+                Tab(selected = pager.currentPage == index,
+                    onClick = { scope.launch { pager.animateScrollToPage(index) } },
+                    text = { Text(title) },
+                    icon = { Icon(if (index == 0) BrandIcons.GoogleDrive else BrandIcons.GitHub,
+                        contentDescription = title, tint = brand.accent) })
             }
         }
-
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                noticeItems(
-                    isOnline = isOnline,
-                    hasStoragePermission = hasStoragePermission,
-                    onRequestStoragePermission = onRequestStoragePermission
-                )
-
-                when (HomeTab.entries[page]) {
-                    HomeTab.DRIVE -> {
-                        item(key = "guide-web") { GuideWebCard() }
-                        driveSection(
-                        driveAccounts = driveAccounts,
-                        trees = trees,
-                        loading = loading,
-                        busySources = busySources,
-                        queuedSources = queuedSources,
-                        isConnectingDrive = isConnectingDrive,
-                        driveAuthError = driveAuthError,
-                        onConnectDrive = onConnectDrive,
-                        onReloadDrive = onReloadDrive,
-                        onRemoveDrive = onRemoveDrive,
-                        armedSources = armedSources,
-                        onAddBothSides = onAddBothSides,
-                        onPreviewSync = onPreviewSync,
-                        onCancelSync = onCancelSync,
-                        onOpenLog = { key -> logSheetKey = key }
-                        )
+        HorizontalPager(pager, modifier = Modifier.weight(1f)) { page ->
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (!state.isOnline) item { Text("Tidak tersambung ke internet.") }
+                if (page == 0) {
+                    item { GuideWebCard() }
+                    item {
+                        Button(onClick = onConnectDrive, enabled = !state.isConnectingDrive,
+                            modifier = Modifier.testTag("connect_drive")) {
+                            Text(if (state.isConnectingDrive) "Menyambungkan…" else "Sambungkan Google Drive")
+                        }
                     }
-                    HomeTab.GITHUB -> githubSection(
-                        githubAccounts = githubAccounts,
-                        repos = repos,
-                        loading = loading,
-                        busySources = busySources,
-                        queuedSources = queuedSources,
-                        onAddClick = { showAddGithub = true },
-                        onRefreshRepos = onRefreshRepos,
-                        onDeleteGithubAccount = onDeleteGithubAccount,
-                        armedSources = armedSources,
-                        onAddBothSides = onAddBothSides,
-                        onPreviewSync = onPreviewSync,
-                        onCancelSync = onCancelSync,
-                        onOpenLog = { key -> logSheetKey = key }
-                    )
-                }
-            }
-        }
-    }
-
-    logSheetKey?.let { key ->
-        ModalBottomSheet(onDismissRequest = { logSheetKey = null }) {
-            LogSheetContent(
-                title = key.substringAfter(':'),
-                logs = logs.filter { it.sourceKey == key }
-            )
-        }
-    }
-
-    pendingPlan?.let { pending ->
-        SyncPlanDialog(
-            pending = pending,
-            onConfirm = onConfirmSync,
-            onCancel = onCancelPendingSync
-        )
-    }
-
-    if (showAddGithub) {
-        AddGithubDialog(
-            isAdding = isAddingGithub,
-            error = githubAccountError,
-            onDismiss = { showAddGithub = false },
-            onSubmit = { pat ->
-                onAddGithubAccount(pat) { showAddGithub = false }
-            }
-        )
-    }
-}
-
-/** Pemberitahuan di atas setiap tab: offline dan izin. */
-internal fun LazyListScope.noticeItems(
-    isOnline: Boolean,
-    hasStoragePermission: Boolean,
-    onRequestStoragePermission: () -> Unit
-) {
-    if (!isOnline) {
-        item { Notice("Tidak ada koneksi internet.") }
-    }
-    if (!hasStoragePermission) {
-        item {
-            Notice("Izin akses semua file belum diberikan. Lotura butuh izin ini untuk membaca dan menulis folder lokal.")
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onRequestStoragePermission) { Text("Beri izin") }
-        }
-    }
-}
-
-// ---------- Lembar log per sumber ----------
-
-@Composable
-internal fun LogSheetContent(title: String, logs: List<SyncLogEntry>) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        SectionTitle(
-            title,
-            "Log sync sumber ini, terbaru di atas. Menyimpan ${SyncLogStore.MAX_ENTRIES} entri terakhir."
-        )
-        if (logs.isEmpty()) {
-            EmptyText("Belum ada aktivitas sync untuk sumber ini.")
-        }
-        logs.forEach { entry -> LogRow(entry) }
-    }
-}
-
-@Composable
-internal fun LogRow(entry: SyncLogEntry) {
-    val skippedTotal = entry.skipped + entry.hidden
-    val hasDetail = entry.skipDetails.isNotEmpty()
-    var expanded by rememberSaveable(entry.atMillis, entry.source, entry.label) { mutableStateOf(false) }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        onClick = { if (hasDetail) expanded = !expanded }
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Sync,
-                    contentDescription = "Sinkron",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = entry.label,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(formatTime(entry.atMillis), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(
-                text = entry.source,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val (icon, tint) = when (entry.status) {
-                    SyncStatus.OK -> Icons.Filled.Check to MaterialTheme.colorScheme.primary
-                    SyncStatus.SEBAGIAN -> Icons.Filled.Warning to MaterialTheme.colorScheme.tertiary
-                    SyncStatus.GAGAL -> Icons.Filled.Close to MaterialTheme.colorScheme.error
-                    SyncStatus.DIBATALKAN -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "${statusText(entry.status)} · ${entry.transferred} berhasil, $skippedTotal dilewati, ${entry.failed} gagal",
-                    fontSize = 13.sp
-                )
-            }
-            if (skippedTotal > 0) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "Dilewati: ${skipCountsText(entry.skipCounts, entry.hidden)}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            entry.error?.let {
-                Spacer(Modifier.height(2.dp))
-                ErrorText(it)
-            }
-            if (hasDetail) {
-                Spacer(Modifier.height(4.dp))
-                if (expanded) {
-                    entry.skipDetails.forEach { detail ->
-                        Text(
-                            "${detail.path} — ${skipReasonLabel(detail.reason)}",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+                    items(driveAccounts, key = { it.email }) { acct ->
+                        SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
+                            onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
+                            IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
+                                Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
+                            }
+                        }
                     }
-                    val notShown = skippedTotal - entry.skipDetails.size
-                    if (notShown > 0) {
-                        Text("…dan $notShown item lain tidak ditampilkan", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("Ketuk untuk menutup", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                 } else {
-                    Text("Ketuk untuk lihat daftar item yang dilewati", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                    item {
+                        Button(onClick = { showPat = true }, modifier = Modifier.testTag("connect_github")) {
+                            Text("Tambahkan akun GitHub")
+                        }
+                    }
+                    if (repos.isNotEmpty()) item {
+                        CompactSearchBar(repoQuery, "Cari repositori", { repoQuery = it }, testTag = "search_repos")
+                    }
+                    for (acct in githubAccounts) {
+                        item(key = "account_${acct.id}") {
+                            SourceRow(acct.username, acct.label.takeIf { it != acct.username }) {
+                                IconButton(onClick = { viewModel.refreshGithubRepos(acct) }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Muat ulang repositori ${acct.username}")
+                                }
+                                IconButton(onClick = { disconnect = Disconnect(acct.username) { viewModel.deleteGithubAccount(acct) } }) {
+                                    Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.username}")
+                                }
+                            }
+                        }
+                        val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
+                        items(matches, key = { "repo_${it.fullName}" }) { repo ->
+                            SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
+                                onOpen = { viewModel.openSource(Source.Github(repo)) }) {
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
+                                    modifier = Modifier.padding(12.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+    if (showPat) PatDialog(state, onDismiss = { showPat = false }) { pat ->
+        viewModel.addGithubAccount(pat) { showPat = false }
+    }
+    disconnect?.let { target ->
+        AlertDialog(onDismissRequest = { disconnect = null }, title = { Text("Putuskan akun?") },
+            text = { Text("${target.label} dihapus dari Lotura. File remote dan hasil unduhan tidak berubah.") },
+            confirmButton = { TextButton(onClick = { disconnect = null; target.action() }) { Text("Putuskan") } },
+            dismissButton = { TextButton(onClick = { disconnect = null }) { Text("Batal") } })
+    }
 }
 
-// ---------- Kartu repo ----------
+private data class Disconnect(val label: String, val action: () -> Unit)
 
 @Composable
-internal fun RepoCard(
-    repo: GithubRepoEntity,
-    activity: RowActivity,
-    onAddBoth: () -> Unit,
-    onSync: () -> Unit,
-    onCancel: () -> Unit,
-    onOpenLog: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onOpenLog),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = repo.name,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                if (repo.archived) {
-                    Spacer(Modifier.width(6.dp))
-                    Tag("Archived")
-                }
-                if (repo.isPrivate) {
-                    Spacer(Modifier.width(6.dp))
-                    Tag("Private")
-                }
+private fun SourceRow(title: String, subtitle: String?, onOpen: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit) {
+    OutlinedCard {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp)
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).heightIn(min = 48.dp).padding(horizontal = 6.dp),
+                verticalArrangement = Arrangement.Center) {
+                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
-            if (activity == RowActivity.IDLE) {
-                SyncActions(onAddBoth = onAddBoth, onSync = onSync)
-            } else {
-                ActivityStatus(activity, onCancel)
-            }
+            actions()
         }
     }
 }
 
-// ---------- Komponen ----------
-
 @Composable
-internal fun SectionTitle(title: String, hint: String?) {
-    Column(Modifier.padding(top = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-        hint?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
-}
-
-@Composable
-internal fun AccountHeader(
-    title: String,
-    activity: RowActivity,
-    onReload: () -> Unit,
-    onRemove: () -> Unit,
-    onCancel: () -> Unit,
-    onOpenLog: (() -> Unit)?,
-    onAddBoth: (() -> Unit)? = null,
-    onSync: (() -> Unit)? = null
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                title,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .then(if (onOpenLog != null) Modifier.clickable(onClick = onOpenLog) else Modifier)
-            )
-            if (activity == RowActivity.IDLE) {
-                if (onAddBoth != null && onSync != null) {
-                    SyncActions(onAddBoth = onAddBoth, onSync = onSync)
-                }
-                IconButton(onClick = onReload) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Muat ulang")
-                }
-            } else {
-                ActivityStatus(activity, onCancel)
-            }
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Delete, contentDescription = "Hapus akun")
-            }
-        }
-    }
-}
-
-/** Status aktivitas di tempat ikon sinkron: spinner, teks menunggu/berjalan, dan tombol batal. */
-@Composable
-internal fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (activity == RowActivity.QUEUED) {
-            Text("Menunggu giliran", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else if (activity == RowActivity.RUNNING) {
-            Text("Sync berjalan", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.width(6.dp))
-        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-        if (activity == RowActivity.QUEUED || activity == RowActivity.RUNNING) {
-            IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = "Batalkan sync", modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-/**
- * Dua tombol per sumber. Kiri: "Tambah dari kedua sisi" (ikon CallMerge). Kanan: "Sinkron" (dua arah, dry-run dulu).
- * Tombol "Sinkron" tetap bisa ditekan; kalau sumber belum dibuka kuncinya, pesan "Tambah dari kedua sisi dulu" muncul.
- */
-@Composable
-internal fun SyncActions(onAddBoth: () -> Unit, onSync: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onAddBoth, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.CallMerge, contentDescription = "Tambah dari kedua sisi", modifier = Modifier.size(16.dp))
-        }
-        IconButton(onClick = onSync, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.Sync, contentDescription = "Sinkron", modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-/** Dry-run sebelum sinkron dijalankan: jumlah unggah, unduh, konflik, dan trash. */
-@Composable
-internal fun SyncPlanDialog(
-    pending: PendingSync,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit
-) {
-    val scan = pending.scan
-    val plan = scan.plan
-    val nothingToDo = plan.uploads + plan.downloads + plan.conflicts + plan.trashTotal == 0
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("Dry-run sinkron") },
-        text = {
-            Column {
-                Text(pending.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Spacer(Modifier.height(8.dp))
-                if (nothingToDo) {
-                    Text("Tidak ada yang perlu diubah.", fontSize = 13.sp)
-                } else {
-                    Text("Unggah: ${plan.uploads} item", fontSize = 13.sp)
-                    Text("Unduh: ${plan.downloads} item", fontSize = 13.sp)
-                    Text("Konflik: ${plan.conflicts} file (remote menang, lokal ke trash)", fontSize = 13.sp)
-                    Text("Pindah ke trash: ${plan.trashTotal} item (lokal ${plan.trashLocal}, remote ${plan.trashRemote})", fontSize = 13.sp)
-                }
-                if (scan.localEmptyWithBase) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Folder lokal kosong, tapi ada riwayat sync. Item remote bisa ikut pindah ke trash.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                } else if (scan.trashOverLimit) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Jumlah trash melewati batas (lebih dari ${SyncScan.TRASH_CONFIRM_MIN} item atau ${SyncScan.TRASH_CONFIRM_PERCENT}% dari yang sudah tersinkron). Periksa dulu.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (nothingToDo) {
-                TextButton(onClick = onCancel) { Text("Tutup") }
-            } else {
-                val strong = scan.needsStrongConfirm
-                Button(onClick = onConfirm) {
-                    Text(if (strong) "Ya, jalankan" else "Jalankan")
-                }
-            }
-        },
-        dismissButton = {
-            if (!nothingToDo) TextButton(onClick = onCancel) { Text("Batal") }
-        }
-    )
-}
-
-@Composable
-internal fun Tag(label: String) {
-    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
-    }
-}
-
-@Composable
-internal fun AddGithubDialog(
-    isAdding: Boolean,
-    error: String?,
-    onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit
-) {
+private fun PatDialog(state: BrowserState, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
     var pat by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = { if (!isAdding) onDismiss() },
-        title = { Text("Tambah akun GitHub") },
+        onDismissRequest = { if (!state.isAddingGithub) onDismiss() },
+        title = { Text("Tambahkan akun GitHub") },
         text = {
-            Column {
-                Text(
-                    "Pakai fine-grained PAT dengan akses read/write Contents ke repo yang ingin disinkronkan. Semua repo di akun itu akan terhubung.",
-                    fontSize = 12.sp
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = pat,
-                    onValueChange = { pat = it },
-                    label = { Text("Fine-grained PAT") },
-                    singleLine = true,
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Gunakan PAT dengan akses Contents ke repositori pilihan. Akses tulis diperlukan untuk mengubahnya.")
+                OutlinedTextField(pat, { pat = it }, label = { Text("Personal Access Token") },
+                    enabled = !state.isAddingGithub, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     visualTransformation = PasswordVisualTransformation(),
-                    enabled = !isAdding,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    ErrorText(it)
-                }
+                    singleLine = true, isError = state.githubAccountError != null, modifier = Modifier.testTag("github_pat_input"))
+                state.githubAccountError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSubmit(pat) }, enabled = !isAdding && pat.isNotBlank()) {
-                Text(if (isAdding) "Memverifikasi..." else "Simpan")
+            TextButton(onClick = { onAdd(pat) }, enabled = pat.isNotBlank() && !state.isAddingGithub) {
+                Text(if (state.isAddingGithub) "Memeriksa…" else "Sambungkan")
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isAdding) { Text("Batal") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !state.isAddingGithub) { Text("Batal") } }
     )
 }
 
 @Composable
-internal fun Notice(text: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.errorContainer
-    ) {
-        Text(text, modifier = Modifier.padding(12.dp), fontSize = 13.sp)
+private fun BrowserScreen(
+    modifier: Modifier, state: BrowserState, location: Location, viewModel: RemoteViewModel,
+    onUpload: () -> Unit, onDownload: (RemoteEntry) -> Unit
+) {
+    var search by remember(location) { mutableStateOf("") }
+    var create by remember(location) { mutableStateOf(false) }
+    var folderName by remember(location) { mutableStateOf("") }
+    var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
+    val canEdit = location.writable && state.ready && !state.busy
+    val listed = state.entries.filter { it.name.contains(search, ignoreCase = true) }
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = viewModel::back, enabled = !state.busy) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+            }
+            Text(location.title, style = MaterialTheme.typography.titleLarge, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            IconButton(onClick = viewModel::refreshFolder, enabled = !state.busy, modifier = Modifier.testTag("refresh_folder")) {
+                Icon(Icons.Default.Refresh, "Muat ulang folder")
+            }
+            if (location.writable) {
+                IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
+                    Icon(Icons.Default.CreateNewFolder, "Buat folder baru")
+                }
+                IconButton(onClick = onUpload, enabled = canEdit, modifier = Modifier.testTag("upload_files")) {
+                    Icon(Icons.Default.Upload, "Unggah file")
+                }
+            }
+        }
+        val path = (listOf(location.source.title) + location.folders.map { it.name }).joinToString(" / ")
+        Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("remote_progress"))
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (state.entries.isNotEmpty()) item { CompactSearchBar(search, "Cari di folder ini", { search = it }) }
+            if (state.error != null) item { Text(state.error, color = MaterialTheme.colorScheme.error) }
+            if (listed.isEmpty() && state.ready && !state.busy) item {
+                Text(if (search.isBlank()) "Folder ini kosong." else "Tidak ada hasil.")
+            }
+            items(listed, key = { it.ref }) { entry ->
+                OutlinedCard {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).heightIn(min = 48.dp)
+                            .then(if (entry.isFolder) Modifier.clickable(enabled = !state.busy) { viewModel.openFolder(entry) } else Modifier)
+                            .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val (icon, label) = when (entry.kind) {
+                                RemoteEntry.Kind.FOLDER -> Icons.Default.Folder to "Folder"
+                                RemoteEntry.Kind.FILE -> Icons.Default.Description to "File"
+                                RemoteEntry.Kind.LINK -> Icons.Default.Link to "Pintasan"
+                                RemoteEntry.Kind.UNSUPPORTED -> Icons.Default.Description to "File tanpa format unduhan"
+                            }
+                            Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
+                            Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (entry.downloadable) IconButton(onClick = { onDownload(entry) }, enabled = !state.busy) {
+                            Icon(Icons.Default.Download, "Unduh ${entry.name}")
+                        }
+                        if (location.writable) IconButton(onClick = { delete = entry }, enabled = canEdit) {
+                            Icon(Icons.Default.DeleteOutline, "Hapus ${entry.name}", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (create) {
+        val valid = RemoteNames.validNewName(folderName.trim())
+        AlertDialog(onDismissRequest = { create = false }, title = { Text("Buat folder baru") },
+            text = {
+                OutlinedTextField(folderName, { folderName = it }, label = { Text("Nama folder") }, singleLine = true,
+                    isError = folderName.isNotEmpty() && !valid, modifier = Modifier.testTag("new_folder_name"))
+            },
+            confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
+            dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
+    }
+    delete?.let { entry ->
+        val place = if (location.source is Source.Drive) "dipindahkan ke Sampah Google Drive" else "dihapus dari cabang GitHub ini lewat commit"
+        val contents = if (entry.isFolder) " Seluruh isi folder ikut terhapus, termasuk item tersembunyi." else ""
+        AlertDialog(onDismissRequest = { delete = null }, title = { Text("Hapus ${if (entry.isFolder) "folder" else "file"}?") },
+            text = { Text("${entry.name} akan $place.$contents") },
+            confirmButton = { TextButton(onClick = { delete = null; viewModel.delete(entry) }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { delete = null }) { Text("Batal") } })
     }
 }
-
-@Composable
-internal fun ErrorText(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-}
-
-@Composable
-internal fun EmptyText(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-}
-
-internal fun statusText(status: SyncStatus): String = when (status) {
-    SyncStatus.OK -> "OK"
-    SyncStatus.SEBAGIAN -> "Sebagian"
-    SyncStatus.GAGAL -> "Gagal"
-    SyncStatus.DIBATALKAN -> "Dibatalkan"
-}
-
-/** Label pendek untuk satu alasan skip. */
-internal fun skipReasonLabel(reason: SkipReason): String = when (reason) {
-    SkipReason.SAME_CONTENT -> "isi sama, dilewati"
-    SkipReason.SAME_SIZE -> "ukuran sama (sync lama)"
-    SkipReason.NOT_A_LOCAL_FILE -> "tidak ada sebagai file di perangkat"
-    SkipReason.TOO_LARGE_FOR_GITHUB -> "lebih dari 45 MB, melewati batas aman GitHub"
-    SkipReason.HIDDEN -> "nama diawali titik, tersembunyi"
-}
-
-/** Ringkasan jumlah per alasan, mis. "7 ukuran sama, 3 lebih dari 45 MB". */
-internal fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
-    val parts = mutableListOf<String>()
-    counts[SkipReason.SAME_CONTENT]?.takeIf { it > 0 }?.let { parts += "$it isi sama" }
-    counts[SkipReason.SAME_SIZE]?.takeIf { it > 0 }?.let { parts += "$it ukuran sama (sync lama)" }
-    counts[SkipReason.NOT_A_LOCAL_FILE]?.takeIf { it > 0 }?.let { parts += "$it tidak ada di perangkat" }
-    counts[SkipReason.TOO_LARGE_FOR_GITHUB]?.takeIf { it > 0 }?.let { parts += "$it lebih dari 45 MB" }
-    val hiddenCount = counts[SkipReason.HIDDEN] ?: hidden
-    if (hiddenCount > 0) parts += "$hiddenCount tersembunyi"
-    return parts.joinToString(", ").ifEmpty { "-" }
-}
-
-internal fun formatTime(millis: Long): String =
-    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(millis))

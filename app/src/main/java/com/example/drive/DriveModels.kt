@@ -16,24 +16,6 @@ data class DriveFolderItem(
     val modifiedTimeMillis: Long = 0L
 )
 
-data class DriveFileItem(
-    val id: String,
-    val name: String,
-    val relativePath: String,
-    val mimeType: String,
-    val modifiedTimeMillis: Long,
-    val size: Long,
-    val md5Checksum: String?,
-    val trashed: Boolean = false,
-    val nativeWorkspaceMimeType: String? = null
-) {
-    val isFolder: Boolean
-        get() = mimeType == DriveMimeTypes.FOLDER
-
-    val isNativeGoogleWorkspace: Boolean
-        get() = nativeWorkspaceMimeType != null
-}
-
 object DriveMimeTypes {
     const val FOLDER = "application/vnd.google-apps.folder"
     const val SHORTCUT = "application/vnd.google-apps.shortcut"
@@ -119,7 +101,7 @@ object DriveJsonParser {
 
     fun parseFilePage(jsonStr: String): DriveFilePage {
         val root = JSONObject(jsonStr)
-        check(!root.optBoolean("incompleteSearch")) { "Daftar Drive tidak lengkap. Sinkron dibatalkan demi keamanan." }
+        check(!root.optBoolean("incompleteSearch")) { "Daftar Drive tidak lengkap." }
         val nextToken = root.optString("nextPageToken", "").takeIf { it.isNotBlank() }
         val arr = root.optJSONArray("files")
         val list = mutableListOf<RawDriveEntry>()

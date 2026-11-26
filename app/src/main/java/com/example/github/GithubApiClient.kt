@@ -1,50 +1,21 @@
 package com.example.github
 
 import android.util.Base64
+import android.util.Base64OutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okio.BufferedSink
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-interface GithubRemote {
-    suspend fun getAuthenticatedUser(pat: String): GithubUserInfo
-    suspend fun listRepositories(pat: String): List<GithubRepoSummary>
-    suspend fun listFoldersInRepo(pat: String, owner: String, repo: String, branch: String): List<String>
-    suspend fun getBranchHeadCommit(pat: String, owner: String, repo: String, branch: String): Pair<String, String>
-    suspend fun listBlobsInSubfolder(
-        pat: String,
-        owner: String,
-        repo: String,
-        treeSha: String,
-        subfolder: String
-    ): List<GithubTreeBlob>
-    suspend fun downloadBlobToFile(pat: String, owner: String, repo: String, blobSha: String, destFile: File)
-    suspend fun createBlobFromFile(pat: String, owner: String, repo: String, file: File): String
-    suspend fun listCommitsForPath(
-        pat: String,
-        owner: String,
-        repo: String,
-        branch: String,
-        path: String
-    ): List<GithubCommitEntry>
-    suspend fun readFileAtCommit(pat: String, owner: String, repo: String, commitSha: String, path: String): String
-    suspend fun createAtomicCommit(
-        pat: String,
-        owner: String,
-        repo: String,
-        branch: String,
-        parentCommitSha: String,
-        baseTreeSha: String,
-        changes: List<GithubTreeChange>,
-        message: String
-    ): String
-}
+internal class GithubEmptyRepositoryException : Exception()
 
 class GithubApiClient(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -52,7 +23,7 @@ class GithubApiClient(
         .readTimeout(45, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
-) : GithubRemote {
+) {
 
     companion object {
         private const val BASE_URL = "https://api.github.com"
@@ -62,7 +33,7 @@ class GithubApiClient(
         const val MAX_GITHUB_FILE_BYTES = 45L * 1024L * 1024L // Safe limit below 50 MB warning / 100 MB hard cap
     }
 
-    override suspend fun getAuthenticatedUser(pat: String): GithubUserInfo =
+    suspend fun getAuthenticatedUser(pat: String): GithubUserInfo =
         withContext(Dispatchers.IO) {
             val req = baseRequest(pat, "$BASE_URL/user").get().build()
             val obj = JSONObject(executeString(req))
@@ -74,7 +45,7 @@ class GithubApiClient(
             )
         }
 
-    override suspend fun listRepositories(pat: String): List<GithubRepoSummary> =
+    suspend fun listRepositories(pat: String): List<GithubRepoSummary> =
         withContext(Dispatchers.IO) {
             val repos = mutableListOf<GithubRepoSummary>()
             var page = 1
@@ -106,16 +77,16 @@ class GithubApiClient(
     /**
      * Returns Pair(headCommitSha, rootTreeSha) for the target branch.
      */
-    override suspend fun getBranchHeadCommit(
+    suspend fun getBranchHeadCommit(
         pat: String,
         owner: String,
         repo: String,
         branch: String
     ): Pair<String, String> = withContext(Dispatchers.IO) {
-        val refReq = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/ref/heads/$branch")
+        val refReq = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/ref/heads/${branch.split('/').joinToString("/") { urlEnc(it) }}")
             .get()
             .build()
-        val refObj = JSONObject(executeString(refReq))
+        val refObj = JSONObject(executeString(refReq, allowEmptyRepo = true))
         val commitSha = refObj.getJSONObject("object").getString("sha")
 
         val commitReq = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/commits/$commitSha")
@@ -126,101 +97,40 @@ class GithubApiClient(
         commitSha to treeSha
     }
 
-    override suspend fun listFoldersInRepo(
-        pat: String,
-        owner: String,
-        repo: String,
-        branch: String
-    ): List<String> = withContext(Dispatchers.IO) {
-        val (_, rootTreeSha) = getBranchHeadCommit(pat, owner, repo, branch.ifBlank { "main" })
-        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/trees/$rootTreeSha?recursive=1")
-            .get()
-            .build()
-        val root = JSONObject(executeString(req))
-        val treeArr = root.optJSONArray("tree") ?: return@withContext emptyList()
-        val folders = mutableListOf<String>()
-        for (i in 0 until treeArr.length()) {
-            val item = treeArr.optJSONObject(i) ?: continue
-            if (item.optString("type") != "tree") continue
-            val path = item.optString("path", "").trim().trim('/')
-            if (path.isNotEmpty() && !com.example.sync.isHiddenPath(path)) {
-                folders.add(path)
+    suspend fun listTree(pat: String, owner: String, repo: String, treeSha: String): List<GithubTreeEntry> =
+        withContext(Dispatchers.IO) {
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/trees/$treeSha").build()
+            val root = JSONObject(executeString(req))
+            check(!root.optBoolean("truncated")) { "Daftar folder GitHub tidak lengkap." }
+            val tree = root.getJSONArray("tree")
+            List(tree.length()) { i ->
+                val item = tree.getJSONObject(i)
+                GithubTreeEntry(item.getString("path"), item.getString("sha"),
+                    item.getString("mode"), item.getString("type"))
             }
         }
-        folders.distinct().sortedBy { it.lowercase() }
-    }
 
-    override suspend fun listBlobsInSubfolder(
-        pat: String,
-        owner: String,
-        repo: String,
-        treeSha: String,
-        subfolder: String
-    ): List<GithubTreeBlob> = withContext(Dispatchers.IO) {
-        val cleanSub = subfolder.trim().trim('/')
-        val prefix = if (cleanSub.isEmpty()) "" else "$cleanSub/"
-
-        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/trees/$treeSha?recursive=1")
-            .get()
-            .build()
-        val root = JSONObject(executeString(req))
-        check(!root.optBoolean("truncated")) { "Pohon GitHub terpotong. Sinkron dibatalkan demi keamanan." }
-        val treeArr = root.getJSONArray("tree")
-        val blobs = mutableListOf<GithubTreeBlob>()
-        for (i in 0 until treeArr.length()) {
-            val item = treeArr.optJSONObject(i) ?: continue
-            if (item.optString("type") !in listOf("blob", "commit")) continue
-            val repoPath = item.optString("path", "")
-            if (repoPath.isBlank()) continue
-            if (prefix.isNotEmpty() && !repoPath.startsWith(prefix)) continue
-            val relative = if (prefix.isEmpty()) repoPath else repoPath.removePrefix(prefix)
-            if (relative.isBlank()) continue
-            blobs.add(
-                GithubTreeBlob(
-                    repoPath = repoPath,
-                    relativePath = relative,
-                    sha = item.getString("sha"),
-                    size = item.optLong("size", 0L),
-                    mode = item.getString("mode")
-                )
-            )
-        }
-        blobs
-    }
-
-    override suspend fun downloadBlobToFile(
-        pat: String,
-        owner: String,
-        repo: String,
-        blobSha: String,
-        destFile: File
-    ) = withContext(Dispatchers.IO) {
-        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs/$blobSha")
-            .get()
-            .build()
-        val obj = JSONObject(executeString(req))
-        val encoding = obj.optString("encoding", "base64")
-        val content = obj.optString("content", "")
-        val bytes = if (encoding == "base64") {
-            Base64.decode(content.replace("\n", "").replace("\r", ""), Base64.DEFAULT)
-        } else {
-            content.toByteArray(Charsets.UTF_8)
-        }
-        destFile.parentFile?.mkdirs()
-        val tmp = File(destFile.parentFile, ".syncbebas_gh_${System.nanoTime()}.tmp")
-        try {
-            tmp.writeBytes(bytes)
-            if (destFile.exists()) destFile.delete()
-            if (!tmp.renameTo(destFile)) {
-                tmp.copyTo(destFile, overwrite = true)
-                tmp.delete()
+    suspend fun downloadBlobToFile(pat: String, owner: String, repo: String, blobSha: String, destFile: File) =
+        withContext(Dispatchers.IO) {
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs/$blobSha")
+                .header("Accept", "application/vnd.github.raw+json")
+                .build()
+            httpClient.newCall(req).execute().use { response ->
+                check(response.isSuccessful) { "Gagal unduh GitHub (${response.code})." }
+                val body = checkNotNull(response.body) { "Respons unduhan GitHub kosong." }
+                body.byteStream().use { input -> destFile.outputStream().use { input.copyTo(it) } }
             }
-        } finally {
-            if (tmp.exists()) tmp.delete()
+            Unit
         }
+
+    suspend fun createEmptyBlob(pat: String, owner: String, repo: String): String = withContext(Dispatchers.IO) {
+        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs")
+            .post(JSONObject().put("content", "").put("encoding", "utf-8").toString().toRequestBody(JSON_MEDIA))
+            .build()
+        JSONObject(executeString(req)).getString("sha")
     }
 
-    override suspend fun createBlobFromFile(
+    suspend fun createBlobFromFile(
         pat: String,
         owner: String,
         repo: String,
@@ -229,18 +139,39 @@ class GithubApiClient(
         if (file.length() > MAX_GITHUB_FILE_BYTES) {
             throw IllegalArgumentException("Ukuran berkas ${file.name} melebihi batas aman GitHub (45 MB).")
         }
-        val b64 = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
-        val payload = JSONObject().apply {
-            put("content", b64)
-            put("encoding", "base64")
-        }
-        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs")
-            .post(payload.toString().toRequestBody(JSON_MEDIA))
-            .build()
+        val body = base64Body(file, prefix = "{\"content\":\"", suffix = "\",\"encoding\":\"base64\"}")
+        val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs").post(body).build()
         JSONObject(executeString(req)).getString("sha")
     }
 
-    override suspend fun createAtomicCommit(
+    // The Contents API can create the first commit; the Git Data API needs an existing branch.
+    suspend fun createInitialFile(pat: String, owner: String, repo: String, path: String, message: String, file: File?) =
+        withContext(Dispatchers.IO) {
+            val encoded = path.split('/').joinToString("/") { urlEnc(it) }
+            val prefix = "{\"message\":${JSONObject.quote(message)},\"content\":\""
+            val body = base64Body(file, prefix, "\"}")
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/contents/$encoded").put(body).build()
+            executeString(req)
+            Unit
+        }
+
+    private fun base64Body(file: File?, prefix: String, suffix: String) = object : RequestBody() {
+        override fun contentType() = JSON_MEDIA
+        override fun contentLength(): Long = prefix.toByteArray(Charsets.UTF_8).size +
+            4L * (((file?.length() ?: 0L) + 2L) / 3L) + suffix.toByteArray(Charsets.UTF_8).size
+
+        override fun writeTo(sink: BufferedSink) {
+            sink.writeUtf8(prefix)
+            if (file != null) {
+                Base64OutputStream(sink.outputStream(), Base64.NO_WRAP or Base64.NO_CLOSE).use { encoded ->
+                    file.inputStream().use { it.copyTo(encoded) }
+                }
+            }
+            sink.writeUtf8(suffix)
+        }
+    }
+
+    suspend fun createAtomicCommit(
         pat: String,
         owner: String,
         repo: String,
@@ -255,7 +186,7 @@ class GithubApiClient(
             val entry = JSONObject().apply {
                 put("path", change.repoPath)
                 put("mode", change.mode)
-                put("type", "blob")
+                put("type", change.type)
                 if (change.blobSha != null) {
                     put("sha", change.blobSha)
                 } else {
@@ -288,47 +219,11 @@ class GithubApiClient(
             put("sha", newCommitSha)
             put("force", false)
         }
-        val refReq = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/refs/heads/$branch")
+        val refReq = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/refs/heads/${branch.split('/').joinToString("/") { urlEnc(it) }}")
             .patch(refPayload.toString().toRequestBody(JSON_MEDIA))
             .build()
         executeString(refReq)
         newCommitSha
-    }
-
-    override suspend fun listCommitsForPath(
-        pat: String,
-        owner: String,
-        repo: String,
-        branch: String,
-        path: String
-    ): List<GithubCommitEntry> = withContext(Dispatchers.IO) {
-        val url = "$BASE_URL/repos/$owner/$repo/commits?sha=${urlEnc(branch)}&path=${urlEnc(path)}&per_page=30"
-        val arr = JSONArray(executeString(baseRequest(pat, url).get().build()))
-        (0 until arr.length()).mapNotNull { i ->
-            val obj = arr.optJSONObject(i) ?: return@mapNotNull null
-            val commit = obj.optJSONObject("commit") ?: return@mapNotNull null
-            GithubCommitEntry(
-                sha = obj.optString("sha", ""),
-                message = commit.optString("message", "").lineSequence().firstOrNull().orEmpty(),
-                dateIso = commit.optJSONObject("committer")?.optString("date", "").orEmpty()
-            )
-        }.filter { it.sha.isNotEmpty() }
-    }
-
-    override suspend fun readFileAtCommit(
-        pat: String,
-        owner: String,
-        repo: String,
-        commitSha: String,
-        path: String
-    ): String = withContext(Dispatchers.IO) {
-        val encodedPath = path.split('/').joinToString("/") { urlEnc(it) }
-        val url = "$BASE_URL/repos/$owner/$repo/contents/$encodedPath?ref=${urlEnc(commitSha)}"
-        val req = baseRequest(pat, url)
-            .header("Accept", "application/vnd.github.raw+json")
-            .get()
-            .build()
-        executeString(req)
     }
 
     private fun urlEnc(value: String): String =
@@ -343,9 +238,10 @@ class GithubApiClient(
             .addHeader("User-Agent", "Lotura-Android")
     }
 
-    private fun executeString(request: Request): String {
+    private fun executeString(request: Request, allowEmptyRepo: Boolean = false): String {
         httpClient.newCall(request).execute().use { response ->
             val bodyStr = response.body?.string().orEmpty()
+            if (allowEmptyRepo && response.code == 409) throw GithubEmptyRepositoryException()
             if (response.code == 401 || response.code == 403) {
                 throw IllegalStateException("Token GitHub ditolak atau izin repo kurang (${response.code}).")
             }

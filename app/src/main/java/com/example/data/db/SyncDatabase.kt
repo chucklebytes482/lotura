@@ -11,17 +11,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         DriveAccountEntity::class,
         GithubAccountEntity::class,
-        GithubRepoEntity::class,
-        SyncStateEntity::class
+        GithubRepoEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class SyncDatabase : RoomDatabase() {
     abstract fun driveAccountDao(): DriveAccountDao
     abstract fun githubAccountDao(): GithubAccountDao
     abstract fun githubRepoDao(): GithubRepoDao
-    abstract fun syncStateDao(): SyncStateDao
 
     companion object {
         /** v2 -> v3: tabel log dihapus. Akun Drive dan GitHub tidak disentuh. */
@@ -43,6 +41,13 @@ abstract class SyncDatabase : RoomDatabase() {
             }
         }
 
+        /** Hapus tabel sinkron lama tanpa mengubah akun, token, atau repositori tersimpan. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS sync_state")
+            }
+        }
+
         @Volatile
         private var instance: SyncDatabase? = null
 
@@ -52,7 +57,7 @@ abstract class SyncDatabase : RoomDatabase() {
                     context.applicationContext,
                     SyncDatabase::class.java,
                     "sync_bebas.db"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }

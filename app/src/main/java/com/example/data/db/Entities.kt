@@ -23,7 +23,7 @@ data class GithubAccountEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-/** Setiap repo di akun GitHub menjadi satu folder lokal sendiri. */
+/** Repositori GitHub yang tersedia untuk akun ini. */
 @Entity(
     tableName = "github_repos",
     foreignKeys = [
@@ -45,17 +45,4 @@ data class GithubRepoEntity(
     val isPrivate: Boolean,
     val archived: Boolean,
     val localPath: String
-)
-
-/**
- * Keadaan satu path setelah sync dua arah berhasil. Dipakai sebagai base untuk menghitung perubahan.
- * Kunci (sourceKey, path). localHash/remoteHash/remoteRef null = tidak ada di sisi itu saat sync terakhir.
- */
-@Entity(tableName = "sync_state", primaryKeys = ["sourceKey", "path"])
-data class SyncStateEntity(
-    val sourceKey: String,
-    val path: String,
-    val localHash: String?,
-    val remoteHash: String?,
-    val remoteRef: String?
 )

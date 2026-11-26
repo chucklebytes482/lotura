@@ -425,7 +425,7 @@
       <span class="hero-badge">Panduan Lotura</span>
       <h1>Salin file antara HP Android, Google Drive, dan GitHub</h1>
       <p class="lead">
-        Sambungkan akun Anda, lalu ketuk ikon unduh atau unggah pada folder yang ingin Anda salin.
+        Buka akun Drive atau repositori GitHub untuk menelusuri dan mengelola file yang tersimpan di remote.
       </p>
       <div class="cta-group">
         <a
@@ -482,17 +482,17 @@
       <h2>2. Sambungkan akun</h2>
       <h3>Google Drive</h3>
       <ol>
-        <li>Di layar utama, ketuk <em>Hubungkan akun Google Drive</em>.</li>
+        <li>Di layar utama, ketuk <em>Sambungkan Google Drive</em>.</li>
         <li>Pilih akun Google Anda, lalu izinkan akses. Anda bisa menyambungkan lebih dari satu akun.</li>
       </ol>
       <h3>GitHub</h3>
       <ol>
-        <li>Di layar utama, ketuk <em>Tambah akun GitHub</em>.</li>
+        <li>Di layar utama, ketuk <em>Tambahkan akun GitHub</em>.</li>
         <li>
           Buat kode akses di situs GitHub dengan izin untuk membaca dan mengubah isi repo. Tempel kode itu di
-          Lotura, lalu ketuk <em>Simpan</em>.
+          Lotura, lalu ketuk <em>Sambungkan</em>.
         </li>
-        <li>Semua repo di akun itu akan muncul. Repo yang sudah diarsipkan diberi tanda <em>Archived</em>.</li>
+        <li>Repo yang dapat dibaca oleh PAT akan muncul. Repo yang diarsipkan hanya bisa dijelajahi dan diunduh.</li>
       </ol>
       <h3>Contoh tampilan kartu akun</h3>
       <p>Kartu Google Drive hanya menampilkan alamat email. Kartu GitHub hanya menampilkan username.</p>
@@ -503,45 +503,38 @@
     <section id="pilih" class="card">
       <h2>3. Melihat folder</h2>
       <ul>
-        <li>Layar utama punya dua tab: <em>Google Drive</em> (folder utama tiap akun) dan <em>GitHub</em> (repo tiap akun). Geser layar untuk pindah tab. Di atas keduanya ada kartu <em>Unduh aplikasi terbaru</em> untuk memasang versi baru dari HP.</li>
-        <li>Gunakan <em>Tambah dari kedua sisi</em> untuk menyalin item baru dan <em>Sinkron</em> untuk meninjau perubahan dua arah.</li>
-        <li>Ketuk judul akun Drive atau nama repo GitHub untuk membuka log sumber itu di lembar bawah: arah, waktu, status (OK, Sebagian, Gagal, Dibatalkan), dan jumlah file. Ketuk entri untuk melihat file yang dilewati beserta alasannya.</li>
-        <li>Untuk memperbarui daftar repo, ketuk ikon <em>muat ulang</em> di bagian akun GitHub.</li>
-        <li>
-          Dokumen Google (Docs, Sheets, Slides) disalin ke HP sebagai berkas Office.
-        </li>
+        <li>Pilih tab <em>Google Drive</em> atau <em>GitHub</em>, lalu ketuk akun Drive atau nama repo GitHub.</li>
+        <li>Ketuk folder untuk membukanya. Gunakan panah kembali untuk naik satu tingkat. Lotura menampilkan isi remote saja, bukan salinan di HP.</li>
+        <li>Di GitHub, Lotura membuka cabang bawaan repo. Ketuk ikon muat ulang untuk memperbarui isi folder atau daftar repo.</li>
+        <li>File dan folder berawalan titik, seperti <code>.env</code> dan <code>.github</code>, tidak ditampilkan.</li>
       </ul>
     </section>
 
     <section id="salin" class="card">
       <h2>4. Unduh dan unggah</h2>
       <ul>
-        <li><strong>Tambah dari kedua sisi</strong> menyalin item baru antara folder HP dan sumbernya, tanpa menerapkan penghapusan.</li>
-        <li><strong>Sinkron</strong> menampilkan rencana perubahan dua arah. Periksa rencana sebelum menyetujuinya.</li>
-        <li>Selama proses berjalan, tombol tidak bisa ditekan. Tunggu sampai selesai.</li>
+        <li>Ketuk ikon <strong>Unduh</strong> di samping file atau folder. Folder disalin bersama subfoldernya, tanpa item tersembunyi.</li>
+        <li>Unduhan GitHub masuk ke <code>/storage/emulated/0/github/&lt;pemilik&gt;/&lt;repo&gt;/</code>. Unduhan Drive masuk ke <code>/storage/emulated/0/google drive/&lt;email&gt;/</code>. Unduhan tidak menimpa file atau folder setempat.</li>
+        <li>Google Docs, Sheets, dan Slides diunduh sebagai file Office. Pintasan Drive, symlink GitHub, submodule, dan format Drive tanpa format ekspor tidak ikut diunduh.</li>
+        <li>Buka folder tujuan, ketuk ikon <strong>Unggah file</strong>, lalu pilih satu atau beberapa file lewat pemilih Android. Nama file tersembunyi ditolak; file remote bernama sama tidak ditimpa. Batas unggah GitHub: 45 MiB per file.</li>
       </ul>
     </section>
 
     <section id="jelajah" class="card">
-      <h2>5. Aturan sinkron</h2>
+      <h2>5. Buat folder dan hapus item</h2>
       <ul>
-        <li>Semua jenis file biasa, termasuk file tanpa ekstensi, bisa disinkronkan. File dan folder berawalan titik dilewati.</li>
-        <li>Sinkron dilakukan manual untuk seluruh folder sumber. Folder baru, pemindahan, dan penghapusan bisa ikut tersinkron ke sisi lain. Penghapusan hanya diterapkan pada item yang telah tersinkron dan tidak berubah di sisi lain. Jika folder sumber utama di HP hilang atau tidak bisa dibaca, sinkron dibatalkan demi keamanan.</li>
-        <li>File yang dihapus dipindah ke Sampah Drive atau ke folder <code>.trash</code> di GitHub dan HP. Folder Drive hanya masuk sampah jika sudah kosong; dokumen Google asli tidak dihapus saat salinan lokalnya dihapus.</li>
-        <li>GitHub tidak menyimpan folder kosong. Batas unggah Lotura ke GitHub tetap 45 MB per file.</li>
+        <li>Ketuk ikon <strong>Buat folder baru</strong>. Folder langsung dibuat di Drive atau di cabang GitHub yang aktif. GitHub memakai file penanda <code>.gitkeep</code> untuk folder kosong.</li>
+        <li>Ikon <strong>Hapus</strong> meminta konfirmasi. Di Drive, item masuk ke Sampah. Di GitHub, penghapusan tercatat sebagai commit. Menghapus folder juga menghapus isinya, termasuk item tersembunyi.</li>
+        <li>Fitur Sinkron lama sudah tidak ada. Mengubah hasil unduhan di HP tidak mengubah file remote.</li>
       </ul>
     </section>
 
     <section id="hapus" class="card">
       <h2>6. Putuskan akun</h2>
       <ul>
-        <li>Ketuk ikon hapus di baris akun GitHub, atau di akun Google Drive, untuk memutuskan akun dari Lotura.</li>
+        <li>Ketuk ikon putuskan di baris akun GitHub atau Google Drive, untuk memutuskan akun dari Lotura.</li>
         <li>Memutuskan akun tidak menghapus file Anda, baik di HP maupun di Google Drive atau GitHub.</li>
       </ul>
-      <div class="notice">
-        <strong>Setelah pembaruan aplikasi:</strong> sambungkan kembali akun Google Drive Anda. Tambahkan kembali akun
-        GitHub Anda.
-      </div>
     </section>
 
     <footer>

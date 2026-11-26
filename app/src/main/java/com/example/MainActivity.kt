@@ -14,7 +14,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -31,7 +30,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
-import com.example.ui.SyncViewModel
+import com.example.remote.RemoteEntry
+import com.example.ui.RemoteViewModel
 import com.example.ui.components.StoragePermissionHelper
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.SyncBebasTheme
@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val viewModel: SyncViewModel = viewModel()
+            val viewModel: RemoteViewModel = viewModel()
             SyncBebasTheme {
                 SyncBebasRootApp(viewModel = viewModel)
             }
@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncBebasRootApp(viewModel: SyncViewModel) {
+private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -59,15 +59,14 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     val driveAccounts by viewModel.driveAccounts.collectAsStateWithLifecycle()
     val githubAccounts by viewModel.githubAccounts.collectAsStateWithLifecycle()
     val repos by viewModel.repos.collectAsStateWithLifecycle()
-    val logs by viewModel.logs.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess()) }
+    var hasStoragePermission by remember { mutableStateOf(StoragePermissionHelper.hasAllFilesAccess(context)) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                hasStoragePermission = StoragePermissionHelper.hasAllFilesAccess()
+                hasStoragePermission = StoragePermissionHelper.hasAllFilesAccess(context)
                 viewModel.refreshNetworkStatus()
             }
         }
@@ -121,6 +120,24 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
         viewModel.consumeSnackbar()
     }
 
+    var pendingDownload by remember { mutableStateOf<RemoteEntry?>(null) }
+    fun finishStorageRequest() {
+        hasStoragePermission = StoragePermissionHelper.hasAllFilesAccess(context)
+        val entry = pendingDownload ?: return
+        pendingDownload = null
+        if (hasStoragePermission) viewModel.download(entry)
+        else viewModel.showMessage("Izin penyimpanan diperlukan untuk mengunduh file.")
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        finishStorageRequest()
+    }
+    val storageSettings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        finishStorageRequest()
+    }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
+        viewModel.uploadSelected(it)
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -128,40 +145,36 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
     ) { innerPadding ->
         HomeScreen(
             modifier = Modifier.padding(innerPadding),
+            state = uiState,
             driveAccounts = driveAccounts,
             githubAccounts = githubAccounts,
             repos = repos,
-            trees = uiState.trees,
-            loading = uiState.loading,
-            logs = logs,
-            busySources = uiState.busySources,
-            queuedSources = uiState.queuedSources,
-            isConnectingDrive = uiState.isConnectingDrive,
-            driveAuthError = uiState.driveAuthError,
-            isAddingGithub = uiState.isAddingGithub,
-            githubAccountError = uiState.githubAccountError,
-            hasStoragePermission = hasStoragePermission,
-            isOnline = uiState.isOnline,
-            onRequestStoragePermission = {
-                runCatching {
-                    context.startActivity(StoragePermissionHelper.buildAllFilesSettingsIntent(context))
-                }.onFailure {
-                    viewModel.showMessage("Buka Pengaturan Android -> Akses Semua File untuk Lotura.")
+            viewModel = viewModel,
+            onConnectDrive = startDriveAuth,
+            onUpload = {
+                if (viewModel.preparePicker()) {
+                    runCatching { filePicker.launch(arrayOf("*/*")) }.onFailure {
+                        viewModel.uploadSelected(emptyList())
+                        viewModel.showMessage("Pemilih file Android tidak tersedia.")
+                    }
                 }
             },
-            onConnectDrive = startDriveAuth,
-            onRemoveDrive = { email -> viewModel.removeDriveAccount(email) },
-            onReloadDrive = { email -> viewModel.reloadDrive(email) },
-            onAddGithubAccount = { pat, onOk -> viewModel.addGithubAccount(pat, onOk) },
-            onRefreshRepos = { account -> viewModel.refreshGithubRepos(account) },
-            onDeleteGithubAccount = { account -> viewModel.deleteGithubAccount(account) },
-            armedSources = uiState.armedSources,
-            pendingPlan = uiState.pendingPlan,
-            onAddBothSides = { key, label -> viewModel.addBothSides(key, label) },
-            onPreviewSync = { key, label -> viewModel.previewSync(key, label) },
-            onConfirmSync = { viewModel.confirmSync() },
-            onCancelPendingSync = { viewModel.cancelPendingSync() },
-            onCancelSync = { key -> viewModel.cancelSync(key) }
+            onDownload = { entry ->
+                if (hasStoragePermission) viewModel.download(entry)
+                else {
+                    pendingDownload = entry
+                    if (android.os.Build.VERSION.SDK_INT < 30) {
+                        permissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    } else {
+                        runCatching {
+                            storageSettings.launch(StoragePermissionHelper.buildAllFilesSettingsIntent(context))
+                        }.onFailure {
+                            pendingDownload = null
+                            viewModel.showMessage("Buka Pengaturan Android → Akses Semua File untuk Lotura.")
+                        }
+                    }
+                }
+            }
         )
     }
 }

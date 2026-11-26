@@ -1,15 +1,12 @@
 package com.example
 
 import android.app.Application
-import com.example.data.RoomSyncStateStore
 import com.example.data.SyncRepository
 import com.example.data.db.SyncDatabase
 import com.example.data.secure.SecureTokenStore
 import com.example.drive.DriveApiClient
 import com.example.drive.GoogleAuthManager
 import com.example.github.GithubApiClient
-import com.example.sync.SyncEngine
-import com.example.sync.SyncStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,12 +29,6 @@ class SyncBebasApp : Application() {
     lateinit var githubApiClient: GithubApiClient
         private set
 
-    lateinit var syncEngine: SyncEngine
-        private set
-
-    lateinit var syncStateStore: SyncStateStore
-        private set
-
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -47,12 +38,6 @@ class SyncBebasApp : Application() {
         repository = SyncRepository(database, secureTokenStore)
         driveApiClient = DriveApiClient()
         githubApiClient = GithubApiClient()
-        syncStateStore = RoomSyncStateStore(database.syncStateDao())
-        syncEngine = SyncEngine(
-            drive = driveApiClient,
-            github = githubApiClient,
-            driveTokenProvider = { email -> resolveDriveToken(email) }
-        )
         // Hapus sisa format akun Drive lama (satu akun global) sekali saat aplikasi diperbarui.
         appScope.launch {
             repository.clearLegacyDriveKeys()
@@ -60,7 +45,7 @@ class SyncBebasApp : Application() {
     }
 
     /** Token silent dulu; kalau gagal, pakai token tersimpan. */
-    private suspend fun resolveDriveToken(email: String): String {
+    suspend fun resolveDriveToken(email: String): String {
         val fresh = GoogleAuthManager.tryGetSilentAccessToken(this, email)
         if (fresh != null) {
             repository.saveDriveToken(email, fresh)
