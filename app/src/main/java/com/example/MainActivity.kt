@@ -139,7 +139,7 @@ fun SyncBebasRootApp(viewModel: SyncViewModel) {
                     Text(
                         text = "Lotura",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Medium
                     )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(

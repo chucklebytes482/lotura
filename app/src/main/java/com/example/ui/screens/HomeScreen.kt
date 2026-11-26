@@ -420,7 +420,7 @@ internal fun RepoCard(
 @Composable
 internal fun SectionTitle(title: String, hint: String?) {
     Column(Modifier.padding(top = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
         hint?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
