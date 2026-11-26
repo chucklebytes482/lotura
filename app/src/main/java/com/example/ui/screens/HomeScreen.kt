@@ -99,7 +99,7 @@ internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Str
     }
 
 /**
- * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan tampil di atas keduanya.
+ * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan hanya tampil di tab Google Drive.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
  * Dua tombol per sumber: "Tambah dari kedua sisi" (hanya menambah, tidak pernah memindah ke trash) dan
@@ -168,7 +168,6 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                item(key = "guide-web") { GuideWebCard() }
                 noticeItems(
                     isOnline = isOnline,
                     hasStoragePermission = hasStoragePermission,
@@ -176,7 +175,9 @@ fun HomeScreen(
                 )
 
                 when (HomeTab.entries[page]) {
-                    HomeTab.DRIVE -> driveSection(
+                    HomeTab.DRIVE -> {
+                        item(key = "guide-web") { GuideWebCard() }
+                        driveSection(
                         driveAccounts = driveAccounts,
                         trees = trees,
                         loading = loading,
@@ -192,7 +193,8 @@ fun HomeScreen(
                         onPreviewSync = onPreviewSync,
                         onCancelSync = onCancelSync,
                         onOpenLog = { key -> logSheetKey = key }
-                    )
+                        )
+                    }
                     HomeTab.GITHUB -> githubSection(
                         githubAccounts = githubAccounts,
                         repos = repos,
