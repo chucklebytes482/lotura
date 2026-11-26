@@ -74,8 +74,6 @@ import com.example.sync.SkipDetail
 import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
-import com.example.update.ApkState
-import com.example.ui.update.apkUpdateSection
 import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -99,7 +97,7 @@ internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<Str
     }
 
 /**
- * Beranda dengan dua tab: Google Drive dan GitHub. Kartu pembaruan APK tampil di atas keduanya.
+ * Beranda dengan dua tab: Google Drive dan GitHub. Web panduan tampil di atas keduanya.
  * Tab bisa diganti dengan geser ke kiri atau kanan, atau dengan mengetuk judul tab.
  * Mengetuk judul akun Drive atau kartu repo membuka log sumber itu di lembar bawah.
  * Ikon ↓ (download) dan ↑ (unggah) langsung menjalankan sinkron.
@@ -122,13 +120,7 @@ fun HomeScreen(
     githubAccountError: String?,
     hasStoragePermission: Boolean,
     isOnline: Boolean,
-    apkState: ApkState,
     onRequestStoragePermission: () -> Unit,
-    onDownloadApk: () -> Unit,
-    onRetryApkInstall: () -> Unit,
-    onOpenUnknownSourcesSettings: () -> Unit,
-    onDismissApkPrompt: () -> Unit,
-    onDismissApkError: () -> Unit,
     onConnectDrive: () -> Unit,
     onRemoveDrive: (String) -> Unit,
     onReloadDrive: (String) -> Unit,
@@ -169,14 +161,7 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                apkUpdateSection(
-                    apkState = apkState,
-                    onDownload = onDownloadApk,
-                    onRetryInstall = onRetryApkInstall,
-                    onOpenUnknownSourcesSettings = onOpenUnknownSourcesSettings,
-                    onDismissPermissionPrompt = onDismissApkPrompt,
-                    onDismissError = onDismissApkError
-                )
+                item(key = "guide-web") { GuideWebCard() }
                 noticeItems(
                     isOnline = isOnline,
                     hasStoragePermission = hasStoragePermission,

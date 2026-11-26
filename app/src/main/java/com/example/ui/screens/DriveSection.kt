@@ -74,8 +74,6 @@ import com.example.sync.SkipDetail
 import com.example.sync.SkipReason
 import com.example.sync.SourceKeys
 import com.example.sync.TreeItem
-import com.example.update.ApkState
-import com.example.ui.update.apkUpdateSection
 import com.example.ui.tree.rootVisibleItems
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
