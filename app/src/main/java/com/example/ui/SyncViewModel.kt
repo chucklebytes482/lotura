@@ -19,9 +19,11 @@ import com.example.github.GithubTreeBlob
 import com.example.sync.IgnoreRules
 import com.example.sync.OpResult
 import com.example.sync.SourceKeys
+import com.example.sync.SourceTreeRules
 import com.example.sync.TreeItem
 import com.example.sync.isHiddenPath
 import com.example.sync.isTrackedRepoPath
+import com.example.sync.trackedDirPaths
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -163,7 +165,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
     fun reloadDrive(email: String) {
         val key = SourceKeys.drive(email)
         _uiState.update { st ->
-            st.copy(loaded = st.loaded.filterNot { it == key || it.startsWith("$key|") }.toSet())
+            st.copy(loaded = SourceTreeRules.loadedWithoutSource(st.loaded, key))
         }
         viewModelScope.launch { fetchDriveLevel(email, parent = null, remaining = DRIVE_PRELOAD_LEVELS) }
     }
@@ -242,9 +244,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             if (sourceKey !in _uiState.value.loaded) loadRepoTree(repo)
             val rootItems = _uiState.value.trees[sourceKey].orEmpty().filter { !it.path.contains('/') }
             if (rootItems.isEmpty()) {
-                val message = "Repo ${repo.name} kosong atau gagal dimuat"
-                _uiState.update { it.copy(snackbarMessage = message) }
-                appendLog(sourceKey, repo.name, upload = false, status = SyncStatus.GAGAL, result = OpResult(), error = message)
+                logLoadFailure(sourceKey, repo.name, "Repo ${repo.name} kosong atau gagal dimuat")
                 return@launch
             }
             runItems(rootItems, upload, label = repo.name)
@@ -308,6 +308,19 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /** Gagal memuat pohon: beri tahu lewat Snackbar dan catat di log sebagai GAGAL. */
+    private fun logLoadFailure(sourceKey: String, label: String, message: String) {
+        _uiState.update { it.copy(snackbarMessage = message) }
+        appendLog(
+            sourceKey = sourceKey,
+            label = label,
+            upload = false,
+            status = SyncStatus.GAGAL,
+            result = OpResult(),
+            error = message
+        )
+    }
+
     /** Menulis satu entri log. Dipakai untuk sync dan untuk kegagalan memuat pohon. */
     private fun appendLog(
         sourceKey: String,
@@ -320,7 +333,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         val entry = SyncLogEntry(
             atMillis = System.currentTimeMillis(),
             sourceKey = sourceKey,
-            source = sourceLabel(sourceKey),
+            source = SourceTreeRules.sourceLabel(sourceKey),
             label = label,
             upload = upload,
             status = status,
@@ -334,13 +347,6 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
         )
         _logs.value = logStore.append(entry)
     }
-
-    private fun sourceLabel(sourceKey: String): String =
-        if (sourceKey.startsWith("drive:")) {
-            "Drive · ${sourceKey.removePrefix("drive:")}"
-        } else {
-            "GitHub · ${sourceKey.removePrefix("github:")}"
-        }
 
     // ---------- Internal ----------
 
@@ -356,7 +362,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 .map { child ->
                     TreeItem(
                         sourceKey = sourceKey,
-                        path = if (parentPath.isEmpty()) child.name else "$parentPath/${child.name}",
+                        path = SourceTreeRules.childPath(parentPath, child.name),
                         name = child.name,
                         isFolder = child.isFolder,
                         size = child.size,
@@ -365,14 +371,11 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             _uiState.update { st ->
-                val prefix = if (parentPath.isEmpty()) "$sourceKey|" else "$sourceKey|$parentPath/"
-                val existing = st.trees[sourceKey].orEmpty()
                 // Ganti isi folder ini; keturunan lama ikut dibuang.
-                val kept = existing.filterNot { it.key.startsWith(prefix) || (parentPath.isEmpty() && it.sourceKey == sourceKey) }
-                val staleLoaded = st.loaded.filter { it.startsWith(prefix) }.toSet()
+                val prefix = SourceTreeRules.childPrefix(sourceKey, parentPath)
                 st.copy(
-                    trees = st.trees + (sourceKey to kept + items),
-                    loaded = (st.loaded - staleLoaded) + parentKey
+                    trees = st.trees + (sourceKey to SourceTreeRules.replaceDriveLevel(st.trees[sourceKey].orEmpty(), sourceKey, parentPath, items)),
+                    loaded = SourceTreeRules.loadedWithoutPrefix(st.loaded, prefix) + parentKey
                 )
             }
             if (remaining > 1) {
@@ -381,16 +384,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } catch (e: Exception) {
-            val message = "Gagal memuat Drive $email: ${e.message ?: "tidak diketahui"}"
-            _uiState.update { it.copy(snackbarMessage = message) }
-            appendLog(
-                sourceKey = sourceKey,
-                label = parent?.name ?: email,
-                upload = false,
-                status = SyncStatus.GAGAL,
-                result = OpResult(),
-                error = message
-            )
+            logLoadFailure(sourceKey, parent?.name ?: email, "Gagal memuat Drive $email: ${e.message ?: "tidak diketahui"}")
         } finally {
             _uiState.update { it.copy(loading = it.loading - parentKey) }
         }
@@ -405,12 +399,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
             val blobs: List<GithubTreeBlob> = githubApi.listBlobsInSubfolder(pat, repo.owner, repo.name, treeSha, "")
                 .filterNot { isHiddenPath(it.repoPath) }
                 .filter { isTrackedRepoPath(it.repoPath) }
-            val folders = linkedSetOf<String>()
-            blobs.forEach { blob ->
-                val parts = blob.repoPath.split('/')
-                for (i in 0 until parts.size - 1) folders += parts.take(i + 1).joinToString("/")
-            }
-            val items = folders.map { path ->
+            val items = trackedDirPaths(blobs.map { it.repoPath }).map { path ->
                 TreeItem(sourceKey, path, path.substringAfterLast('/'), true, null, null, null, repo.archived)
             } + blobs.map { blob ->
                 TreeItem(sourceKey, blob.repoPath, blob.repoPath.substringAfterLast('/'), false, blob.size, blob.sha, null, repo.archived)
@@ -419,24 +408,15 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 st.copy(trees = st.trees + (sourceKey to items), loaded = st.loaded + sourceKey)
             }
         } catch (e: Exception) {
-            val message = "Gagal memuat repo ${repo.fullName}: ${e.message ?: "tidak diketahui"}"
-            _uiState.update { it.copy(snackbarMessage = message) }
-            appendLog(
-                sourceKey = sourceKey,
-                label = repo.name,
-                upload = false,
-                status = SyncStatus.GAGAL,
-                result = OpResult(),
-                error = message
-            )
+            logLoadFailure(sourceKey, repo.name, "Gagal memuat repo ${repo.fullName}: ${e.message ?: "tidak diketahui"}")
         } finally {
             _uiState.update { it.copy(loading = it.loading - sourceKey) }
         }
     }
 
     private suspend fun runOperation(sourceKey: String, items: List<TreeItem>, upload: Boolean): OpResult {
-        if (sourceKey.startsWith("drive:")) {
-            val email = sourceKey.removePrefix("drive:")
+        if (SourceTreeRules.isDriveSource(sourceKey)) {
+            val email = SourceTreeRules.driveEmailOf(sourceKey)
             val root = LocalPathHelper.driveRoot(email)
             return if (upload) {
                 engine.uploadDrive(email, root, ignoreRules, items)
@@ -444,7 +424,7 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
                 engine.downloadDrive(email, root, items)
             }
         }
-        val fullName = sourceKey.removePrefix("github:")
+        val fullName = SourceTreeRules.githubFullNameOf(sourceKey)
         val repo = repos.value.firstOrNull { it.fullName == fullName }
             ?: error("Repo $fullName tidak ditemukan")
         val pat = repository.getGithubPat(repo.accountId)
@@ -459,11 +439,10 @@ class SyncViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Membuang semua state pohon untuk satu sumber. Log sync tetap disimpan sebagai riwayat. */
     private fun dropSource(sourceKey: String) {
-        fun owned(key: String) = key == sourceKey || key.startsWith("$sourceKey|")
         _uiState.update { st ->
             st.copy(
                 trees = st.trees - sourceKey,
-                loaded = st.loaded.filterNot(::owned).toSet()
+                loaded = SourceTreeRules.loadedWithoutSource(st.loaded, sourceKey)
             )
         }
     }
