@@ -22,12 +22,19 @@ enum class SyncMode { ADD_BOTH, SYNC }
 /** Path yang punya segmen tersembunyi (diawali '.'), di level mana pun. Dilewati saat sinkron. */
 fun isHiddenPath(path: String): Boolean = path.split('/').any { it.startsWith(".") }
 
+/** Ekstensi berkas repo GitHub yang ikut ditampilkan dan disinkronkan (huruf kecil, tanpa titik). */
+val TRACKED_REPO_EXTENSIONS = setOf("md", "vxenc", "hc")
+
 /**
- * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan: berkas .md dan .vxenc (berkas terenkripsi)
+ * Berkas repo GitHub yang ikut ditampilkan dan disinkronkan: berkas dengan ekstensi di [TRACKED_REPO_EXTENSIONS]
  * di mana pun di repo. Selain itu, dan semua path tersembunyi, diabaikan saat tampil, download/unggah, maupun auto-sync.
  */
-fun isTrackedRepoPath(path: String): Boolean =
-    !isHiddenPath(path) && (path.endsWith(".md") || path.endsWith(".vxenc"))
+fun isTrackedRepoPath(path: String): Boolean {
+    if (isHiddenPath(path)) return false
+    val name = path.substringAfterLast('/')
+    val dot = name.lastIndexOf('.')
+    return dot > 0 && name.substring(dot + 1).lowercase() in TRACKED_REPO_EXTENSIONS
+}
 
 /** Semua folder (relatif, memakai '/') yang berisi setidaknya satu path yang dilacak. */
 fun trackedDirPaths(trackedFilePaths: Collection<String>): Set<String> {

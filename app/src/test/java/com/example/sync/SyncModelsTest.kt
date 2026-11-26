@@ -11,6 +11,8 @@ class SyncModelsTest {
     fun trackedRepoPath_mdAndVxenc_yes() {
         assertTrue(isTrackedRepoPath("encrypt/ketikku.vxenc"))
         assertTrue(isTrackedRepoPath("catatan.md"))
+        assertTrue(isTrackedRepoPath("disk/brankas.hc"))
+        assertTrue(isTrackedRepoPath("Brankas.VXENC"))
     }
 
     @Test
