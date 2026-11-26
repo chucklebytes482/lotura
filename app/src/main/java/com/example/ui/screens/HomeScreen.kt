@@ -82,15 +82,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class HomeTab(val title: String) {
+internal enum class HomeTab(val title: String) {
     DRIVE("Google Drive"),
     GITHUB("GitHub")
 }
 
 /** Keadaan satu sumber: menunggu giliran, sedang sync, atau sedang memuat pohon. */
-private enum class RowActivity { IDLE, LOADING, QUEUED, RUNNING }
+internal enum class RowActivity { IDLE, LOADING, QUEUED, RUNNING }
 
-private fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<String>, busy: Set<String>): RowActivity =
+internal fun activityOf(sourceKey: String, loading: Set<String>, queued: Set<String>, busy: Set<String>): RowActivity =
     when {
         sourceKey in busy -> RowActivity.RUNNING
         sourceKey in queued -> RowActivity.QUEUED
@@ -239,7 +239,7 @@ fun HomeScreen(
 }
 
 /** Pemberitahuan di atas setiap tab: offline dan izin. */
-private fun LazyListScope.noticeItems(
+internal fun LazyListScope.noticeItems(
     isOnline: Boolean,
     hasStoragePermission: Boolean,
     onRequestStoragePermission: () -> Unit
@@ -256,119 +256,10 @@ private fun LazyListScope.noticeItems(
     }
 }
 
-// ---------- Tab Google Drive ----------
-
-private fun LazyListScope.driveSection(
-    driveAccounts: List<DriveAccountEntity>,
-    trees: Map<String, List<TreeItem>>,
-    loading: Set<String>,
-    busySources: Set<String>,
-    queuedSources: Set<String>,
-    isConnectingDrive: Boolean,
-    driveAuthError: String?,
-    onConnectDrive: () -> Unit,
-    onReloadDrive: (String) -> Unit,
-    onRemoveDrive: (String) -> Unit,
-    onSyncFolder: (TreeItem, Boolean) -> Unit,
-    onCancelSync: (String) -> Unit,
-    onOpenLog: (String) -> Unit
-) {
-    item { SectionTitle("Google Drive", null) }
-    item {
-        Button(onClick = onConnectDrive, enabled = !isConnectingDrive) {
-            Text(if (isConnectingDrive) "Menghubungkan..." else "Hubungkan akun Google Drive")
-        }
-    }
-    driveAuthError?.let { item { ErrorText(it) } }
-    if (driveAccounts.isEmpty()) {
-        item { EmptyText("Belum ada akun Drive.") }
-    }
-    driveAccounts.forEach { account ->
-        val sourceKey = SourceKeys.drive(account.email)
-        val activity = activityOf(sourceKey, loading, queuedSources, busySources)
-        item(key = "drive-head:${account.email}") {
-            AccountHeader(
-                title = account.email,
-                activity = activity,
-                onReload = { onReloadDrive(account.email) },
-                onRemove = { onRemoveDrive(account.email) },
-                onCancel = { onCancelSync(sourceKey) },
-                onOpenLog = { onOpenLog(sourceKey) }
-            )
-        }
-        rootVisibleItems(trees[sourceKey].orEmpty()).forEach { folder ->
-            item(key = folder.key) {
-                FolderRow(
-                    item = folder,
-                    enabled = activity == RowActivity.IDLE,
-                    onSync = { upload -> onSyncFolder(folder, upload) }
-                )
-            }
-        }
-    }
-}
-
-// ---------- Tab GitHub ----------
-
-private fun LazyListScope.githubSection(
-    githubAccounts: List<GithubAccountEntity>,
-    repos: List<GithubRepoEntity>,
-    loading: Set<String>,
-    busySources: Set<String>,
-    queuedSources: Set<String>,
-    onAddClick: () -> Unit,
-    onRefreshRepos: (GithubAccountEntity) -> Unit,
-    onDeleteGithubAccount: (GithubAccountEntity) -> Unit,
-    onSyncRepo: (GithubRepoEntity, Boolean) -> Unit,
-    onCancelSync: (String) -> Unit,
-    onOpenLog: (String) -> Unit
-) {
-    item { SectionTitle("GitHub", null) }
-    item {
-        Button(onClick = onAddClick) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Tambah akun GitHub")
-        }
-    }
-    if (githubAccounts.isEmpty()) {
-        item { EmptyText("Belum ada akun GitHub.") }
-    }
-    githubAccounts.forEach { account ->
-        item(key = "gh-head:${account.id}") {
-            AccountHeader(
-                title = account.username,
-                activity = RowActivity.IDLE,
-                onReload = { onRefreshRepos(account) },
-                onRemove = { onDeleteGithubAccount(account) },
-                onCancel = {},
-                onOpenLog = null
-            )
-        }
-        val accountRepos = repos.filter { it.accountId == account.id }
-            .sortedWith(compareBy<GithubRepoEntity> { it.archived }.thenBy { it.fullName.lowercase() })
-        if (accountRepos.isEmpty()) {
-            item(key = "gh-empty:${account.id}") { EmptyText("Tidak ada repo.") }
-        }
-        accountRepos.forEach { repo ->
-            val sourceKey = SourceKeys.github(repo.fullName)
-            item(key = "repo:${repo.fullName}") {
-                RepoCard(
-                    repo = repo,
-                    activity = activityOf(sourceKey, loading, queuedSources, busySources),
-                    onSync = { upload -> onSyncRepo(repo, upload) },
-                    onCancel = { onCancelSync(sourceKey) },
-                    onOpenLog = { onOpenLog(sourceKey) }
-                )
-            }
-        }
-    }
-}
-
 // ---------- Lembar log per sumber ----------
 
 @Composable
-private fun LogSheetContent(title: String, logs: List<SyncLogEntry>) {
+internal fun LogSheetContent(title: String, logs: List<SyncLogEntry>) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -388,7 +279,7 @@ private fun LogSheetContent(title: String, logs: List<SyncLogEntry>) {
 }
 
 @Composable
-private fun LogRow(entry: SyncLogEntry) {
+internal fun LogRow(entry: SyncLogEntry) {
     val skippedTotal = entry.skipped + entry.hidden
     val hasDetail = entry.skipDetails.isNotEmpty()
     var expanded by rememberSaveable(entry.atMillis, entry.source, entry.label) { mutableStateOf(false) }
@@ -477,7 +368,7 @@ private fun LogRow(entry: SyncLogEntry) {
 // ---------- Kartu repo ----------
 
 @Composable
-private fun RepoCard(
+internal fun RepoCard(
     repo: GithubRepoEntity,
     activity: RowActivity,
     onSync: (Boolean) -> Unit,
@@ -527,7 +418,7 @@ private fun RepoCard(
 // ---------- Komponen ----------
 
 @Composable
-private fun SectionTitle(title: String, hint: String?) {
+internal fun SectionTitle(title: String, hint: String?) {
     Column(Modifier.padding(top = 8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         hint?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -535,7 +426,7 @@ private fun SectionTitle(title: String, hint: String?) {
 }
 
 @Composable
-private fun AccountHeader(
+internal fun AccountHeader(
     title: String,
     activity: RowActivity,
     onReload: () -> Unit,
@@ -577,7 +468,7 @@ private fun AccountHeader(
 
 /** Status aktivitas di tempat ikon sinkron: spinner, teks menunggu/berjalan, dan tombol batal. */
 @Composable
-private fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
+internal fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (activity == RowActivity.QUEUED) {
             Text("Menunggu giliran", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -596,7 +487,7 @@ private fun ActivityStatus(activity: RowActivity, onCancel: () -> Unit) {
 
 /** Ikon kecil di pojok kanan kartu: ↓ = download (sumber ke perangkat), ↑ = unggah (perangkat ke sumber). */
 @Composable
-private fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
+internal fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onDownload, enabled = enabled, modifier = Modifier.size(28.dp)) {
             Icon(Icons.Filled.ArrowDownward, contentDescription = "Download", modifier = Modifier.size(16.dp))
@@ -608,7 +499,7 @@ private fun SyncArrows(enabled: Boolean, onDownload: () -> Unit, onUpload: () ->
 }
 
 @Composable
-private fun FolderRow(
+internal fun FolderRow(
     item: TreeItem,
     enabled: Boolean,
     onSync: (Boolean) -> Unit
@@ -643,7 +534,7 @@ private fun FolderRow(
 }
 
 @Composable
-private fun Tag(label: String) {
+internal fun Tag(label: String) {
     Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
         Text(
             text = label,
@@ -655,7 +546,7 @@ private fun Tag(label: String) {
 }
 
 @Composable
-private fun AddGithubDialog(
+internal fun AddGithubDialog(
     isAdding: Boolean,
     error: String?,
     onDismiss: () -> Unit,
@@ -699,7 +590,7 @@ private fun AddGithubDialog(
 }
 
 @Composable
-private fun Notice(text: String) {
+internal fun Notice(text: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
@@ -710,16 +601,16 @@ private fun Notice(text: String) {
 }
 
 @Composable
-private fun ErrorText(text: String) {
+internal fun ErrorText(text: String) {
     Text(text, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
 }
 
 @Composable
-private fun EmptyText(text: String) {
+internal fun EmptyText(text: String) {
     Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
 }
 
-private fun statusText(status: SyncStatus): String = when (status) {
+internal fun statusText(status: SyncStatus): String = when (status) {
     SyncStatus.OK -> "OK"
     SyncStatus.SEBAGIAN -> "Sebagian"
     SyncStatus.GAGAL -> "Gagal"
@@ -727,7 +618,7 @@ private fun statusText(status: SyncStatus): String = when (status) {
 }
 
 /** Label pendek untuk satu alasan skip. */
-private fun skipReasonLabel(reason: SkipReason): String = when (reason) {
+internal fun skipReasonLabel(reason: SkipReason): String = when (reason) {
     SkipReason.SAME_SIZE -> "ukuran sama, dianggap sudah sinkron"
     SkipReason.NOT_A_LOCAL_FILE -> "tidak ada sebagai file di perangkat"
     SkipReason.TOO_LARGE_FOR_GITHUB -> "lebih dari 45 MB, melewati batas aman GitHub"
@@ -735,7 +626,7 @@ private fun skipReasonLabel(reason: SkipReason): String = when (reason) {
 }
 
 /** Ringkasan jumlah per alasan, mis. "7 ukuran sama, 3 lebih dari 45 MB". */
-private fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
+internal fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
     val parts = mutableListOf<String>()
     counts[SkipReason.SAME_SIZE]?.takeIf { it > 0 }?.let { parts += "$it ukuran sama" }
     counts[SkipReason.NOT_A_LOCAL_FILE]?.takeIf { it > 0 }?.let { parts += "$it tidak ada di perangkat" }
@@ -745,5 +636,5 @@ private fun skipCountsText(counts: Map<SkipReason, Int>, hidden: Int): String {
     return parts.joinToString(", ").ifEmpty { "-" }
 }
 
-private fun formatTime(millis: Long): String =
+internal fun formatTime(millis: Long): String =
     SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(millis))
