@@ -142,34 +142,6 @@ class TwoWayPlannerTest {
         assertTrue(actions[1] is PlannedAction.Upload)
     }
 
-    // ---------- Nama salinan konflik ----------
-
-    @Test
-    fun conflictCopy_insertsStampBeforeExtension() {
-        assertEquals("notes/a (konflik 20260101-120000).md",
-            TwoWayPlanner.conflictCopyPath("notes/a.md", "20260101-120000"))
-    }
-
-    @Test
-    fun conflictCopy_usesLastDotOnly() {
-        assertEquals("x.tar (konflik S).gz", TwoWayPlanner.conflictCopyPath("x.tar.gz", "S"))
-    }
-
-    @Test
-    fun conflictCopy_noExtension() {
-        assertEquals("README (konflik S)", TwoWayPlanner.conflictCopyPath("README", "S"))
-    }
-
-    @Test
-    fun conflictCopy_dotFileKeepsWholeName() {
-        assertEquals(".env (konflik S)", TwoWayPlanner.conflictCopyPath(".env", "S"))
-    }
-
-    @Test
-    fun conflictCopy_rootLevelFile() {
-        assertEquals("b (konflik S).txt", TwoWayPlanner.conflictCopyPath("b.txt", "S"))
-    }
-
     // ---------- Mode tambah dari kedua sisi (planAdd) ----------
 
     @Test

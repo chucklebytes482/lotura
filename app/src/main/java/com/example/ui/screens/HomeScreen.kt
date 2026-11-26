@@ -535,7 +535,7 @@ internal fun SyncPlanDialog(
                 } else {
                     Text("Unggah: ${plan.uploads} file", fontSize = 13.sp)
                     Text("Unduh: ${plan.downloads} file", fontSize = 13.sp)
-                    Text("Konflik: ${plan.conflicts} file (disimpan dua-duanya)", fontSize = 13.sp)
+                    Text("Konflik: ${plan.conflicts} file (remote menang, lokal ke trash)", fontSize = 13.sp)
                     Text("Pindah ke trash: ${plan.trashTotal} file (lokal ${plan.trashLocal}, remote ${plan.trashRemote})", fontSize = 13.sp)
                 }
                 if (scan.localEmptyWithBase) {

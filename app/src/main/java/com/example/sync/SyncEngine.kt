@@ -69,7 +69,7 @@ class SyncScan internal constructor(
  *  2. [execute]: jalankan rencana dari scan. Dipakai sama untuk mode tambah dan sinkron.
  *
  * Eksekusi:
- *  - Fase lokal: unduh, pindah ke trash lokal, salinan konflik, catat state.
+ *  - Fase lokal: unduh, pindah ke trash lokal (termasuk lokal yang kalah konflik), catat state.
  *  - Fase remote: unggah dan hapus ke trash remote. GitHub memakai satu commit untuk semuanya.
  *
  * Hapus tidak pernah permanen: file dipindah ke `.trash/<waktu>/<path>` di kedua sisi.
@@ -346,7 +346,7 @@ class SyncEngine(
 
     private data class Phase1Outcome(
         val result: OpResult,
-        /** Aksi yang harus dijalankan di fase remote: Upload dan TrashRemote, termasuk salinan konflik. */
+        /** Aksi yang harus dijalankan di fase remote: Upload dan TrashRemote. */
         val remoteWork: List<PlannedAction>
     )
 
@@ -364,7 +364,6 @@ class SyncEngine(
     ): Phase1Outcome {
         var result = OpResult()
         val deferred = mutableListOf<PlannedAction>()
-        val copies = mutableListOf<PlannedAction>()
         for (action in actions) {
             if (!currentCoroutineContext().isActive) break
             try {
@@ -386,19 +385,14 @@ class SyncEngine(
                         result += OpResult(transferred = 1)
                     }
                     is PlannedAction.Conflict -> {
-                        // Lokal dipindah jadi salinan konflik (lalu diunggah), remote diunduh ke path asli.
-                        val src = File(rootDir, action.path)
-                        val copyPath = TwoWayPlanner.conflictCopyPath(action.path, stamp)
-                        val copy = File(rootDir, copyPath)
-                        copy.parentFile?.mkdirs()
-                        if (!src.renameTo(copy)) throw IOException("Gagal memindah ${src.name} ke salinan konflik.")
-                        download(action.remote, src)
+                        // Remote menang: lokal ke trash (tidak permanen), remote diunduh ke path asli.
+                        moveToTrash(rootDir, action.path, stamp)
+                        download(action.remote, File(rootDir, action.path).also { it.parentFile?.mkdirs() })
                         stateStore.put(
                             sourceKey,
                             action.path,
-                            PathState(hashOf(src), action.remote.hash, action.remote.ref)
+                            PathState(hashOf(File(rootDir, action.path)), action.remote.hash, action.remote.ref)
                         )
-                        copies += PlannedAction.Upload(copyPath, action.local, null)
                         result += OpResult(transferred = 1)
                     }
                     is PlannedAction.Record -> {
@@ -418,7 +412,7 @@ class SyncEngine(
                 result += OpResult(failed = 1)
             }
         }
-        return Phase1Outcome(result, deferred + copies)
+        return Phase1Outcome(result, deferred)
     }
 
     /** Pindah berkas lokal ke `.trash/<stamp>/<path>`. Folder .trash tidak ikut sync (nama diawali titik). */

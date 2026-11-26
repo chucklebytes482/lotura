@@ -46,7 +46,10 @@ sealed interface PlannedAction {
     /** Lokal sudah dihapus dan remote tidak berubah: hapus remote (ke trash remote). */
     data class TrashRemote(override val path: String, val remote: RemoteFile) : PlannedAction
 
-    /** Kedua sisi berubah dan isinya berbeda: lokal dipindah jadi salinan konflik, remote diunduh. */
+    /**
+     * Kedua sisi berubah dan isinya berbeda: remote menang. Lokal dipindah ke trash (`.trash/<waktu>/<path>`),
+     * lalu remote diunduh ke path asli. Tidak ada salinan konflik.
+     */
     data class Conflict(override val path: String, val local: LocalFile, val remote: RemoteFile) : PlannedAction
 
     /** Kedua sisi sudah sama: cukup catat state. */
@@ -159,18 +162,5 @@ object TwoWayPlanner {
             else -> if (b.localHash != null || remotePresentBefore) PlannedAction.Forget(path)
             else PlannedAction.Unchanged(path)
         }
-    }
-
-    /**
-     * Nama salinan konflik: `nama (konflik yyyyMMdd-HHmmss).ext`, di folder yang sama.
-     * Ekstensi dipisah dari titik terakhir pada nama, kecuali titik di awal nama.
-     */
-    fun conflictCopyPath(path: String, stamp: String): String {
-        val dir = path.substringBeforeLast('/', "")
-        val name = path.substringAfterLast('/')
-        val dot = name.lastIndexOf('.')
-        val (stem, ext) = if (dot > 0) name.substring(0, dot) to name.substring(dot) else name to ""
-        val copy = "$stem (konflik $stamp)$ext"
-        return if (dir.isEmpty()) copy else "$dir/$copy"
     }
 }
