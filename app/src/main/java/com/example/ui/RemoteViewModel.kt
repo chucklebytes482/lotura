@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal data class FolderUploadQueue(
@@ -354,12 +353,6 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
             _uiState.update { it.copy(isConnectingDrive = true, driveAuthError = null) }
             try {
                 val info = driveApi.fetchUserInfo(accessToken)
-                if (repository.driveAccounts.first().any { it.email != info.email }) {
-                    _uiState.update {
-                        it.copy(driveAuthError = "Hanya bisa satu akun Google Drive. Putuskan akun yang ada dulu.")
-                    }
-                    return@launch
-                }
                 repository.addOrUpdateDriveAccount(info.email, info.displayName, accessToken)
             } catch (e: CancellationException) {
                 throw e
