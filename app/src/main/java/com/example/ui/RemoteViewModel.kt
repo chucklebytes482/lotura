@@ -43,6 +43,8 @@ internal data class FolderUploadQueue(
 /** Penjelajah file perangkat. Dimulai dari /storage/emulated/0. */
 internal data class DeviceBrowse(
     val dir: File,
+    /** Akun Drive yang kartunya dibuka; tujuan auto sync. */
+    val email: String,
     val entries: List<File> = emptyList(),
     val ready: Boolean = false,
     val error: String? = null
@@ -95,26 +97,26 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
-    fun openDevice() = loadDevice(deviceRoot())
+    fun openDevice(email: String) = loadDevice(deviceRoot(), email)
 
-    fun openDeviceFolder(dir: File) = loadDevice(dir)
+    fun openDeviceFolder(dir: File) = loadDevice(dir, _uiState.value.device?.email.orEmpty())
 
     fun backDevice() {
-        val dir = _uiState.value.device?.dir ?: return
-        if (dir == deviceRoot()) closeDevice() else loadDevice(dir.parentFile ?: deviceRoot())
+        val device = _uiState.value.device ?: return
+        if (device.dir == deviceRoot()) closeDevice() else loadDevice(device.dir.parentFile ?: deviceRoot(), device.email)
     }
 
     fun closeDevice() = _uiState.update { it.copy(device = null) }
 
-    private fun loadDevice(dir: File) {
-        _uiState.update { it.copy(device = DeviceBrowse(dir)) }
+    private fun loadDevice(dir: File, email: String) {
+        _uiState.update { it.copy(device = DeviceBrowse(dir, email)) }
         viewModelScope.launch {
             val loaded = try {
-                DeviceBrowse(dir, files.listDevice(dir), ready = true)
+                DeviceBrowse(dir, email, files.listDevice(dir), ready = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                DeviceBrowse(dir, error = e.message ?: "Folder tidak bisa dibaca.")
+                DeviceBrowse(dir, email, error = e.message ?: "Folder tidak bisa dibaca.")
             }
             _uiState.update { state -> if (state.device?.dir == dir) state.copy(device = loaded) else state }
         }
