@@ -102,10 +102,6 @@ internal fun HomeScreen(
                             AccountRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email }, open,
                                 onToggle = { viewModel.toggleAccountCollapsed(key) }) {
                                 val loading = driveRootFolders[acct.email]?.loading == true
-                                IconButton(onClick = { viewModel.openSource(Source.Drive(acct.email)) },
-                                    modifier = Modifier.testTag("open_drive_root")) {
-                                    Icon(Icons.Default.FolderOpen, contentDescription = "Buka My Drive ${acct.email}")
-                                }
                                 IconButton(onClick = { viewModel.loadDriveRootFolders(acct.email, force = true) }, enabled = !loading,
                                     modifier = Modifier.testTag("refresh_drive_folders")) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Muat ulang folder ${acct.email}")
