@@ -332,14 +332,13 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: R
     val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     var scheduleDir by remember(device.dir) { mutableStateOf<File?>(null) }
     var jobsOpen by remember { mutableStateOf(false) }
-    val root = deviceRoot()
     val hasAccess = Environment.isExternalStorageManager()
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = viewModel::backDevice) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
             }
-            Text(if (device.dir == root) "Penjelajah perangkat" else device.dir.name, style = MaterialTheme.typography.titleLarge,
+            Text(device.email, style = MaterialTheme.typography.titleLarge,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = viewModel::closeDevice, modifier = Modifier.testTag("home_button")) {
                 Icon(Icons.Default.Home, "Kembali ke daftar akun")
