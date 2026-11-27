@@ -23,6 +23,21 @@ data class GithubAccountEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+/** Auto sync untuk folder perangkat yang diunggah dengan mode Mirror ke Google Drive. */
+@Entity(tableName = "mirror_jobs")
+data class MirrorJobEntity(
+    @PrimaryKey val jobKey: String,
+    val email: String,
+    val parentRef: String,
+    val parentTitle: String,
+    val folderName: String,
+    val treeUri: String,
+    val intervalHours: Int,
+    val enabled: Boolean,
+    val lastRunAt: Long,
+    val lastResult: String
+)
+
 /** Repositori GitHub yang tersedia untuk akun ini. */
 @Entity(
     tableName = "github_repos",

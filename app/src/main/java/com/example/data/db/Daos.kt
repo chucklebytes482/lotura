@@ -38,6 +38,18 @@ interface GithubAccountDao {
 }
 
 @Dao
+interface MirrorJobDao {
+    @Query("SELECT * FROM mirror_jobs ORDER BY parentTitle ASC, folderName ASC")
+    fun observeAll(): Flow<List<MirrorJobEntity>>
+
+    @Query("SELECT * FROM mirror_jobs WHERE jobKey = :jobKey")
+    suspend fun getByKey(jobKey: String): MirrorJobEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(job: MirrorJobEntity)
+}
+
+@Dao
 interface GithubRepoDao {
     @Query("SELECT * FROM github_repos ORDER BY fullName ASC")
     fun observeAll(): Flow<List<GithubRepoEntity>>

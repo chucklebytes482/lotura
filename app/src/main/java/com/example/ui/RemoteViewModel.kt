@@ -11,7 +11,9 @@ import com.example.SyncBebasApp
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.remote.Location
+import com.example.remote.MirrorAutoSync
 import com.example.remote.PickedFolder
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteFiles
@@ -30,7 +32,9 @@ internal data class FolderUploadQueue(
     val folders: List<PickedFolder> = emptyList(),
     val picking: Boolean = false,
     val error: String? = null,
-    val mirror: Boolean = false
+    val mirror: Boolean = false,
+    /** 0 = tidak otomatis. Hanya dipakai saat mirror aktif. */
+    val autoHours: Int = 0
 )
 
 internal data class BrowserState(
@@ -63,6 +67,9 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val repos: StateFlow<List<GithubRepoEntity>> = repository.githubRepos
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val mirrorJobs: StateFlow<List<MirrorJobEntity>> = repository.mirrorJobs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _uiState = MutableStateFlow(BrowserState(isOnline = checkOnline(application)))
@@ -155,6 +162,11 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         _uiState.update { it.copy(folderUpload = queue.copy(mirror = enabled, error = null)) }
     }
 
+    fun setFolderUploadInterval(hours: Int) {
+        val queue = _uiState.value.folderUpload?.takeUnless { it.picking } ?: return
+        _uiState.update { it.copy(folderUpload = queue.copy(autoHours = hours)) }
+    }
+
     fun cancelFolderUpload() {
         if (_uiState.value.folderUpload?.picking != false) return
         pickerTarget = null
@@ -167,7 +179,28 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         cancelFolderUpload()
         if (target == _uiState.value.location) {
             val mode = if (queue.mirror) UploadMode.MIRROR else UploadMode.ADD
-            runBusy(target, refresh = true) { files.uploadFolders(target, queue.folders, mode) }
+            val hours = if (queue.mirror) queue.autoHours else 0
+            runBusy(target, refresh = true) {
+                val summary = files.uploadFolders(target, queue.folders, mode)
+                if (hours > 0) {
+                    files.enableMirrorAuto(target, queue.folders, hours)
+                    "$summary Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif."
+                } else summary
+            }
+        }
+    }
+
+    fun stopMirrorJob(job: MirrorJobEntity) {
+        viewModelScope.launch {
+            try {
+                repository.stopMirrorJob(job.jobKey)
+                MirrorAutoSync.cancel(app, job.jobKey)
+                showMessage("Auto sync ${job.folderName} dihentikan.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showMessage(e.message ?: "Auto sync tidak bisa dihentikan.")
+            }
         }
     }
 

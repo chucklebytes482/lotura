@@ -1,13 +1,16 @@
 package com.example.remote
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import com.example.SyncBebasApp
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.drive.DriveMimeTypes
 import com.example.github.GithubEmptyRepositoryException
 import com.example.github.GithubTreeChange
 import com.example.github.GithubTreeEntry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -45,6 +48,9 @@ internal data class DownloadResult(val file: File, val skipped: Int)
 
 internal enum class UploadMode { ADD, MIRROR }
 
+/** Auto sync berhenti karena folder perangkat tidak bisa dipakai lagi. Job dinonaktifkan. */
+internal class MirrorStoppedException(message: String) : Exception(message)
+
 internal class RemoteFiles(private val app: SyncBebasApp) {
     private val github = app.githubApiClient
     private val drive = app.driveApiClient
@@ -80,7 +86,59 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
 
     private val picker = UploadPicker(app.contentResolver)
 
-    suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) { picker.folder(uri) }
+    suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) {
+        // Simpan izin baca agar auto sync bisa membaca folder ini setelah aplikasi ditutup.
+        runCatching { app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        picker.folder(uri)
+    }
+
+    /** Menyimpan satu job per folder dan menjadwalkannya. Izin folder perangkat harus sudah tersimpan. */
+    suspend fun enableMirrorAuto(location: Location, folders: List<PickedFolder>, hours: Int) = withContext(Dispatchers.IO) {
+        val source = location.source as? Source.Drive ?: error("Auto sync hanya untuk Google Drive.")
+        val persisted = persistedTrees()
+        for (folder in folders) {
+            check(folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
+            val job = MirrorJobEntity(
+                jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.name),
+                email = source.email,
+                parentRef = location.ref,
+                parentTitle = location.title,
+                folderName = folder.name,
+                treeUri = folder.tree.toString(),
+                intervalHours = hours,
+                enabled = true,
+                lastRunAt = 0L,
+                lastResult = "Menunggu jadwal pertama."
+            )
+            app.repository.saveMirrorJob(job)
+            MirrorAutoSync.schedule(app, job)
+        }
+    }
+
+    /** Dipanggil worker. Melempar MirrorStoppedException jika folder perangkat tidak bisa dipakai lagi. */
+    suspend fun autoMirror(job: MirrorJobEntity): String = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(job.treeUri)
+        if (uri !in persistedTrees()) throw MirrorStoppedException("izin akses folder perangkat sudah dicabut.")
+        val folder = try {
+            picker.folder(uri)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw MirrorStoppedException("folder perangkat tidak bisa dibaca (${e.message ?: "tidak diketahui"}).")
+        }
+        if (folder.name != job.folderName) {
+            throw MirrorStoppedException("nama folder perangkat berubah dari ${job.folderName} menjadi ${folder.name}.")
+        }
+        val location = Location(
+            Source.Drive(job.email),
+            if (job.parentRef == "root") emptyList() else listOf(Folder(job.parentTitle, job.parentRef))
+        )
+        val roots = listOf(UploadDocument(folder.name, picker.rootUri(uri), isFolder = true))
+        upload(location, scanUploadTrees(roots, picker::children), UploadMode.MIRROR)
+    }
+
+    private fun persistedTrees(): Set<Uri> =
+        app.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
 
     suspend fun uploadFiles(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
         upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children), UploadMode.ADD)

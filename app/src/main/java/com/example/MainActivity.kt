@@ -152,7 +152,8 @@ private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
     }
     uiState.folderUpload?.let { queue ->
         FolderUploadDialog(queue, uiState.location?.source is Source.Drive, viewModel::cancelFolderUpload, addFolder,
-            viewModel::removePickedFolder, viewModel::setFolderUploadMirror, viewModel::uploadPickedFolders)
+            viewModel::removePickedFolder, viewModel::setFolderUploadMirror, viewModel::setFolderUploadInterval,
+            viewModel::uploadPickedFolders)
     }
 
     Scaffold(

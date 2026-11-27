@@ -3,6 +3,7 @@ package com.example.data
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.data.db.SyncDatabase
 import com.example.data.secure.SecureTokenStore
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,21 @@ class SyncRepository(
     val driveAccounts: Flow<List<DriveAccountEntity>> = db.driveAccountDao().observeAll()
     val githubAccounts: Flow<List<GithubAccountEntity>> = db.githubAccountDao().observeAll()
     val githubRepos: Flow<List<GithubRepoEntity>> = db.githubRepoDao().observeAll()
+    val mirrorJobs: Flow<List<MirrorJobEntity>> = db.mirrorJobDao().observeAll()
+
+    suspend fun getMirrorJob(jobKey: String): MirrorJobEntity? = db.mirrorJobDao().getByKey(jobKey)
+    suspend fun saveMirrorJob(job: MirrorJobEntity) = db.mirrorJobDao().upsert(job)
+
+    /** Mencatat hasil satu putaran auto sync. Membaca ulang dulu supaya pengaturan Hentikan dari UI tidak tertimpa. */
+    suspend fun recordMirrorRun(jobKey: String, result: String, stop: Boolean, nowMillis: Long) {
+        val job = db.mirrorJobDao().getByKey(jobKey) ?: return
+        db.mirrorJobDao().upsert(job.copy(lastRunAt = nowMillis, lastResult = result, enabled = job.enabled && !stop))
+    }
+
+    suspend fun stopMirrorJob(jobKey: String) {
+        val job = db.mirrorJobDao().getByKey(jobKey) ?: return
+        db.mirrorJobDao().upsert(job.copy(enabled = false, lastResult = "Dihentikan manual."))
+    }
 
     suspend fun getDriveAccounts(): List<DriveAccountEntity> = db.driveAccountDao().getAll()
 

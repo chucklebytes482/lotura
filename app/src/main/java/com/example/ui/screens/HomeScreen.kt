@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.dp
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.remote.Location
+import com.example.remote.MirrorAutoSync
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteNames
 import com.example.remote.Source
@@ -192,6 +194,8 @@ private fun BrowserScreen(
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
     var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
+    var autoSyncOpen by remember(location) { mutableStateOf(false) }
+    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     val canEdit = location.writable && state.ready && !state.busy
     val listed = state.entries.filter { it.name.contains(search, ignoreCase = true) }
     Column(modifier.fillMaxSize()) {
@@ -203,6 +207,12 @@ private fun BrowserScreen(
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = viewModel::refreshFolder, enabled = !state.busy, modifier = Modifier.testTag("refresh_folder")) {
                 Icon(Icons.Default.Refresh, "Muat ulang folder")
+            }
+            val driveSource = location.source as? Source.Drive
+            if (driveSource != null) {
+                IconButton(onClick = { autoSyncOpen = true }, modifier = Modifier.testTag("auto_sync")) {
+                    Icon(Icons.Default.Schedule, contentDescription = "Auto sync")
+                }
             }
             if (location.writable) {
                 IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
@@ -275,6 +285,18 @@ private fun BrowserScreen(
             confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
     }
+    if (autoSyncOpen && location.source is Source.Drive) {
+        val email = (location.source as Source.Drive).email
+        val jobs = mirrorJobs.filter { it.email == email }
+        AlertDialog(onDismissRequest = { autoSyncOpen = false }, title = { Text("Auto sync") },
+            text = {
+                if (jobs.isEmpty()) Text("Belum ada folder dengan auto sync untuk akun ini.")
+                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(jobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { autoSyncOpen = false }) { Text("Tutup") } })
+    }
     delete?.let { entry ->
         val place = if (location.source is Source.Drive) "dipindahkan ke Sampah Google Drive" else "dihapus dari cabang GitHub ini lewat commit"
         val contents = if (entry.isFolder) " Seluruh isi folder ikut terhapus, termasuk item tersembunyi." else ""
@@ -282,5 +304,21 @@ private fun BrowserScreen(
             text = { Text("${entry.name} akan $place.$contents") },
             confirmButton = { TextButton(onClick = { delete = null; viewModel.delete(entry) }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Batal") } })
+    }
+}
+
+@Composable
+private fun AutoSyncRow(job: MirrorJobEntity, onStop: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(job.folderName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("Tujuan: ${job.parentTitle} • ${MirrorAutoSync.label(job.intervalHours)}",
+            style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (job.enabled) job.lastResult else "Berhenti. ${job.lastResult}",
+            style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (job.enabled) {
+            TextButton(onClick = onStop, modifier = Modifier.heightIn(min = 48.dp).testTag("stop_auto")) {
+                Text("Hentikan")
+            }
+        }
     }
 }
