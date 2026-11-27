@@ -26,9 +26,9 @@ class SyncRepository(
         db.mirrorJobDao().upsert(job.copy(lastRunAt = nowMillis, lastResult = result, enabled = job.enabled && !stop))
     }
 
+    /** Menghentikan jadwal dan menghapusnya dari daftar auto sync. */
     suspend fun stopMirrorJob(jobKey: String) {
-        val job = db.mirrorJobDao().getByKey(jobKey) ?: return
-        db.mirrorJobDao().upsert(job.copy(enabled = false, lastResult = "Dihentikan manual."))
+        db.mirrorJobDao().delete(jobKey)
     }
 
     suspend fun getDriveAccounts(): List<DriveAccountEntity> = db.driveAccountDao().getAll()

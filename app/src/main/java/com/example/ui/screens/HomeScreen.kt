@@ -9,6 +9,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,6 +42,7 @@ import com.example.remote.RemoteNames
 import com.example.remote.Source
 import com.example.remote.deviceRoot
 import com.example.ui.DeviceBrowse
+import com.example.ui.DeviceTarget
 import android.os.Environment
 import java.io.File
 import com.example.ui.BrowserState
@@ -67,7 +69,7 @@ internal fun HomeScreen(
     val scope = rememberCoroutineScope()
     state.device?.let { device ->
         BackHandler { viewModel.backDevice() }
-        DeviceBrowser(modifier, device, driveAccounts, viewModel)
+        DeviceBrowser(modifier, device, viewModel)
         return
     }
     val location = state.location
@@ -108,7 +110,7 @@ internal fun HomeScreen(
                     for (acct in driveAccounts) {
                         item(key = "drive_account_${acct.email}") {
                             SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                                onOpen = { viewModel.openDevice() }) {
+                                onOpen = { viewModel.openDevice(DeviceTarget(acct.email, acct.email)) }) {
                                 IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
                                     Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
                                 }
@@ -142,7 +144,7 @@ internal fun HomeScreen(
                             val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
                             items(matches, key = { "repo_${it.fullName}" }) { repo ->
                                 SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
-                                    onOpen = { viewModel.openSource(Source.Github(repo)) }) {
+                                    onOpen = { viewModel.openDevice(DeviceTarget(repo.name, null)) }) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
                                         modifier = Modifier.padding(12.dp))
                                 }
@@ -326,19 +328,18 @@ private fun BrowserScreen(
 }
 
 @Composable
-private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, driveAccounts: List<DriveAccountEntity>, viewModel: RemoteViewModel) {
+private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: RemoteViewModel) {
     val context = LocalContext.current
     val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     var scheduleDir by remember(device.dir) { mutableStateOf<File?>(null) }
     var jobsOpen by remember { mutableStateOf(false) }
-    val root = deviceRoot()
     val hasAccess = Environment.isExternalStorageManager()
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = viewModel::backDevice) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
             }
-            Text(if (device.dir == root) "Penjelajah perangkat" else device.dir.name, style = MaterialTheme.typography.titleLarge,
+            Text(device.target.title, style = MaterialTheme.typography.titleLarge,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = viewModel::closeDevice, modifier = Modifier.testTag("home_button")) {
                 Icon(Icons.Default.Home, "Kembali ke daftar akun")
@@ -376,7 +377,7 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, driveAccount
                                 contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        if (file.isDirectory) {
+                        if (file.isDirectory && device.target.driveEmail != null) {
                             IconButton(onClick = { scheduleDir = file }, modifier = Modifier.testTag("folder_auto_sync")) {
                                 Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
                             }
@@ -388,7 +389,8 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, driveAccount
     }
 
     scheduleDir?.let { dir ->
-        DeviceScheduleDialog(dir.name, driveAccounts, onDismiss = { scheduleDir = null }) { email, hours ->
+        val email = device.target.driveEmail ?: return@let
+        DeviceScheduleDialog(dir.name, email, onDismiss = { scheduleDir = null }) { hours ->
             scheduleDir = null
             viewModel.scheduleDeviceFolder(dir, email, hours)
         }
@@ -408,28 +410,17 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, driveAccount
 @Composable
 private fun DeviceScheduleDialog(
     folderName: String,
-    accounts: List<DriveAccountEntity>,
+    email: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, Int) -> Unit
+    onConfirm: (Int) -> Unit
 ) {
-    var email by remember { mutableStateOf(accounts.firstOrNull()?.email) }
     var hours by remember { mutableStateOf(MirrorAutoSync.OPTIONS.first()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Auto sync $folderName") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Sinkronkan folder ini ke root Google Drive:", style = MaterialTheme.typography.bodyMedium)
-                if (accounts.isEmpty()) {
-                    Text("Belum ada akun Google Drive. Sambungkan dulu di tab Google Drive.", color = MaterialTheme.colorScheme.error)
-                }
-                accounts.forEachIndexed { index, acct ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                        .selectable(selected = email == acct.email, role = Role.RadioButton, onClick = { email = acct.email })
-                        .testTag("drive_account_$index"),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = email == acct.email, onClick = null)
-                        Text(acct.email, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+                Text("Sinkronkan folder ini ke Google Drive/autosync:", style = MaterialTheme.typography.bodyMedium)
+                Text(email, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Interval", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                 MirrorAutoSync.OPTIONS.forEach { option ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -443,7 +434,7 @@ private fun DeviceScheduleDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { email?.let { onConfirm(it, hours) } }, enabled = email != null,
+            TextButton(onClick = { onConfirm(hours) },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_folder_auto_sync")) { Text("Aktifkan") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } })

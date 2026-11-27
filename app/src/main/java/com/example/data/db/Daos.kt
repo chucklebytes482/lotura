@@ -47,6 +47,9 @@ interface MirrorJobDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(job: MirrorJobEntity)
+
+    @Query("DELETE FROM mirror_jobs WHERE jobKey = :jobKey")
+    suspend fun delete(jobKey: String)
 }
 
 @Dao

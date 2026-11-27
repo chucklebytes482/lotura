@@ -41,8 +41,12 @@ internal data class FolderUploadQueue(
 )
 
 /** Penjelajah file perangkat. Dimulai dari /storage/emulated/0. */
+/** Kartu yang dibuka. [driveEmail] hanya terisi untuk kartu Drive; tujuan auto sync. */
+internal data class DeviceTarget(val title: String, val driveEmail: String?)
+
 internal data class DeviceBrowse(
     val dir: File,
+    val target: DeviceTarget,
     val entries: List<File> = emptyList(),
     val ready: Boolean = false,
     val error: String? = null
@@ -95,37 +99,40 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
-    fun openDevice() = loadDevice(deviceRoot())
+    fun openDevice(target: DeviceTarget) = loadDevice(deviceRoot(), target)
 
-    fun openDeviceFolder(dir: File) = loadDevice(dir)
+    fun openDeviceFolder(dir: File) {
+        val target = _uiState.value.device?.target ?: return
+        loadDevice(dir, target)
+    }
 
     fun backDevice() {
-        val dir = _uiState.value.device?.dir ?: return
-        if (dir == deviceRoot()) closeDevice() else loadDevice(dir.parentFile ?: deviceRoot())
+        val device = _uiState.value.device ?: return
+        if (device.dir == deviceRoot()) closeDevice() else loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
     }
 
     fun closeDevice() = _uiState.update { it.copy(device = null) }
 
-    private fun loadDevice(dir: File) {
-        _uiState.update { it.copy(device = DeviceBrowse(dir)) }
+    private fun loadDevice(dir: File, target: DeviceTarget) {
+        _uiState.update { it.copy(device = DeviceBrowse(dir, target)) }
         viewModelScope.launch {
             val loaded = try {
-                DeviceBrowse(dir, files.listDevice(dir), ready = true)
+                DeviceBrowse(dir, target, files.listDevice(dir), ready = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                DeviceBrowse(dir, error = e.message ?: "Folder tidak bisa dibaca.")
+                DeviceBrowse(dir, target, error = e.message ?: "Folder tidak bisa dibaca.")
             }
             _uiState.update { state -> if (state.device?.dir == dir) state.copy(device = loaded) else state }
         }
     }
 
-    /** Auto sync dari satu folder perangkat ke root Google Drive akun [email]. */
+    /** Auto sync dari satu folder di /autosync ke folder autosync di root Google Drive akun [email]. */
     fun scheduleDeviceFolder(folder: File, email: String, hours: Int) {
         viewModelScope.launch {
             val message = try {
                 files.enableMirrorAuto(Location(Source.Drive(email)), listOf(PickedFolder(Uri.fromFile(folder), folder.name)), hours)
-                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${folder.name} ke Google Drive."
+                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${folder.name} ke Google Drive/autosync."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
