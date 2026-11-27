@@ -4,8 +4,12 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract as Documents
 import android.provider.OpenableColumns
+import java.io.File
 
 internal data class PickedFolder(val tree: Uri, val name: String)
+
+/** Folder perangkat yang dibaca langsung lewat path file (izin Akses semua file), bukan lewat pemilih sistem. */
+internal fun Uri.isDeviceFile(): Boolean = scheme == "file"
 
 internal class UploadPicker(private val resolver: ContentResolver) {
     fun file(uri: Uri): UploadDocument<Uri> {
@@ -16,6 +20,11 @@ internal class UploadPicker(private val resolver: ContentResolver) {
     }
 
     fun folder(tree: Uri): PickedFolder {
+        if (tree.isDeviceFile()) {
+            val dir = File(checkNotNull(tree.path) { "Path folder tidak valid." })
+            require(dir.isDirectory && RemoteNames.validNewName(dir.name)) { "Folder tersembunyi atau nama folder tidak valid." }
+            return PickedFolder(tree, dir.name)
+        }
         val root = rootUri(tree)
         return checkNotNull(resolver.query(root, columns, null, null, null)?.use { cursor ->
             if (!cursor.moveToFirst()) return@use null
@@ -27,9 +36,14 @@ internal class UploadPicker(private val resolver: ContentResolver) {
         }) { "Folder yang dipilih tidak bisa dibaca." }
     }
 
-    fun rootUri(tree: Uri): Uri = Documents.buildDocumentUriUsingTree(tree, Documents.getTreeDocumentId(tree))
+    fun rootUri(tree: Uri): Uri = if (tree.isDeviceFile()) tree else Documents.buildDocumentUriUsingTree(tree, Documents.getTreeDocumentId(tree))
 
     fun children(parent: Uri): List<UploadDocument<Uri>> {
+        if (parent.isDeviceFile()) {
+            val items = File(checkNotNull(parent.path) { "Path folder tidak valid." }).listFiles()
+                ?: error("Isi folder perangkat tidak dapat dibaca. Pastikan izin Akses semua file aktif.")
+            return items.map { UploadDocument(it.name, Uri.fromFile(it), it.isDirectory) }
+        }
         val collection = Documents.buildChildDocumentsUriUsingTree(parent, Documents.getDocumentId(parent))
         return checkNotNull(resolver.query(collection, columns, null, null, null)?.use { cursor ->
             check(!cursor.extras.getBoolean(Documents.EXTRA_LOADING) && cursor.extras.getString(Documents.EXTRA_ERROR) == null) {

@@ -18,6 +18,9 @@ import java.io.File
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
+/** Folder di penyimpanan utama perangkat yang dibaca untuk auto sync (/storage/emulated/0/google drive). */
+internal const val DEVICE_DRIVE_DIR = "google drive"
+
 internal sealed interface Source {
     val title: String
     data class Drive(val email: String) : Source { override val title = email }
@@ -97,7 +100,7 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         val source = location.source as? Source.Drive ?: error("Auto sync hanya untuk Google Drive.")
         val persisted = persistedTrees()
         for (folder in folders) {
-            check(folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
+            check(folder.tree.isDeviceFile() && Environment.isExternalStorageManager() || folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
             val job = MirrorJobEntity(
                 jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.name),
                 email = source.email,
@@ -118,7 +121,9 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     /** Dipanggil worker. Melempar MirrorStoppedException jika folder perangkat tidak bisa dipakai lagi. */
     suspend fun autoMirror(job: MirrorJobEntity): String = withContext(Dispatchers.IO) {
         val uri = Uri.parse(job.treeUri)
-        if (uri !in persistedTrees()) throw MirrorStoppedException("izin akses folder perangkat sudah dicabut.")
+        if (uri.isDeviceFile()) {
+            if (!Environment.isExternalStorageManager()) throw MirrorStoppedException("izin Akses semua file sudah dicabut.")
+        } else if (uri !in persistedTrees()) throw MirrorStoppedException("izin akses folder perangkat sudah dicabut.")
         val folder = try {
             picker.folder(uri)
         } catch (e: CancellationException) {
@@ -135,6 +140,17 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         )
         val roots = listOf(UploadDocument(folder.name, picker.rootUri(uri), isFolder = true))
         upload(location, scanUploadTrees(roots, picker::children), UploadMode.MIRROR)
+    }
+
+    /** Subfolder di /storage/emulated/0/google drive. Butuh izin Akses semua file. */
+    suspend fun deviceFolders(): List<PickedFolder> = withContext(Dispatchers.IO) {
+        check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
+        val root = File(Environment.getExternalStorageDirectory(), DEVICE_DRIVE_DIR)
+        check(root.isDirectory) { "Folder /storage/emulated/0/$DEVICE_DRIVE_DIR tidak ditemukan." }
+        (root.listFiles() ?: emptyArray())
+            .filter { it.isDirectory && RemoteNames.visible(it.name) }
+            .sortedBy { it.name.lowercase() }
+            .map { PickedFolder(Uri.fromFile(it), it.name) }
     }
 
     private fun persistedTrees(): Set<Uri> =

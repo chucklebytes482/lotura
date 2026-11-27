@@ -2,6 +2,13 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.provider.Settings
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,10 +34,12 @@ import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.MirrorJobEntity
 import com.example.remote.Location
+import com.example.remote.PickedFolder
 import com.example.remote.MirrorAutoSync
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteNames
 import com.example.remote.Source
+import com.example.remote.DEVICE_DRIVE_DIR
 import com.example.ui.BrowserState
 import com.example.ui.RemoteViewModel
 import com.example.ui.components.CompactSearchBar
@@ -213,6 +222,7 @@ private fun BrowserScreen(
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
     var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
+    var scheduleFolder by remember(location) { mutableStateOf<RemoteEntry?>(null) }
     var autoSyncOpen by remember(location) { mutableStateOf(false) }
     val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     val canEdit = location.writable && state.ready && !state.busy
@@ -283,6 +293,12 @@ private fun BrowserScreen(
                             Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
                             Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
+                        if (entry.isFolder && location.source is Source.Drive && location.writable) {
+                            IconButton(onClick = { scheduleFolder = entry }, enabled = !state.busy,
+                                modifier = Modifier.testTag("folder_auto_sync")) {
+                                Icon(Icons.Default.Schedule, "Auto sync ${entry.name}")
+                            }
+                        }
                         if (entry.downloadable) IconButton(onClick = { onDownload(entry) }, enabled = !state.busy) {
                             Icon(Icons.Default.Download, "Unduh ${entry.name}")
                         }
@@ -305,6 +321,12 @@ private fun BrowserScreen(
             confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
     }
+    scheduleFolder?.let { target ->
+        FolderAutoSyncDialog(target.name, loadDevice = viewModel::listDeviceFolders, onDismiss = { scheduleFolder = null }) { device, hours ->
+            scheduleFolder = null
+            viewModel.enableFolderAutoSync(target, device, hours)
+        }
+    }
     if (autoSyncOpen && location.source is Source.Drive) {
         val email = (location.source as Source.Drive).email
         val jobs = mirrorJobs.filter { it.email == email }
@@ -325,6 +347,69 @@ private fun BrowserScreen(
             confirmButton = { TextButton(onClick = { delete = null; viewModel.delete(entry) }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Batal") } })
     }
+}
+
+@Composable
+private fun FolderAutoSyncDialog(
+    folderName: String,
+    loadDevice: suspend () -> Result<List<PickedFolder>>,
+    onDismiss: () -> Unit,
+    onConfirm: (PickedFolder, Int) -> Unit
+) {
+    val context = LocalContext.current
+    var reload by remember { mutableStateOf(0) }
+    val devices by produceState<Result<List<PickedFolder>>?>(null, reload) { value = loadDevice() }
+    var selected by remember { mutableStateOf<PickedFolder?>(null) }
+    var hours by remember { mutableStateOf(MirrorAutoSync.OPTIONS.first()) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Auto sync $folderName") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Pilih folder perangkat yang disinkronkan ke $folderName:", style = MaterialTheme.typography.bodyMedium)
+                when (val result = devices) {
+                    null -> Text("Memuat folder perangkat…")
+                    else -> result.fold(
+                        onSuccess = { folders ->
+                            if (folders.isEmpty()) Text("Tidak ada subfolder di /storage/emulated/0/$DEVICE_DRIVE_DIR.")
+                            folders.forEachIndexed { index, folder ->
+                                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                    .selectable(selected = selected == folder, role = Role.RadioButton,
+                                        onClick = { selected = folder })
+                                    .testTag("device_folder_$index"),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(selected = selected == folder, onClick = null)
+                                    Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        },
+                        onFailure = { error ->
+                            Text(error.message ?: "Folder perangkat tidak bisa dibaca.", color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = {
+                                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    android.net.Uri.parse("package:${context.packageName}")))
+                            }, modifier = Modifier.heightIn(min = 48.dp).testTag("grant_all_files")) {
+                                Text("Buka izin Akses semua file")
+                            }
+                            TextButton(onClick = { reload++ }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cek lagi") }
+                        }
+                    )
+                }
+                Text("Interval", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                MirrorAutoSync.OPTIONS.forEach { option ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .selectable(selected = hours == option, role = Role.RadioButton, onClick = { hours = option })
+                        .testTag("auto_interval_$option"),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = hours == option, onClick = null)
+                        Text(MirrorAutoSync.label(option))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { selected?.let { onConfirm(it, hours) } }, enabled = selected != null,
+                modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_folder_auto_sync")) { Text("Aktifkan") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } })
 }
 
 @Composable

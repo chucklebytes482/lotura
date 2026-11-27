@@ -84,6 +84,26 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
+    /** Daftar folder perangkat untuk dipilih sebagai sumber auto sync. */
+    suspend fun listDeviceFolders(): Result<List<PickedFolder>> = runCatching { files.deviceFolders() }
+
+    /** Auto sync dari satu folder perangkat ke folder Drive yang sedang dibuka di baris [entry]. */
+    fun enableFolderAutoSync(entry: RemoteEntry, device: PickedFolder, hours: Int) {
+        val current = _uiState.value.location ?: return
+        val target = current.open(entry)
+        viewModelScope.launch {
+            val message = try {
+                files.enableMirrorAuto(target, listOf(device), hours)
+                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${entry.name}."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.message ?: "Auto sync tidak bisa diaktifkan."
+            }
+            showMessage(message)
+        }
+    }
+
     fun openFolder(item: RemoteEntry) {
         val state = _uiState.value
         val current = state.location ?: return
