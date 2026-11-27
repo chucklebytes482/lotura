@@ -50,9 +50,7 @@ internal data class DeviceBrowse(
     val entries: List<File> = emptyList(),
     val ready: Boolean = false,
     val error: String? = null
-) {
-    val atRoot: Boolean get() = dir == deviceRoot()
-}
+)
 
 internal data class BrowserState(
     val location: Location? = null,
@@ -102,16 +100,6 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
     fun openDevice(target: DeviceTarget) = loadDevice(deviceRoot(), target)
-
-    fun openDeviceFolder(dir: File) {
-        val target = _uiState.value.device?.target ?: return
-        loadDevice(dir, target)
-    }
-
-    fun backDevice() {
-        val device = _uiState.value.device ?: return
-        if (!device.atRoot) loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
-    }
 
     fun closeDevice() = _uiState.update { it.copy(device = null) }
 
