@@ -50,7 +50,9 @@ internal data class DeviceBrowse(
     val entries: List<File> = emptyList(),
     val ready: Boolean = false,
     val error: String? = null
-)
+) {
+    val atRoot: Boolean get() = dir == deviceRoot()
+}
 
 internal data class BrowserState(
     val location: Location? = null,
@@ -108,7 +110,7 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun backDevice() {
         val device = _uiState.value.device ?: return
-        if (device.dir == deviceRoot()) closeDevice() else loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
+        if (!device.atRoot) loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
     }
 
     fun closeDevice() = _uiState.update { it.copy(device = null) }
@@ -254,15 +256,17 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun stopMirrorJob(job: MirrorJobEntity) {
+    /** Mengaktifkan atau menonaktifkan jadwal satu folder. Saat diaktifkan, putaran pertama langsung jalan. */
+    fun setMirrorJobEnabled(job: MirrorJobEntity, enabled: Boolean) {
         viewModelScope.launch {
             try {
-                repository.stopMirrorJob(job.jobKey)
-                MirrorAutoSync.cancel(app, job.jobKey)
+                repository.setMirrorJobEnabled(job.jobKey, enabled)
+                if (enabled) MirrorAutoSync.schedule(app, job.copy(enabled = true))
+                else MirrorAutoSync.cancel(app, job.jobKey)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                showMessage(e.message ?: "Auto sync tidak bisa dihentikan.")
+                showMessage(e.message ?: "Jadwal auto sync tidak bisa diubah.")
             }
         }
     }
@@ -367,6 +371,7 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     fun removeDriveAccount(email: String) {
         viewModelScope.launch {
             repository.removeDriveAccount(email)
+            closeDevice()
             _uiState.update { it.copy(snackbarMessage = "Akun $email diputus. Folder lokal tidak dihapus.") }
         }
     }
