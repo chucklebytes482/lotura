@@ -146,7 +146,8 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     suspend fun deviceFolders(): List<PickedFolder> = withContext(Dispatchers.IO) {
         check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
         val root = File(Environment.getExternalStorageDirectory(), DEVICE_DRIVE_DIR)
-        check(root.isDirectory) { "Folder /storage/emulated/0/$DEVICE_DRIVE_DIR tidak ditemukan." }
+        if (!root.isDirectory) root.mkdirs()
+        check(root.isDirectory) { "Folder /storage/emulated/0/$DEVICE_DRIVE_DIR tidak bisa dibuat." }
         (root.listFiles() ?: emptyArray())
             .filter { it.isDirectory && RemoteNames.visible(it.name) }
             .sortedBy { it.name.lowercase() }

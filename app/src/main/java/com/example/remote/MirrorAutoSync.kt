@@ -6,6 +6,8 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.ExistingWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -38,18 +40,31 @@ internal object MirrorAutoSync {
     private fun uniqueName(jobKey: String) = "mirror-auto:$jobKey"
 
     fun schedule(context: Context, job: MirrorJobEntity) {
-        val request = PeriodicWorkRequestBuilder<MirrorSyncWorker>(job.intervalHours.toLong(), TimeUnit.HOURS)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val manager = WorkManager.getInstance(context)
+        // Putaran pertama langsung jalan sekarang. Periodik mulai setelah satu interval supaya tidak dobel.
+        val now = OneTimeWorkRequestBuilder<MirrorSyncWorker>()
+            .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
             .setInputData(workDataOf(KEY_JOB to job.jobKey))
             .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            uniqueName(job.jobKey), ExistingPeriodicWorkPolicy.UPDATE, request
+        manager.enqueueUniqueWork(uniqueName(job.jobKey) + ":now", ExistingWorkPolicy.REPLACE, now)
+        val periodic = PeriodicWorkRequestBuilder<MirrorSyncWorker>(job.intervalHours.toLong(), TimeUnit.HOURS)
+            .setInitialDelay(job.intervalHours.toLong(), TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+            .setInputData(workDataOf(KEY_JOB to job.jobKey))
+            .build()
+        manager.enqueueUniquePeriodicWork(
+            uniqueName(job.jobKey), ExistingPeriodicWorkPolicy.UPDATE, periodic
         )
     }
 
     fun cancel(context: Context, jobKey: String) {
-        WorkManager.getInstance(context).cancelUniqueWork(uniqueName(jobKey))
+        WorkManager.getInstance(context).apply {
+            cancelUniqueWork(uniqueName(jobKey))
+            cancelUniqueWork(uniqueName(jobKey) + ":now")
+        }
     }
 }
 
