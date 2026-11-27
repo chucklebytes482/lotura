@@ -42,6 +42,7 @@ import com.example.remote.RemoteNames
 import com.example.remote.Source
 import com.example.remote.deviceRoot
 import com.example.ui.DeviceBrowse
+import com.example.ui.DeviceTarget
 import android.os.Environment
 import java.io.File
 import com.example.ui.BrowserState
@@ -109,7 +110,7 @@ internal fun HomeScreen(
                     for (acct in driveAccounts) {
                         item(key = "drive_account_${acct.email}") {
                             SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                                onOpen = { viewModel.openDevice(acct.email) }) {
+                                onOpen = { viewModel.openDevice(DeviceTarget(acct.email, acct.email)) }) {
                                 IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
                                     Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
                                 }
@@ -143,7 +144,7 @@ internal fun HomeScreen(
                             val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
                             items(matches, key = { "repo_${it.fullName}" }) { repo ->
                                 SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
-                                    onOpen = { viewModel.openSource(Source.Github(repo)) }) {
+                                    onOpen = { viewModel.openDevice(DeviceTarget(repo.name, null)) }) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
                                         modifier = Modifier.padding(12.dp))
                                 }
@@ -338,7 +339,7 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: R
             IconButton(onClick = viewModel::backDevice) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
             }
-            Text(device.email, style = MaterialTheme.typography.titleLarge,
+            Text(device.target.title, style = MaterialTheme.typography.titleLarge,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             IconButton(onClick = viewModel::closeDevice, modifier = Modifier.testTag("home_button")) {
                 Icon(Icons.Default.Home, "Kembali ke daftar akun")
@@ -376,7 +377,7 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: R
                                 contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        if (file.isDirectory) {
+                        if (file.isDirectory && device.target.driveEmail != null) {
                             IconButton(onClick = { scheduleDir = file }, modifier = Modifier.testTag("folder_auto_sync")) {
                                 Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
                             }
@@ -388,9 +389,10 @@ private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: R
     }
 
     scheduleDir?.let { dir ->
-        DeviceScheduleDialog(dir.name, device.email, onDismiss = { scheduleDir = null }) { hours ->
+        val email = device.target.driveEmail ?: return@let
+        DeviceScheduleDialog(dir.name, email, onDismiss = { scheduleDir = null }) { hours ->
             scheduleDir = null
-            viewModel.scheduleDeviceFolder(dir, device.email, hours)
+            viewModel.scheduleDeviceFolder(dir, email, hours)
         }
     }
     if (jobsOpen) {
