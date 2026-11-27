@@ -7,7 +7,7 @@ import org.junit.Test
 class GithubFileFilterTest {
     @Test
     fun allowsMarkdownJsonImagesAndDocuments() {
-        listOf("README.md", "data.JSON", "logo.PNG", "photo.jpeg", "spec.pdf", "notes.docx", "sheet.xlsx", "slides.pptx", "a.csv", "b.txt")
+        listOf("README.md", "data.JSON", "logo.PNG", "photo.jpeg", "spec.pdf", "notes.docx", "sheet.xlsx", "slides.pptx", "a.csv", "b.txt", "model.vxenc", "data.HC")
             .forEach { assertTrue(it, GithubFileFilter.allows(it)) }
     }
 

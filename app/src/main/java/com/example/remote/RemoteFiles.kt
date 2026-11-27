@@ -63,8 +63,15 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
 
     suspend fun list(location: Location): List<RemoteEntry> = when (val source = location.source) {
         is Source.Drive -> driveEntries(app.resolveDriveToken(source.email), location.ref)
-        is Source.Github -> git(source).folder(location).entries.map { it.remote(location.ref) }
-            .filter { it.isFolder || GithubFileFilter.allows(it.name) }
+        is Source.Github -> {
+            val git = git(source)
+            val folder = git.folder(location)
+            // Folder hanya tampil jika di dalamnya (rekursif) ada file yang lolos filter. Bila daftar terpotong, semua folder tampil.
+            val matching = folder.sha?.let { git.matchingFolders(it) }
+            folder.entries.map { it.remote(location.ref) }.filter { entry ->
+                if (entry.isFolder) matching == null || entry.name in matching else GithubFileFilter.allows(entry.name)
+            }
+        }
     }.filter { RemoteNames.visible(it.name) }
         .sortedWith(compareByDescending<RemoteEntry> { it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
@@ -475,7 +482,7 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
             else -> RemoteEntry.Kind.LINK
         })
 
-    private data class GitFolder(val head: String?, val root: String?, val entries: List<GithubTreeEntry>)
+    private data class GitFolder(val head: String?, val root: String?, val entries: List<GithubTreeEntry>, val sha: String? = null)
     private inner class Git(val token: String, val repo: GithubRepoEntity) {
         suspend fun tree(sha: String) = github.listTree(token, repo.owner, repo.name, sha)
         suspend fun folder(location: Location): GitFolder {
@@ -486,11 +493,22 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                 return GitFolder(null, null, emptyList())
             }
             var tree = tree(root)
+            var sha = root
             for (f in location.folders) {
                 val next = tree.firstOrNull { it.name == f.name && it.type == "tree" } ?: error(changed)
                 tree = tree(next.sha)
+                sha = next.sha
             }
-            return GitFolder(head, root, tree)
+            return GitFolder(head, root, tree, sha)
+        }
+        /** Nama folder anak langsung yang memuat file lolos filter di dalam pohon [sha]. Null bila daftar terpotong. */
+        suspend fun matchingFolders(sha: String): Set<String>? {
+            val (items, truncated) = github.listTreeRecursive(token, repo.owner, repo.name, sha)
+            if (truncated) return null
+            return items.asSequence()
+                .filter { it.type == "blob" && it.name.contains('/') && GithubFileFilter.allows(it.name.substringAfterLast('/')) }
+                .map { it.name.substringBefore('/') }
+                .toSet()
         }
         suspend fun commit(snapshot: GitFolder, changes: List<GithubTreeChange>, message: String) =
             github.createAtomicCommit(token, repo.owner, repo.name, repo.defaultBranch,

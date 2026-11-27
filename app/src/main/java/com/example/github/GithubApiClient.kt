@@ -110,6 +110,20 @@ class GithubApiClient(
             }
         }
 
+    /** Seluruh isi pohon [treeSha] secara rekursif. Kedua: true bila GitHub memotong daftar (terlalu besar). */
+    suspend fun listTreeRecursive(pat: String, owner: String, repo: String, treeSha: String): Pair<List<GithubTreeEntry>, Boolean> =
+        withContext(Dispatchers.IO) {
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/trees/$treeSha?recursive=1").build()
+            val root = JSONObject(executeString(req))
+            val tree = root.getJSONArray("tree")
+            val entries = List(tree.length()) { i ->
+                val item = tree.getJSONObject(i)
+                GithubTreeEntry(item.getString("path"), item.getString("sha"),
+                    item.getString("mode"), item.getString("type"))
+            }
+            entries to root.optBoolean("truncated")
+        }
+
     suspend fun downloadBlobToFile(pat: String, owner: String, repo: String, blobSha: String, destFile: File) =
         withContext(Dispatchers.IO) {
             val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs/$blobSha")

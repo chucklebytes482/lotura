@@ -12,7 +12,8 @@ internal object GithubFileFilter {
         "ppt", "pptx", "odp", "key",
         "epub"
     )
-    private val allowed = markdownAndData + images + documents
+    private val custom = setOf("vxenc", "hc")
+    private val allowed = markdownAndData + images + documents + custom
 
     fun allows(name: String): Boolean {
         val dot = name.lastIndexOf('.')
