@@ -195,7 +195,6 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
             try {
                 repository.stopMirrorJob(job.jobKey)
                 MirrorAutoSync.cancel(app, job.jobKey)
-                showMessage("Auto sync ${job.folderName} dihentikan.")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

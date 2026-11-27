@@ -208,12 +208,6 @@ private fun BrowserScreen(
             IconButton(onClick = viewModel::refreshFolder, enabled = !state.busy, modifier = Modifier.testTag("refresh_folder")) {
                 Icon(Icons.Default.Refresh, "Muat ulang folder")
             }
-            val driveSource = location.source as? Source.Drive
-            if (driveSource != null) {
-                IconButton(onClick = { autoSyncOpen = true }, modifier = Modifier.testTag("auto_sync")) {
-                    Icon(Icons.Default.Schedule, contentDescription = "Auto sync")
-                }
-            }
             if (location.writable) {
                 IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
                     Icon(Icons.Default.CreateNewFolder, "Buat folder baru")
@@ -236,8 +230,15 @@ private fun BrowserScreen(
             }
         }
         val path = (listOf(location.source.title) + location.folders.map { it.name }).joinToString(" / ")
-        Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(vertical = 4.dp))
+            if (location.source is Source.Drive) {
+                IconButton(onClick = { autoSyncOpen = true }, modifier = Modifier.testTag("auto_sync")) {
+                    Icon(Icons.Default.Schedule, contentDescription = "Auto sync")
+                }
+            }
+        }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("remote_progress"))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -313,7 +314,7 @@ private fun AutoSyncRow(job: MirrorJobEntity, onStop: () -> Unit) {
         Text(job.folderName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("Tujuan: ${job.parentTitle} • ${MirrorAutoSync.label(job.intervalHours)}",
             style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(if (job.enabled) job.lastResult else "Berhenti. ${job.lastResult}",
+        Text(job.lastResult,
             style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (job.enabled) {
             TextButton(onClick = onStop, modifier = Modifier.heightIn(min = 48.dp).testTag("stop_auto")) {
