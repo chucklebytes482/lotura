@@ -144,7 +144,7 @@ internal fun HomeScreen(
                             val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
                             items(matches, key = { "repo_${it.fullName}" }) { repo ->
                                 SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
-                                    onOpen = { viewModel.openDevice(DeviceTarget(repo.name, null)) }) {
+                                    onOpen = { viewModel.openSource(Source.Github(repo)) }) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
                                         modifier = Modifier.padding(12.dp))
                                 }

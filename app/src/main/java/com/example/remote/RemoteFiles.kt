@@ -64,6 +64,7 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     suspend fun list(location: Location): List<RemoteEntry> = when (val source = location.source) {
         is Source.Drive -> driveEntries(app.resolveDriveToken(source.email), location.ref)
         is Source.Github -> git(source).folder(location).entries.map { it.remote(location.ref) }
+            .filter { it.isFolder || GithubFileFilter.allows(it.name) }
     }.filter { RemoteNames.visible(it.name) }
         .sortedWith(compareByDescending<RemoteEntry> { it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
