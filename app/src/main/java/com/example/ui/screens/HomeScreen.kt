@@ -65,6 +65,7 @@ internal fun HomeScreen(
     var repoQuery by rememberSaveable { mutableStateOf("") }
     var folderQuery by rememberSaveable { mutableStateOf("") }
     val driveRootFolders by viewModel.driveRootFolders.collectAsState()
+    val collapsed by viewModel.collapsedAccounts.collectAsState()
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = pager.currentPage) {
             listOf("Google Drive", "GitHub").forEachIndexed { index, title ->
@@ -94,11 +95,17 @@ internal fun HomeScreen(
                         CompactSearchBar(folderQuery, "Cari folder", { folderQuery = it }, testTag = "search_drive_folders")
                     }
                     for (acct in driveAccounts) {
+                        val key = "drive:${acct.email}"
+                        val open = key !in collapsed
                         item(key = "drive_account_${acct.email}") {
-                            LaunchedEffect(acct.email) { viewModel.loadDriveRootFolders(acct.email) }
-                            SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                                onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
+                            LaunchedEffect(acct.email, open) { if (open) viewModel.loadDriveRootFolders(acct.email) }
+                            AccountRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email }, open,
+                                onToggle = { viewModel.toggleAccountCollapsed(key) }) {
                                 val loading = driveRootFolders[acct.email]?.loading == true
+                                IconButton(onClick = { viewModel.openSource(Source.Drive(acct.email)) },
+                                    modifier = Modifier.testTag("open_drive_root")) {
+                                    Icon(Icons.Default.FolderOpen, contentDescription = "Buka My Drive ${acct.email}")
+                                }
                                 IconButton(onClick = { viewModel.loadDriveRootFolders(acct.email, force = true) }, enabled = !loading,
                                     modifier = Modifier.testTag("refresh_drive_folders")) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Muat ulang folder ${acct.email}")
@@ -109,7 +116,7 @@ internal fun HomeScreen(
                             }
                         }
                         val state = driveRootFolders[acct.email]
-                        when {
+                        if (open) when {
                             state == null || (state.loading && state.folders.isEmpty()) -> item(key = "drive_loading_${acct.email}") {
                                 Text("Memuat folder…", style = MaterialTheme.typography.bodySmall)
                             }
@@ -120,11 +127,13 @@ internal fun HomeScreen(
                                 Text("Tidak ada folder di My Drive.", style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        val matches = state?.folders.orEmpty().filter { it.name.contains(folderQuery, ignoreCase = true) }
-                        items(matches, key = { "drive_folder_${acct.email}_${it.ref}" }) { folder ->
-                            SourceRow(folder.name, null, onOpen = { viewModel.openDriveFolder(acct.email, folder) }) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${folder.name}",
-                                    modifier = Modifier.padding(12.dp))
+                        if (open) {
+                            val matches = state?.folders.orEmpty().filter { it.name.contains(folderQuery, ignoreCase = true) }
+                            items(matches, key = { "drive_folder_${acct.email}_${it.ref}" }) { folder ->
+                                SourceRow(folder.name, null, onOpen = { viewModel.openDriveFolder(acct.email, folder) }) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${folder.name}",
+                                        modifier = Modifier.padding(12.dp))
+                                }
                             }
                         }
                     }
@@ -138,8 +147,11 @@ internal fun HomeScreen(
                         CompactSearchBar(repoQuery, "Cari repositori", { repoQuery = it }, testTag = "search_repos")
                     }
                     for (acct in githubAccounts) {
+                        val key = "github:${acct.id}"
+                        val open = key !in collapsed
                         item(key = "account_${acct.id}") {
-                            SourceRow(acct.username, acct.label.takeIf { it != acct.username }) {
+                            AccountRow(acct.username, acct.label.takeIf { it != acct.username }, open,
+                                onToggle = { viewModel.toggleAccountCollapsed(key) }) {
                                 IconButton(onClick = { viewModel.refreshGithubRepos(acct) }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Muat ulang repositori ${acct.username}")
                                 }
@@ -148,12 +160,14 @@ internal fun HomeScreen(
                                 }
                             }
                         }
-                        val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
-                        items(matches, key = { "repo_${it.fullName}" }) { repo ->
-                            SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
-                                onOpen = { viewModel.openSource(Source.Github(repo)) }) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
-                                    modifier = Modifier.padding(12.dp))
+                        if (open) {
+                            val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
+                            items(matches, key = { "repo_${it.fullName}" }) { repo ->
+                                SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
+                                    onOpen = { viewModel.openSource(Source.Github(repo)) }) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
+                                        modifier = Modifier.padding(12.dp))
+                                }
                             }
                         }
                     }
@@ -173,6 +187,17 @@ internal fun HomeScreen(
 }
 
 private data class Disconnect(val label: String, val action: () -> Unit)
+
+/** Kartu akun yang bisa dilipat. Ketuk kartu untuk menampilkan atau menyembunyikan daftar folder/repo di bawahnya. */
+@Composable
+private fun AccountRow(title: String, subtitle: String?, open: Boolean, onToggle: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+    SourceRow(title, subtitle, onOpen = onToggle) {
+        Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (open) "Lipat $title" else "Tampilkan $title",
+            modifier = Modifier.padding(horizontal = 4.dp))
+        actions()
+    }
+}
 
 @Composable
 private fun SourceRow(title: String, subtitle: String?, onOpen: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit) {

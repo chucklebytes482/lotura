@@ -109,6 +109,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    /** Akun yang daftarnya sedang dilipat. Kunci: "drive:<email>" atau "github:<id>". Disimpan di ViewModel agar bertahan saat masuk folder. */
+    private val _collapsedAccounts = MutableStateFlow<Set<String>>(emptySet())
+    val collapsedAccounts: StateFlow<Set<String>> = _collapsedAccounts.asStateFlow()
+
+    fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
+
     fun openDriveFolder(email: String, folder: RemoteEntry) {
         navigate(Location(Source.Drive(email), listOf(Folder(folder.name, folder.ref))))
     }
