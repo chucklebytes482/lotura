@@ -85,7 +85,6 @@ internal fun HomeScreen(
     LaunchedEffect(driveAccount?.email) {
         if (driveAccount != null && state.device == null) viewModel.openDevice(DeviceTarget(driveAccount.email, driveAccount.email))
     }
-    BackHandler(enabled = pager.currentPage == 0 && state.device?.atRoot == false) { viewModel.backDevice() }
     val collapsed by viewModel.collapsedAccounts.collectAsState()
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = pager.currentPage) {
@@ -103,7 +102,6 @@ internal fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!state.isOnline) item { Text("Tidak tersambung ke internet.") }
                 if (page == 0) {
-                    item { GuideWebCard() }
                     if (driveAccount == null) {
                         item {
                             Button(onClick = onConnectDrive, enabled = !state.isConnectingDrive,
@@ -121,8 +119,9 @@ internal fun HomeScreen(
                         }
                     }
                     state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+                    item { GuideWebCard() }
                     state.device?.takeIf { driveAccount != null }?.let { device ->
-                        deviceSection(device, viewModel, Environment.isExternalStorageManager(), jobsByPath,
+                        deviceSection(device, Environment.isExternalStorageManager(), jobsByPath,
                             onSchedule = { scheduleDir = it },
                             onToggle = { job, on -> viewModel.setMirrorJobEnabled(job, on) })
                     }
@@ -344,33 +343,26 @@ private fun BrowserScreen(
     }
 }
 
-/** Penjelajah autosync di bawah kartu Google Drive. Satu akun saja, jadi tidak ada pemilih akun. */
+/** Daftar folder autosync di Google Drive. Hanya folder, tanpa penjelajahan file maupun masuk ke subfolder. */
 private fun LazyListScope.deviceSection(
     device: DeviceBrowse,
-    viewModel: RemoteViewModel,
     hasAccess: Boolean,
     jobs: Map<String, MirrorJobEntity>,
     onSchedule: (File) -> Unit,
     onToggle: (MirrorJobEntity, Boolean) -> Unit
 ) {
-    item(key = "device_header") {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (!device.atRoot) {
-                IconButton(onClick = viewModel::backDevice) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
-                }
-            }
-            Text(device.dir.name, style = MaterialTheme.typography.titleMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        }
+    item(key = "mirror_info") {
+        Text("Folder di bawah bisa dijadwalkan untuk diunggah (mirror) ke folder autosync di Google Drive.",
+            style = MaterialTheme.typography.bodySmall)
     }
     item(key = "device_path") {
-        Text(device.dir.path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("Lokasi: ${device.dir.path}", style = MaterialTheme.typography.labelSmall,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     if (!hasAccess) item(key = "device_access") {
         val context = LocalContext.current
         Column {
-            Text("Penjelajah perangkat butuh izin Akses semua file.", color = MaterialTheme.colorScheme.error)
+            Text("Daftar folder butuh izin Akses semua file.", color = MaterialTheme.colorScheme.error)
             TextButton(onClick = {
                 context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                     android.net.Uri.parse("package:${context.packageName}")))
@@ -381,34 +373,28 @@ private fun LazyListScope.deviceSection(
     }
     if (!device.ready && device.error == null) item(key = "device_loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
     device.error?.let { message -> item(key = "device_error") { Text(message, color = MaterialTheme.colorScheme.error) } }
-    if (device.ready && device.entries.isEmpty()) item(key = "device_empty") { Text("Folder ini kosong.") }
-    items(device.entries, key = { it.path }) { file ->
+    val folders = device.entries.filter { it.isDirectory }
+    if (device.ready && folders.isEmpty()) item(key = "device_empty") { Text("Belum ada folder di autosync.") }
+    items(folders, key = { it.path }) { folder ->
+        val job = jobs[android.net.Uri.fromFile(folder).toString()]
         OutlinedCard {
             Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).heightIn(min = 48.dp)
-                    .then(if (file.isDirectory) Modifier.clickable { viewModel.openDeviceFolder(file) } else Modifier)
-                    .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
-                        contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Row(Modifier.weight(1f).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (file.isDirectory) {
-                            val job = jobs[android.net.Uri.fromFile(file).toString()]
-                            Text(scheduleStatus(job), style = MaterialTheme.typography.labelSmall,
-                                color = if (job?.enabled == true) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text(folder.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(scheduleStatus(job), style = MaterialTheme.typography.labelSmall,
+                            color = if (job?.enabled == true) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                if (file.isDirectory) {
-                    jobs[android.net.Uri.fromFile(file).toString()]?.let { job ->
-                        Switch(checked = job.enabled, onCheckedChange = { onToggle(job, it) },
-                            modifier = Modifier.testTag("toggle_auto"))
-                    }
-                    IconButton(onClick = { onSchedule(file) }, modifier = Modifier.testTag("folder_auto_sync")) {
-                        Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
-                    }
+                job?.let {
+                    Switch(checked = it.enabled, onCheckedChange = { on -> onToggle(it, on) },
+                        modifier = Modifier.testTag("toggle_auto"))
+                }
+                IconButton(onClick = { onSchedule(folder) }, modifier = Modifier.testTag("folder_auto_sync")) {
+                    Icon(Icons.Default.Schedule, "Auto sync ${folder.name}")
                 }
             }
         }
