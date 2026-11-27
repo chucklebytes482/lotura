@@ -13,6 +13,7 @@ import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.MirrorJobEntity
 import com.example.remote.Folder
+import com.example.remote.deviceRoot
 import com.example.remote.Location
 import com.example.remote.MirrorAutoSync
 import com.example.remote.PickedFolder
@@ -20,6 +21,7 @@ import com.example.remote.RemoteEntry
 import com.example.remote.RemoteFiles
 import com.example.remote.Source
 import com.example.remote.UploadMode
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,6 +40,14 @@ internal data class FolderUploadQueue(
     val autoHours: Int = 0
 )
 
+/** Penjelajah file perangkat. Dimulai dari /storage/emulated/0. */
+internal data class DeviceBrowse(
+    val dir: File,
+    val entries: List<File> = emptyList(),
+    val ready: Boolean = false,
+    val error: String? = null
+)
+
 internal data class BrowserState(
     val location: Location? = null,
     val entries: List<RemoteEntry> = emptyList(),
@@ -50,7 +60,8 @@ internal data class BrowserState(
     val githubAccountError: String? = null,
     val folderUpload: FolderUploadQueue? = null,
     val snackbarMessage: String? = null,
-    val isOnline: Boolean = true
+    val isOnline: Boolean = true,
+    val device: DeviceBrowse? = null
 )
 
 internal class RemoteViewModel(application: Application) : AndroidViewModel(application) {
@@ -84,17 +95,37 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
-    /** Daftar folder perangkat untuk dipilih sebagai sumber auto sync. */
-    suspend fun listDeviceFolders(): Result<List<PickedFolder>> = runCatching { files.deviceFolders() }
+    fun openDevice() = loadDevice(deviceRoot())
 
-    /** Auto sync dari satu folder perangkat ke folder Drive yang sedang dibuka di baris [entry]. */
-    fun enableFolderAutoSync(entry: RemoteEntry, device: PickedFolder, hours: Int) {
-        val current = _uiState.value.location ?: return
-        val target = current.open(entry)
+    fun openDeviceFolder(dir: File) = loadDevice(dir)
+
+    fun backDevice() {
+        val dir = _uiState.value.device?.dir ?: return
+        if (dir == deviceRoot()) closeDevice() else loadDevice(dir.parentFile ?: deviceRoot())
+    }
+
+    fun closeDevice() = _uiState.update { it.copy(device = null) }
+
+    private fun loadDevice(dir: File) {
+        _uiState.update { it.copy(device = DeviceBrowse(dir)) }
+        viewModelScope.launch {
+            val loaded = try {
+                DeviceBrowse(dir, files.listDevice(dir), ready = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                DeviceBrowse(dir, error = e.message ?: "Folder tidak bisa dibaca.")
+            }
+            _uiState.update { state -> if (state.device?.dir == dir) state.copy(device = loaded) else state }
+        }
+    }
+
+    /** Auto sync dari satu folder perangkat ke root Google Drive akun [email]. */
+    fun scheduleDeviceFolder(folder: File, email: String, hours: Int) {
         viewModelScope.launch {
             val message = try {
-                files.enableMirrorAuto(target, listOf(device), hours)
-                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${entry.name}."
+                files.enableMirrorAuto(Location(Source.Drive(email)), listOf(PickedFolder(Uri.fromFile(folder), folder.name)), hours)
+                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${folder.name} ke Google Drive."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -279,12 +310,6 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
                 _uiState.update { it.copy(busy = false) }
             }
         }
-    }
-
-    /** Ketuk refresh di kartu akun Drive: sinkronkan kerangka folder ke perangkat. */
-    fun refreshDriveSkeleton(email: String) {
-        if (_uiState.value.busy) return
-        runBusy(Location(Source.Drive(email)), refresh = false) { files.syncDriveSkeleton(email) }
     }
 
     fun refreshNetworkStatus() {

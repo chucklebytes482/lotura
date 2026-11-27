@@ -19,7 +19,7 @@ import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 /** Folder di penyimpanan utama perangkat yang dibaca untuk auto sync (/storage/emulated/0/google drive). */
-internal const val DEVICE_DRIVE_DIR = "google drive"
+internal fun deviceRoot(): File = Environment.getExternalStorageDirectory()
 
 internal sealed interface Source {
     val title: String
@@ -102,7 +102,7 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         for (folder in folders) {
             check(folder.tree.isDeviceFile() && Environment.isExternalStorageManager() || folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
             val job = MirrorJobEntity(
-                jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.name),
+                jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.tree.toString()),
                 email = source.email,
                 parentRef = location.ref,
                 parentTitle = location.title,
@@ -142,45 +142,13 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         upload(location, scanUploadTrees(roots, picker::children), UploadMode.MIRROR)
     }
 
-    /** Subfolder di /storage/emulated/0/google drive. Butuh izin Akses semua file. */
-    suspend fun deviceFolders(): List<PickedFolder> = withContext(Dispatchers.IO) {
+    /** Isi satu folder perangkat untuk penjelajahan. Butuh izin Akses semua file. */
+    suspend fun listDevice(dir: File): List<File> = withContext(Dispatchers.IO) {
         check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
-        val root = File(Environment.getExternalStorageDirectory(), DEVICE_DRIVE_DIR)
-        if (!root.isDirectory) root.mkdirs()
-        check(root.isDirectory) { "Folder /storage/emulated/0/$DEVICE_DRIVE_DIR tidak bisa dibuat." }
-        (root.listFiles() ?: emptyArray())
-            .filter { it.isDirectory && RemoteNames.visible(it.name) }
-            .sortedBy { it.name.lowercase() }
-            .map { PickedFolder(Uri.fromFile(it), it.name) }
-    }
-
-    /**
-     * Membuat kerangka folder Drive di perangkat: /storage/emulated/0/google drive/<email>/...
-     * Hanya folder yang dibuat (tanpa mengunduh file). Tidak menghapus folder lokal yang sudah ada.
-     */
-    suspend fun syncDriveSkeleton(email: String): String = withContext(Dispatchers.IO) {
-        check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
-        val base = File(File(Environment.getExternalStorageDirectory(), DEVICE_DRIVE_DIR), email)
-        check(base.isDirectory || base.mkdirs()) { "Folder ${base.path} tidak bisa dibuat." }
-        val token = app.resolveDriveToken(email)
-        var created = 0
-        var total = 0
-        val queue = ArrayDeque<Pair<String, File>>()
-        queue.add("root" to base)
-        while (queue.isNotEmpty()) {
-            val (ref, dir) = queue.removeFirst()
-            for (entry in driveEntries(token, ref)) {
-                if (!entry.isFolder || !RemoteNames.visible(entry.name)) continue
-                val child = File(dir, entry.name.replace('/', '_'))
-                if (!child.isDirectory) {
-                    check(child.mkdirs()) { "Folder ${child.path} tidak bisa dibuat." }
-                    created++
-                }
-                total++
-                queue.add(entry.ref to child)
-            }
-        }
-        "Kerangka Drive disinkron: $created folder baru dari $total folder."
+        check(dir.isDirectory) { "Folder ${dir.path} tidak bisa dibaca." }
+        (dir.listFiles() ?: emptyArray())
+            .filter { RemoteNames.visible(it.name) }
+            .sortedWith(compareByDescending<File> { it.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
     private fun persistedTrees(): Set<Uri> =

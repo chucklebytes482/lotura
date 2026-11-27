@@ -39,7 +39,10 @@ import com.example.remote.MirrorAutoSync
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteNames
 import com.example.remote.Source
-import com.example.remote.DEVICE_DRIVE_DIR
+import com.example.remote.deviceRoot
+import com.example.ui.DeviceBrowse
+import android.os.Environment
+import java.io.File
 import com.example.ui.BrowserState
 import com.example.ui.RemoteViewModel
 import com.example.ui.components.CompactSearchBar
@@ -62,6 +65,11 @@ internal fun HomeScreen(
 ) {
     val pager = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
+    state.device?.let { device ->
+        BackHandler { viewModel.backDevice() }
+        DeviceBrowser(modifier, device, driveAccounts, viewModel)
+        return
+    }
     val location = state.location
     if (location != null) {
         BackHandler { viewModel.back() }
@@ -100,10 +108,7 @@ internal fun HomeScreen(
                     for (acct in driveAccounts) {
                         item(key = "drive_account_${acct.email}") {
                             SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                                onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
-                                IconButton(onClick = { viewModel.refreshDriveSkeleton(acct.email) }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Sinkron kerangka folder ${acct.email}")
-                                }
+                                onOpen = { viewModel.openDevice() }) {
                                 IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
                                     Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
                                 }
@@ -225,9 +230,6 @@ private fun BrowserScreen(
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
     var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
-    var scheduleFolder by remember(location) { mutableStateOf<RemoteEntry?>(null) }
-    var autoSyncOpen by remember(location) { mutableStateOf(false) }
-    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     val canEdit = location.writable && state.ready && !state.busy
     val listed = state.entries.filter { it.name.contains(search, ignoreCase = true) }
     Column(modifier.fillMaxSize()) {
@@ -265,11 +267,6 @@ private fun BrowserScreen(
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(vertical = 4.dp))
-            if (location.source is Source.Drive) {
-                IconButton(onClick = { autoSyncOpen = true }, modifier = Modifier.testTag("auto_sync")) {
-                    Icon(Icons.Default.Schedule, contentDescription = "Auto sync")
-                }
-            }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("remote_progress"))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
@@ -296,12 +293,6 @@ private fun BrowserScreen(
                             Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
                             Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        if (entry.isFolder && location.source is Source.Drive && location.writable) {
-                            IconButton(onClick = { scheduleFolder = entry }, enabled = !state.busy,
-                                modifier = Modifier.testTag("folder_auto_sync")) {
-                                Icon(Icons.Default.Schedule, "Auto sync ${entry.name}")
-                            }
-                        }
                         if (entry.downloadable) IconButton(onClick = { onDownload(entry) }, enabled = !state.busy) {
                             Icon(Icons.Default.Download, "Unduh ${entry.name}")
                         }
@@ -324,24 +315,6 @@ private fun BrowserScreen(
             confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
     }
-    scheduleFolder?.let { target ->
-        FolderAutoSyncDialog(target.name, loadDevice = viewModel::listDeviceFolders, onDismiss = { scheduleFolder = null }) { device, hours ->
-            scheduleFolder = null
-            viewModel.enableFolderAutoSync(target, device, hours)
-        }
-    }
-    if (autoSyncOpen && location.source is Source.Drive) {
-        val email = (location.source as Source.Drive).email
-        val jobs = mirrorJobs.filter { it.email == email }
-        AlertDialog(onDismissRequest = { autoSyncOpen = false }, title = { Text("Auto sync") },
-            text = {
-                if (jobs.isEmpty()) Text("Belum ada folder dengan auto sync untuk akun ini.")
-                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(jobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { autoSyncOpen = false }) { Text("Tutup") } })
-    }
     delete?.let { entry ->
         val place = if (location.source is Source.Drive) "dipindahkan ke Sampah Google Drive" else "dihapus dari cabang GitHub ini lewat commit"
         val contents = if (entry.isFolder) " Seluruh isi folder ikut terhapus, termasuk item tersembunyi." else ""
@@ -353,48 +326,109 @@ private fun BrowserScreen(
 }
 
 @Composable
-private fun FolderAutoSyncDialog(
-    folderName: String,
-    loadDevice: suspend () -> Result<List<PickedFolder>>,
-    onDismiss: () -> Unit,
-    onConfirm: (PickedFolder, Int) -> Unit
-) {
+private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, driveAccounts: List<DriveAccountEntity>, viewModel: RemoteViewModel) {
     val context = LocalContext.current
-    var reload by remember { mutableStateOf(0) }
-    val devices by produceState<Result<List<PickedFolder>>?>(null, reload) { value = loadDevice() }
-    var selected by remember { mutableStateOf<PickedFolder?>(null) }
+    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
+    var scheduleDir by remember(device.dir) { mutableStateOf<File?>(null) }
+    var jobsOpen by remember { mutableStateOf(false) }
+    val root = deviceRoot()
+    val hasAccess = Environment.isExternalStorageManager()
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = viewModel::backDevice) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+            }
+            Text(if (device.dir == root) "Penjelajah perangkat" else device.dir.name, style = MaterialTheme.typography.titleLarge,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            IconButton(onClick = viewModel::closeDevice, modifier = Modifier.testTag("home_button")) {
+                Icon(Icons.Default.Home, "Kembali ke daftar akun")
+            }
+            IconButton(onClick = { jobsOpen = true }, modifier = Modifier.testTag("auto_sync")) {
+                Icon(Icons.Default.Schedule, "Daftar auto sync")
+            }
+        }
+        Text(device.dir.path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp))
+        if (!hasAccess) {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text("Penjelajah perangkat butuh izin Akses semua file.", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:${context.packageName}")))
+                }, modifier = Modifier.heightIn(min = 48.dp).testTag("grant_all_files")) {
+                    Text("Buka izin Akses semua file")
+                }
+            }
+        }
+        if (!device.ready && device.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            device.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+            if (device.ready && device.entries.isEmpty()) item { Text("Folder ini kosong.") }
+            items(device.entries, key = { it.path }) { file ->
+                OutlinedCard {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).heightIn(min = 48.dp)
+                            .then(if (file.isDirectory) Modifier.clickable { viewModel.openDeviceFolder(file) } else Modifier)
+                            .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
+                                contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (file.isDirectory) {
+                            IconButton(onClick = { scheduleDir = file }, modifier = Modifier.testTag("folder_auto_sync")) {
+                                Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    scheduleDir?.let { dir ->
+        DeviceScheduleDialog(dir.name, driveAccounts, onDismiss = { scheduleDir = null }) { email, hours ->
+            scheduleDir = null
+            viewModel.scheduleDeviceFolder(dir, email, hours)
+        }
+    }
+    if (jobsOpen) {
+        AlertDialog(onDismissRequest = { jobsOpen = false }, title = { Text("Auto sync") },
+            text = {
+                if (mirrorJobs.isEmpty()) Text("Belum ada folder dengan auto sync.")
+                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(mirrorJobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { jobsOpen = false }) { Text("Tutup") } })
+    }
+}
+
+@Composable
+private fun DeviceScheduleDialog(
+    folderName: String,
+    accounts: List<DriveAccountEntity>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int) -> Unit
+) {
+    var email by remember { mutableStateOf(accounts.firstOrNull()?.email) }
     var hours by remember { mutableStateOf(MirrorAutoSync.OPTIONS.first()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Auto sync $folderName") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Pilih folder perangkat yang disinkronkan ke $folderName:", style = MaterialTheme.typography.bodyMedium)
-                when (val result = devices) {
-                    null -> Text("Memuat folder perangkat…")
-                    else -> result.fold(
-                        onSuccess = { folders ->
-                            if (folders.isEmpty()) Text("Tidak ada subfolder di /storage/emulated/0/$DEVICE_DRIVE_DIR.")
-                            folders.forEachIndexed { index, folder ->
-                                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                    .selectable(selected = selected == folder, role = Role.RadioButton,
-                                        onClick = { selected = folder })
-                                    .testTag("device_folder_$index"),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    RadioButton(selected = selected == folder, onClick = null)
-                                    Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                        },
-                        onFailure = { error ->
-                            Text(error.message ?: "Folder perangkat tidak bisa dibaca.", color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = {
-                                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                    android.net.Uri.parse("package:${context.packageName}")))
-                            }, modifier = Modifier.heightIn(min = 48.dp).testTag("grant_all_files")) {
-                                Text("Buka izin Akses semua file")
-                            }
-                            TextButton(onClick = { reload++ }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cek lagi") }
-                        }
-                    )
+                Text("Sinkronkan folder ini ke root Google Drive:", style = MaterialTheme.typography.bodyMedium)
+                if (accounts.isEmpty()) {
+                    Text("Belum ada akun Google Drive. Sambungkan dulu di tab Google Drive.", color = MaterialTheme.colorScheme.error)
+                }
+                accounts.forEachIndexed { index, acct ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .selectable(selected = email == acct.email, role = Role.RadioButton, onClick = { email = acct.email })
+                        .testTag("drive_account_$index"),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = email == acct.email, onClick = null)
+                        Text(acct.email, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 Text("Interval", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                 MirrorAutoSync.OPTIONS.forEach { option ->
@@ -409,7 +443,7 @@ private fun FolderAutoSyncDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { selected?.let { onConfirm(it, hours) } }, enabled = selected != null,
+            TextButton(onClick = { email?.let { onConfirm(it, hours) } }, enabled = email != null,
                 modifier = Modifier.heightIn(min = 48.dp).testTag("confirm_folder_auto_sync")) { Text("Aktifkan") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } })
