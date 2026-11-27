@@ -31,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.drive.GoogleAuthManager
 import com.example.drive.findActivity
 import com.example.remote.RemoteEntry
+import com.example.remote.Source
 import com.example.ui.RemoteViewModel
 import com.example.ui.components.StoragePermissionHelper
 import com.example.ui.screens.FolderUploadDialog
@@ -150,8 +151,8 @@ private fun SyncBebasRootApp(viewModel: RemoteViewModel) {
         }
     }
     uiState.folderUpload?.let { queue ->
-        FolderUploadDialog(queue, viewModel::cancelFolderUpload, addFolder, viewModel::removePickedFolder,
-            viewModel::uploadPickedFolders)
+        FolderUploadDialog(queue, uiState.location?.source is Source.Drive, viewModel::cancelFolderUpload, addFolder,
+            viewModel::removePickedFolder, viewModel::setFolderUploadMirror, viewModel::uploadPickedFolders)
     }
 
     Scaffold(

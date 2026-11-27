@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,9 +27,11 @@ import com.example.ui.FolderUploadQueue
 @Composable
 internal fun FolderUploadDialog(
     queue: FolderUploadQueue,
+    allowMirror: Boolean,
     onDismiss: () -> Unit,
     onAdd: () -> Unit,
     onRemove: (PickedFolder) -> Unit,
+    onMirrorChange: (Boolean) -> Unit,
     onUpload: () -> Unit
 ) {
     AlertDialog(
@@ -52,12 +55,31 @@ internal fun FolderUploadDialog(
                 TextButton(onClick = onAdd, enabled = !queue.picking, modifier = Modifier.testTag("add_upload_folder")) {
                     Text("Tambah folder")
                 }
+                if (allowMirror) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = queue.mirror,
+                            onCheckedChange = onMirrorChange,
+                            enabled = !queue.picking,
+                            modifier = Modifier.testTag("upload_mirror_toggle")
+                        )
+                        Text("Mirror: samakan dengan Drive")
+                    }
+                    if (queue.mirror) {
+                        Text(
+                            "Folder Drive dengan nama sama akan dibuat ulang sesuai perangkat. " +
+                                "Item Drive yang tidak ada di perangkat dipindah ke Sampah. " +
+                                "File dengan isi berbeda diganti.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = onUpload, enabled = queue.folders.isNotEmpty() && !queue.picking,
                 modifier = Modifier.testTag("confirm_upload_folders")) {
-                Text("Unggah")
+                Text(if (queue.mirror) "Mirror" else "Unggah")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !queue.picking) { Text("Batal") } }

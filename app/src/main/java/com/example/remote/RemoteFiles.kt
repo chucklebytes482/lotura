@@ -43,6 +43,8 @@ internal data class RemoteEntry(
 
 internal data class DownloadResult(val file: File, val skipped: Int)
 
+internal enum class UploadMode { ADD, MIRROR }
+
 internal class RemoteFiles(private val app: SyncBebasApp) {
     private val github = app.githubApiClient
     private val drive = app.driveApiClient
@@ -81,18 +83,19 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) { picker.folder(uri) }
 
     suspend fun uploadFiles(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
-        upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children))
+        upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children), UploadMode.ADD)
     }
 
-    suspend fun uploadFolders(location: Location, folders: List<PickedFolder>): String = withContext(Dispatchers.IO) {
+    suspend fun uploadFolders(location: Location, folders: List<PickedFolder>, mode: UploadMode): String = withContext(Dispatchers.IO) {
         val roots = folders.map { picker.folder(it.tree) }.map {
             UploadDocument(it.name, picker.rootUri(it.tree), isFolder = true)
         }
-        upload(location, scanUploadTrees(roots, picker::children))
+        upload(location, scanUploadTrees(roots, picker::children), mode)
     }
 
-    private suspend fun upload(location: Location, tree: UploadTree<Uri>): String {
+    private suspend fun upload(location: Location, tree: UploadTree<Uri>, mode: UploadMode): String {
         check(location.writable && tree.items.isNotEmpty())
+        check(mode == UploadMode.ADD || location.source is Source.Drive) { "Mode mirror hanya untuk Google Drive." }
         val scratch = mutableListOf<File>()
         try {
             // Validate all names and stage all selected files before changing the remote.
@@ -117,6 +120,11 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                 }
                 temp
             }
+            if (mode == UploadMode.MIRROR) {
+                val source = location.source as? Source.Drive ?: error("Mode mirror hanya untuk Google Drive.")
+                val summary = mirrorToDrive(location, source, staged)
+                return summary + if (tree.skipped > 0) " ${tree.skipped} item tersembunyi dilewati." else ""
+            }
             when (val source = location.source) {
                 is Source.Drive -> uploadToDrive(location, source, staged)
                 is Source.Github -> uploadToGithub(location, source, staged)
@@ -128,6 +136,82 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         } finally {
             scratch.forEach { it.delete() }
         }
+    }
+
+    private class MirrorStats {
+        var uploaded = 0
+        var unchanged = 0
+        var trashed = 0
+        var foldersCreated = 0
+    }
+
+    /**
+     * Membuat subfolder Drive dengan nama sama dengan folder perangkat menjadi salinan persis.
+     * Berkas sama (MD5 cocok) dibiarkan. Berkas beda diganti. Item Drive yang tidak ada di perangkat
+     * dipindah ke Sampah. Hanya isi subfolder itu yang disentuh, folder lain di lokasi aktif tidak.
+     */
+    private suspend fun mirrorToDrive(location: Location, source: Source.Drive, roots: List<UploadItem<File>>): String {
+        val token = app.resolveDriveToken(source.email)
+        val stats = MirrorStats()
+        for (root in roots) {
+            coroutineContext.ensureActive()
+            val folder = root as? UploadItem.Folder ?: error("Mirror hanya menerima folder.")
+            val same = drive.listChildren(token, location.ref).filter { it.name == folder.name }
+            val existing = same.firstOrNull { it.mimeType == DriveMimeTypes.FOLDER }
+            val id = existing?.id ?: drive.createFolder(token, location.ref, folder.name).id.also { stats.foldersCreated++ }
+            same.filter { it.id != id }.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+            mirrorChildren(token, id, folder.children, stats)
+        }
+        return "Mirror selesai: ${stats.uploaded} file diunggah, ${stats.unchanged} tidak berubah, " +
+            "${stats.trashed} item dipindah ke Sampah, ${stats.foldersCreated} folder dibuat."
+    }
+
+    private suspend fun mirrorChildren(token: String, parent: String, local: List<UploadItem<File>>, stats: MirrorStats) {
+        val remote = drive.listChildren(token, parent).filter { RemoteNames.visible(it.name) }
+        for (item in local) {
+            coroutineContext.ensureActive()
+            val same = remote.filter { it.name == item.name }
+            when (item) {
+                is UploadItem.File -> {
+                    val unchanged = same.singleOrNull()?.takeIf {
+                        it.mimeType != DriveMimeTypes.FOLDER && it.md5Checksum != null &&
+                            it.md5Checksum.equals(md5Hex(item.content), ignoreCase = true)
+                    }
+                    if (unchanged != null) {
+                        stats.unchanged++
+                    } else {
+                        same.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+                        drive.uploadFile(token, parent, item.name, item.content)
+                        stats.uploaded++
+                    }
+                }
+                is UploadItem.Folder -> {
+                    val existing = same.firstOrNull { it.mimeType == DriveMimeTypes.FOLDER }
+                    val id = existing?.id ?: drive.createFolder(token, parent, item.name).id.also { stats.foldersCreated++ }
+                    same.filter { it.id != id }.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+                    mirrorChildren(token, id, item.children, stats)
+                }
+            }
+        }
+        val localNames = local.map { it.name }.toSet()
+        for (extra in remote.filter { it.name !in localNames }) {
+            coroutineContext.ensureActive()
+            drive.trashFile(token, extra.id)
+            stats.trashed++
+        }
+    }
+
+    private fun md5Hex(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private suspend fun uploadToDrive(location: Location, source: Source.Drive, items: List<UploadItem<File>>) {

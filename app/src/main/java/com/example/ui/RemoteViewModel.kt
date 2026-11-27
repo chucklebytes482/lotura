@@ -16,6 +16,7 @@ import com.example.remote.PickedFolder
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteFiles
 import com.example.remote.Source
+import com.example.remote.UploadMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,7 +29,8 @@ import kotlinx.coroutines.launch
 internal data class FolderUploadQueue(
     val folders: List<PickedFolder> = emptyList(),
     val picking: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val mirror: Boolean = false
 )
 
 internal data class BrowserState(
@@ -147,6 +149,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         _uiState.update { it.copy(folderUpload = queue.copy(folders = queue.folders - folder, error = null)) }
     }
 
+    fun setFolderUploadMirror(enabled: Boolean) {
+        val queue = _uiState.value.folderUpload?.takeUnless { it.picking } ?: return
+        if (enabled && pickerTarget?.source !is Source.Drive) return
+        _uiState.update { it.copy(folderUpload = queue.copy(mirror = enabled, error = null)) }
+    }
+
     fun cancelFolderUpload() {
         if (_uiState.value.folderUpload?.picking != false) return
         pickerTarget = null
@@ -158,7 +166,8 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         val target = pickerTarget ?: return
         cancelFolderUpload()
         if (target == _uiState.value.location) {
-            runBusy(target, refresh = true) { files.uploadFolders(target, queue.folders) }
+            val mode = if (queue.mirror) UploadMode.MIRROR else UploadMode.ADD
+            runBusy(target, refresh = true) { files.uploadFolders(target, queue.folders, mode) }
         }
     }
 
