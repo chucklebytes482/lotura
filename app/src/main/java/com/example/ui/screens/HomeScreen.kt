@@ -101,6 +101,9 @@ internal fun HomeScreen(
                         item(key = "drive_account_${acct.email}") {
                             SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
                                 onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
+                                IconButton(onClick = { viewModel.refreshDriveSkeleton(acct.email) }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Sinkron kerangka folder ${acct.email}")
+                                }
                                 IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
                                     Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
                                 }

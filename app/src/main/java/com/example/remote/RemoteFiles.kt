@@ -154,6 +154,35 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
             .map { PickedFolder(Uri.fromFile(it), it.name) }
     }
 
+    /**
+     * Membuat kerangka folder Drive di perangkat: /storage/emulated/0/google drive/<email>/...
+     * Hanya folder yang dibuat (tanpa mengunduh file). Tidak menghapus folder lokal yang sudah ada.
+     */
+    suspend fun syncDriveSkeleton(email: String): String = withContext(Dispatchers.IO) {
+        check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
+        val base = File(File(Environment.getExternalStorageDirectory(), DEVICE_DRIVE_DIR), email)
+        check(base.isDirectory || base.mkdirs()) { "Folder ${base.path} tidak bisa dibuat." }
+        val token = app.resolveDriveToken(email)
+        var created = 0
+        var total = 0
+        val queue = ArrayDeque<Pair<String, File>>()
+        queue.add("root" to base)
+        while (queue.isNotEmpty()) {
+            val (ref, dir) = queue.removeFirst()
+            for (entry in driveEntries(token, ref)) {
+                if (!entry.isFolder || !RemoteNames.visible(entry.name)) continue
+                val child = File(dir, entry.name.replace('/', '_'))
+                if (!child.isDirectory) {
+                    check(child.mkdirs()) { "Folder ${child.path} tidak bisa dibuat." }
+                    created++
+                }
+                total++
+                queue.add(entry.ref to child)
+            }
+        }
+        "Kerangka Drive disinkron: $created folder baru dari $total folder."
+    }
+
     private fun persistedTrees(): Set<Uri> =
         app.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
 

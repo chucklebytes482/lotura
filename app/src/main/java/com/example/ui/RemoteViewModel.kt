@@ -281,6 +281,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    /** Ketuk refresh di kartu akun Drive: sinkronkan kerangka folder ke perangkat. */
+    fun refreshDriveSkeleton(email: String) {
+        if (_uiState.value.busy) return
+        runBusy(Location(Source.Drive(email)), refresh = false) { files.syncDriveSkeleton(email) }
+    }
+
     fun refreshNetworkStatus() {
         _uiState.update { it.copy(isOnline = checkOnline(app)) }
     }
