@@ -24,6 +24,9 @@ private const val KEY_JOB = "job_key"
 /** Jumlah percobaan per putaran jika terjadi error biasa (bukan dihentikan sistem atau izin dicabut). */
 private const val MAX_ATTEMPTS = 3
 
+/** Batas panjang catatan hasil terakhir per job. Hanya satu catatan yang disimpan, tidak ada riwayat. */
+const val MAX_LOG_CHARS = 160
+
 /** Jadwal auto sync mirror Drive. Berjalan lewat WorkManager, tetap jalan saat aplikasi ditutup. */
 internal object MirrorAutoSync {
     val OPTIONS = listOf(1, 6, 24)

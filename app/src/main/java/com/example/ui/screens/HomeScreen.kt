@@ -82,6 +82,7 @@ internal fun HomeScreen(
     var jobsOpen by remember { mutableStateOf(false) }
     val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     val driveAccount = driveAccounts.firstOrNull()
+    val jobsByPath = mirrorJobs.filter { it.email == driveAccount?.email }.associateBy { it.treeUri }
     LaunchedEffect(driveAccount?.email) {
         if (driveAccount != null && state.device == null) viewModel.openDevice(DeviceTarget(driveAccount.email, driveAccount.email))
     }
@@ -122,7 +123,7 @@ internal fun HomeScreen(
                     }
                     state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
                     state.device?.takeIf { driveAccount != null }?.let { device ->
-                        deviceSection(device, viewModel, Environment.isExternalStorageManager(),
+                        deviceSection(device, viewModel, Environment.isExternalStorageManager(), jobsByPath,
                             onSchedule = { scheduleDir = it }, onOpenJobs = { jobsOpen = true })
                     }
                 } else {
@@ -176,7 +177,7 @@ internal fun HomeScreen(
             text = {
                 if (mirrorJobs.isEmpty()) Text("Belum ada folder dengan auto sync.")
                 else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(mirrorJobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
+                    items(mirrorJobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onToggle = { viewModel.setMirrorJobEnabled(job, it) }) }
                 }
             },
             confirmButton = { TextButton(onClick = { jobsOpen = false }) { Text("Tutup") } })
@@ -358,6 +359,7 @@ private fun LazyListScope.deviceSection(
     device: DeviceBrowse,
     viewModel: RemoteViewModel,
     hasAccess: Boolean,
+    jobs: Map<String, MirrorJobEntity>,
     onSchedule: (File) -> Unit,
     onOpenJobs: () -> Unit
 ) {
@@ -402,7 +404,15 @@ private fun LazyListScope.deviceSection(
                     .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
                         contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Column {
+                        Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (file.isDirectory) {
+                            val job = jobs[android.net.Uri.fromFile(file).toString()]
+                            Text(scheduleStatus(job), style = MaterialTheme.typography.labelSmall,
+                                color = if (job?.enabled == true) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
                 if (file.isDirectory) {
                     IconButton(onClick = { onSchedule(file) }, modifier = Modifier.testTag("folder_auto_sync")) {
@@ -447,18 +457,21 @@ private fun DeviceScheduleDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } })
 }
 
+private fun scheduleStatus(job: MirrorJobEntity?): String = when {
+    job == null -> "Belum dijadwalkan"
+    job.enabled -> "Terjadwal · ${MirrorAutoSync.label(job.intervalHours)}"
+    else -> "Jadwal dinonaktifkan"
+}
+
 @Composable
-private fun AutoSyncRow(job: MirrorJobEntity, onStop: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(job.folderName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("Tujuan: ${job.parentTitle} • ${MirrorAutoSync.label(job.intervalHours)}",
-            style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(job.lastResult,
-            style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (job.enabled) {
-            TextButton(onClick = onStop, modifier = Modifier.heightIn(min = 48.dp).testTag("stop_auto")) {
-                Text("Hentikan")
-            }
+private fun AutoSyncRow(job: MirrorJobEntity, onToggle: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(job.folderName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${MirrorAutoSync.label(job.intervalHours)} • ${if (job.enabled) "aktif" else "nonaktif"}",
+                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(job.lastResult, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+        Switch(checked = job.enabled, onCheckedChange = onToggle, modifier = Modifier.testTag("toggle_auto"))
     }
 }

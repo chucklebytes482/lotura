@@ -4,6 +4,7 @@ import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.MirrorJobEntity
+import com.example.remote.MAX_LOG_CHARS
 import com.example.data.db.SyncDatabase
 import com.example.data.secure.SecureTokenStore
 import kotlinx.coroutines.flow.Flow
@@ -23,12 +24,13 @@ class SyncRepository(
     /** Mencatat hasil satu putaran auto sync. Membaca ulang dulu supaya pengaturan Hentikan dari UI tidak tertimpa. */
     suspend fun recordMirrorRun(jobKey: String, result: String, stop: Boolean, nowMillis: Long) {
         val job = db.mirrorJobDao().getByKey(jobKey) ?: return
-        db.mirrorJobDao().upsert(job.copy(lastRunAt = nowMillis, lastResult = result, enabled = job.enabled && !stop))
+        db.mirrorJobDao().upsert(job.copy(lastRunAt = nowMillis, lastResult = result.take(MAX_LOG_CHARS), enabled = job.enabled && !stop))
     }
 
-    /** Menghentikan jadwal dan menghapusnya dari daftar auto sync. */
-    suspend fun stopMirrorJob(jobKey: String) {
-        db.mirrorJobDao().delete(jobKey)
+    /** Mengaktifkan atau menonaktifkan jadwal. Job tetap ada di daftar. */
+    suspend fun setMirrorJobEnabled(jobKey: String, enabled: Boolean) {
+        val job = db.mirrorJobDao().getByKey(jobKey) ?: return
+        db.mirrorJobDao().upsert(job.copy(enabled = enabled))
     }
 
     suspend fun getDriveAccounts(): List<DriveAccountEntity> = db.driveAccountDao().getAll()

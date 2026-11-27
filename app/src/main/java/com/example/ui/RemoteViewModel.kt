@@ -256,15 +256,17 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun stopMirrorJob(job: MirrorJobEntity) {
+    /** Mengaktifkan atau menonaktifkan jadwal satu folder. Saat diaktifkan, putaran pertama langsung jalan. */
+    fun setMirrorJobEnabled(job: MirrorJobEntity, enabled: Boolean) {
         viewModelScope.launch {
             try {
-                repository.stopMirrorJob(job.jobKey)
-                MirrorAutoSync.cancel(app, job.jobKey)
+                repository.setMirrorJobEnabled(job.jobKey, enabled)
+                if (enabled) MirrorAutoSync.schedule(app, job.copy(enabled = true))
+                else MirrorAutoSync.cancel(app, job.jobKey)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                showMessage(e.message ?: "Auto sync tidak bisa dihentikan.")
+                showMessage(e.message ?: "Jadwal auto sync tidak bisa diubah.")
             }
         }
     }
