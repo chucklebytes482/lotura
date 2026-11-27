@@ -11,15 +11,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         DriveAccountEntity::class,
         GithubAccountEntity::class,
-        GithubRepoEntity::class
+        GithubRepoEntity::class,
+        MirrorJobEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class SyncDatabase : RoomDatabase() {
     abstract fun driveAccountDao(): DriveAccountDao
     abstract fun githubAccountDao(): GithubAccountDao
     abstract fun githubRepoDao(): GithubRepoDao
+    abstract fun mirrorJobDao(): MirrorJobDao
 
     companion object {
         /** v2 -> v3: tabel log dihapus. Akun Drive dan GitHub tidak disentuh. */
@@ -48,6 +50,20 @@ abstract class SyncDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 -> v6: tabel auto sync mirror. Akun dan repo tidak disentuh. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `mirror_jobs` (" +
+                        "`jobKey` TEXT NOT NULL, `email` TEXT NOT NULL, `parentRef` TEXT NOT NULL, " +
+                        "`parentTitle` TEXT NOT NULL, `folderName` TEXT NOT NULL, `treeUri` TEXT NOT NULL, " +
+                        "`intervalHours` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, " +
+                        "`lastRunAt` INTEGER NOT NULL, `lastResult` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`jobKey`))"
+                )
+            }
+        }
+
         @Volatile
         private var instance: SyncDatabase? = null
 
@@ -57,7 +73,7 @@ abstract class SyncDatabase : RoomDatabase() {
                     context.applicationContext,
                     SyncDatabase::class.java,
                     "sync_bebas.db"
-                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { instance = it }
             }

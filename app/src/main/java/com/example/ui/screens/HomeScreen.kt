@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.dp
 import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.remote.Location
+import com.example.remote.MirrorAutoSync
 import com.example.remote.RemoteEntry
 import com.example.remote.RemoteNames
 import com.example.remote.Source
@@ -61,6 +63,9 @@ internal fun HomeScreen(
     var showPat by rememberSaveable { mutableStateOf(false) }
     var disconnect by remember { mutableStateOf<Disconnect?>(null) }
     var repoQuery by rememberSaveable { mutableStateOf("") }
+    var folderQuery by rememberSaveable { mutableStateOf("") }
+    val driveRootFolders by viewModel.driveRootFolders.collectAsState()
+    val collapsed by viewModel.collapsedAccounts.collectAsState()
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = pager.currentPage) {
             listOf("Google Drive", "GitHub").forEachIndexed { index, title ->
@@ -85,11 +90,46 @@ internal fun HomeScreen(
                         }
                     }
                     state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-                    items(driveAccounts, key = { it.email }) { acct ->
-                        SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                            onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
-                            IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
-                                Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
+                    val anyFolders = driveAccounts.any { driveRootFolders[it.email]?.folders?.isNotEmpty() == true }
+                    if (anyFolders) item {
+                        CompactSearchBar(folderQuery, "Cari folder", { folderQuery = it }, testTag = "search_drive_folders")
+                    }
+                    for (acct in driveAccounts) {
+                        val key = "drive:${acct.email}"
+                        val open = key !in collapsed
+                        item(key = "drive_account_${acct.email}") {
+                            LaunchedEffect(acct.email, open) { if (open) viewModel.loadDriveRootFolders(acct.email) }
+                            AccountRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email }, open,
+                                onToggle = { viewModel.toggleAccountCollapsed(key) }) {
+                                val loading = driveRootFolders[acct.email]?.loading == true
+                                IconButton(onClick = { viewModel.loadDriveRootFolders(acct.email, force = true) }, enabled = !loading,
+                                    modifier = Modifier.testTag("refresh_drive_folders")) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Muat ulang folder ${acct.email}")
+                                }
+                                IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
+                                    Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
+                                }
+                            }
+                        }
+                        val state = driveRootFolders[acct.email]
+                        if (open) when {
+                            state == null || (state.loading && state.folders.isEmpty()) -> item(key = "drive_loading_${acct.email}") {
+                                Text("Memuat folder…", style = MaterialTheme.typography.bodySmall)
+                            }
+                            state.error != null && state.folders.isEmpty() -> item(key = "drive_error_${acct.email}") {
+                                Text(state.error, color = MaterialTheme.colorScheme.error)
+                            }
+                            state.folders.isEmpty() -> item(key = "drive_empty_${acct.email}") {
+                                Text("Tidak ada folder di My Drive.", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        if (open) {
+                            val matches = state?.folders.orEmpty().filter { it.name.contains(folderQuery, ignoreCase = true) }
+                            items(matches, key = { "drive_folder_${acct.email}_${it.ref}" }) { folder ->
+                                SourceRow(folder.name, null, onOpen = { viewModel.openDriveFolder(acct.email, folder) }) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${folder.name}",
+                                        modifier = Modifier.padding(12.dp))
+                                }
                             }
                         }
                     }
@@ -103,8 +143,11 @@ internal fun HomeScreen(
                         CompactSearchBar(repoQuery, "Cari repositori", { repoQuery = it }, testTag = "search_repos")
                     }
                     for (acct in githubAccounts) {
+                        val key = "github:${acct.id}"
+                        val open = key !in collapsed
                         item(key = "account_${acct.id}") {
-                            SourceRow(acct.username, acct.label.takeIf { it != acct.username }) {
+                            AccountRow(acct.username, acct.label.takeIf { it != acct.username }, open,
+                                onToggle = { viewModel.toggleAccountCollapsed(key) }) {
                                 IconButton(onClick = { viewModel.refreshGithubRepos(acct) }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Muat ulang repositori ${acct.username}")
                                 }
@@ -113,12 +156,14 @@ internal fun HomeScreen(
                                 }
                             }
                         }
-                        val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
-                        items(matches, key = { "repo_${it.fullName}" }) { repo ->
-                            SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
-                                onOpen = { viewModel.openSource(Source.Github(repo)) }) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
-                                    modifier = Modifier.padding(12.dp))
+                        if (open) {
+                            val matches = repos.filter { it.accountId == acct.id && it.fullName.contains(repoQuery, ignoreCase = true) }
+                            items(matches, key = { "repo_${it.fullName}" }) { repo ->
+                                SourceRow(repo.fullName, if (repo.archived) "Diarsipkan · ${repo.defaultBranch}" else repo.defaultBranch,
+                                    onOpen = { viewModel.openSource(Source.Github(repo)) }) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${repo.fullName}",
+                                        modifier = Modifier.padding(12.dp))
+                                }
                             }
                         }
                     }
@@ -138,6 +183,17 @@ internal fun HomeScreen(
 }
 
 private data class Disconnect(val label: String, val action: () -> Unit)
+
+/** Kartu akun yang bisa dilipat. Ketuk kartu untuk menampilkan atau menyembunyikan daftar folder/repo di bawahnya. */
+@Composable
+private fun AccountRow(title: String, subtitle: String?, open: Boolean, onToggle: () -> Unit, actions: @Composable RowScope.() -> Unit) {
+    SourceRow(title, subtitle, onOpen = onToggle) {
+        Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (open) "Lipat $title" else "Tampilkan $title",
+            modifier = Modifier.padding(horizontal = 4.dp))
+        actions()
+    }
+}
 
 @Composable
 private fun SourceRow(title: String, subtitle: String?, onOpen: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit) {
@@ -192,6 +248,8 @@ private fun BrowserScreen(
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
     var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
+    var autoSyncOpen by remember(location) { mutableStateOf(false) }
+    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
     val canEdit = location.writable && state.ready && !state.busy
     val listed = state.entries.filter { it.name.contains(search, ignoreCase = true) }
     Column(modifier.fillMaxSize()) {
@@ -201,8 +259,8 @@ private fun BrowserScreen(
             }
             Text(location.title, style = MaterialTheme.typography.titleLarge, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconButton(onClick = viewModel::refreshFolder, enabled = !state.busy, modifier = Modifier.testTag("refresh_folder")) {
-                Icon(Icons.Default.Refresh, "Muat ulang folder")
+            IconButton(onClick = viewModel::goHome, enabled = !state.busy, modifier = Modifier.testTag("home_button")) {
+                Icon(Icons.Default.Home, "Kembali ke daftar akun")
             }
             if (location.writable) {
                 IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
@@ -226,8 +284,15 @@ private fun BrowserScreen(
             }
         }
         val path = (listOf(location.source.title) + location.folders.map { it.name }).joinToString(" / ")
-        Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(vertical = 4.dp))
+            if (location.source is Source.Drive) {
+                IconButton(onClick = { autoSyncOpen = true }, modifier = Modifier.testTag("auto_sync")) {
+                    Icon(Icons.Default.Schedule, contentDescription = "Auto sync")
+                }
+            }
+        }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("remote_progress"))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -275,6 +340,18 @@ private fun BrowserScreen(
             confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
     }
+    if (autoSyncOpen && location.source is Source.Drive) {
+        val email = (location.source as Source.Drive).email
+        val jobs = mirrorJobs.filter { it.email == email }
+        AlertDialog(onDismissRequest = { autoSyncOpen = false }, title = { Text("Auto sync") },
+            text = {
+                if (jobs.isEmpty()) Text("Belum ada folder dengan auto sync untuk akun ini.")
+                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(jobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { autoSyncOpen = false }) { Text("Tutup") } })
+    }
     delete?.let { entry ->
         val place = if (location.source is Source.Drive) "dipindahkan ke Sampah Google Drive" else "dihapus dari cabang GitHub ini lewat commit"
         val contents = if (entry.isFolder) " Seluruh isi folder ikut terhapus, termasuk item tersembunyi." else ""
@@ -282,5 +359,21 @@ private fun BrowserScreen(
             text = { Text("${entry.name} akan $place.$contents") },
             confirmButton = { TextButton(onClick = { delete = null; viewModel.delete(entry) }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Batal") } })
+    }
+}
+
+@Composable
+private fun AutoSyncRow(job: MirrorJobEntity, onStop: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(job.folderName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("Tujuan: ${job.parentTitle} • ${MirrorAutoSync.label(job.intervalHours)}",
+            style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(job.lastResult,
+            style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (job.enabled) {
+            TextButton(onClick = onStop, modifier = Modifier.heightIn(min = 48.dp).testTag("stop_auto")) {
+                Text("Hentikan")
+            }
+        }
     }
 }

@@ -1,13 +1,16 @@
 package com.example.remote
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import com.example.SyncBebasApp
 import com.example.data.db.GithubRepoEntity
+import com.example.data.db.MirrorJobEntity
 import com.example.drive.DriveMimeTypes
 import com.example.github.GithubEmptyRepositoryException
 import com.example.github.GithubTreeChange
 import com.example.github.GithubTreeEntry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -43,6 +46,11 @@ internal data class RemoteEntry(
 
 internal data class DownloadResult(val file: File, val skipped: Int)
 
+internal enum class UploadMode { ADD, MIRROR }
+
+/** Auto sync berhenti karena folder perangkat tidak bisa dipakai lagi. Job dinonaktifkan. */
+internal class MirrorStoppedException(message: String) : Exception(message)
+
 internal class RemoteFiles(private val app: SyncBebasApp) {
     private val github = app.githubApiClient
     private val drive = app.driveApiClient
@@ -52,6 +60,13 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         is Source.Github -> git(source).folder(location).entries.map { it.remote(location.ref) }
     }.filter { RemoteNames.visible(it.name) }
         .sortedWith(compareByDescending<RemoteEntry> { it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+    /** Folder tingkat atas di My Drive, untuk daftar akun. Hanya folder yang terlihat, diurutkan dari A ke Z. */
+    suspend fun driveRootFolders(email: String): List<RemoteEntry> = withContext(Dispatchers.IO) {
+        driveEntries(app.resolveDriveToken(email), "root")
+            .filter { it.kind == RemoteEntry.Kind.FOLDER && RemoteNames.visible(it.name) }
+            .sortedBy { it.name.lowercase() }
+    }
 
     suspend fun createFolder(location: Location, name: String) {
         require(location.writable && RemoteNames.validNewName(name)) { "Nama folder tidak valid atau tersembunyi." }
@@ -78,21 +93,74 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
 
     private val picker = UploadPicker(app.contentResolver)
 
-    suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) { picker.folder(uri) }
-
-    suspend fun uploadFiles(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
-        upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children))
+    suspend fun pickFolder(uri: Uri): PickedFolder = withContext(Dispatchers.IO) {
+        // Simpan izin baca agar auto sync bisa membaca folder ini setelah aplikasi ditutup.
+        runCatching { app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        picker.folder(uri)
     }
 
-    suspend fun uploadFolders(location: Location, folders: List<PickedFolder>): String = withContext(Dispatchers.IO) {
+    /** Menyimpan satu job per folder dan menjadwalkannya. Izin folder perangkat harus sudah tersimpan. */
+    suspend fun enableMirrorAuto(location: Location, folders: List<PickedFolder>, hours: Int) = withContext(Dispatchers.IO) {
+        val source = location.source as? Source.Drive ?: error("Auto sync hanya untuk Google Drive.")
+        val persisted = persistedTrees()
+        for (folder in folders) {
+            check(folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
+            val job = MirrorJobEntity(
+                jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.name),
+                email = source.email,
+                parentRef = location.ref,
+                parentTitle = location.title,
+                folderName = folder.name,
+                treeUri = folder.tree.toString(),
+                intervalHours = hours,
+                enabled = true,
+                lastRunAt = 0L,
+                lastResult = "Menunggu jadwal pertama."
+            )
+            app.repository.saveMirrorJob(job)
+            MirrorAutoSync.schedule(app, job)
+        }
+    }
+
+    /** Dipanggil worker. Melempar MirrorStoppedException jika folder perangkat tidak bisa dipakai lagi. */
+    suspend fun autoMirror(job: MirrorJobEntity): String = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(job.treeUri)
+        if (uri !in persistedTrees()) throw MirrorStoppedException("izin akses folder perangkat sudah dicabut.")
+        val folder = try {
+            picker.folder(uri)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw MirrorStoppedException("folder perangkat tidak bisa dibaca (${e.message ?: "tidak diketahui"}).")
+        }
+        if (folder.name != job.folderName) {
+            throw MirrorStoppedException("nama folder perangkat berubah dari ${job.folderName} menjadi ${folder.name}.")
+        }
+        val location = Location(
+            Source.Drive(job.email),
+            if (job.parentRef == "root") emptyList() else listOf(Folder(job.parentTitle, job.parentRef))
+        )
+        val roots = listOf(UploadDocument(folder.name, picker.rootUri(uri), isFolder = true))
+        upload(location, scanUploadTrees(roots, picker::children), UploadMode.MIRROR)
+    }
+
+    private fun persistedTrees(): Set<Uri> =
+        app.contentResolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
+
+    suspend fun uploadFiles(location: Location, uris: List<Uri>): String = withContext(Dispatchers.IO) {
+        upload(location, scanUploadTrees(uris.distinct().map(picker::file), picker::children), UploadMode.ADD)
+    }
+
+    suspend fun uploadFolders(location: Location, folders: List<PickedFolder>, mode: UploadMode): String = withContext(Dispatchers.IO) {
         val roots = folders.map { picker.folder(it.tree) }.map {
             UploadDocument(it.name, picker.rootUri(it.tree), isFolder = true)
         }
-        upload(location, scanUploadTrees(roots, picker::children))
+        upload(location, scanUploadTrees(roots, picker::children), mode)
     }
 
-    private suspend fun upload(location: Location, tree: UploadTree<Uri>): String {
+    private suspend fun upload(location: Location, tree: UploadTree<Uri>, mode: UploadMode): String {
         check(location.writable && tree.items.isNotEmpty())
+        check(mode == UploadMode.ADD || location.source is Source.Drive) { "Mode mirror hanya untuk Google Drive." }
         val scratch = mutableListOf<File>()
         try {
             // Validate all names and stage all selected files before changing the remote.
@@ -117,6 +185,11 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                 }
                 temp
             }
+            if (mode == UploadMode.MIRROR) {
+                val source = location.source as? Source.Drive ?: error("Mode mirror hanya untuk Google Drive.")
+                val summary = mirrorToDrive(location, source, staged)
+                return summary + if (tree.skipped > 0) " ${tree.skipped} item tersembunyi dilewati." else ""
+            }
             when (val source = location.source) {
                 is Source.Drive -> uploadToDrive(location, source, staged)
                 is Source.Github -> uploadToGithub(location, source, staged)
@@ -128,6 +201,82 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         } finally {
             scratch.forEach { it.delete() }
         }
+    }
+
+    private class MirrorStats {
+        var uploaded = 0
+        var unchanged = 0
+        var trashed = 0
+        var foldersCreated = 0
+    }
+
+    /**
+     * Membuat subfolder Drive dengan nama sama dengan folder perangkat menjadi salinan persis.
+     * Berkas sama (MD5 cocok) dibiarkan. Berkas beda diganti. Item Drive yang tidak ada di perangkat
+     * dipindah ke Sampah. Hanya isi subfolder itu yang disentuh, folder lain di lokasi aktif tidak.
+     */
+    private suspend fun mirrorToDrive(location: Location, source: Source.Drive, roots: List<UploadItem<File>>): String {
+        val token = app.resolveDriveToken(source.email)
+        val stats = MirrorStats()
+        for (root in roots) {
+            coroutineContext.ensureActive()
+            val folder = root as? UploadItem.Folder ?: error("Mirror hanya menerima folder.")
+            val same = drive.listChildren(token, location.ref).filter { it.name == folder.name }
+            val existing = same.firstOrNull { it.mimeType == DriveMimeTypes.FOLDER }
+            val id = existing?.id ?: drive.createFolder(token, location.ref, folder.name).id.also { stats.foldersCreated++ }
+            same.filter { it.id != id }.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+            mirrorChildren(token, id, folder.children, stats)
+        }
+        return "Mirror selesai: ${stats.uploaded} file diunggah, ${stats.unchanged} tidak berubah, " +
+            "${stats.trashed} item dipindah ke Sampah, ${stats.foldersCreated} folder dibuat."
+    }
+
+    private suspend fun mirrorChildren(token: String, parent: String, local: List<UploadItem<File>>, stats: MirrorStats) {
+        val remote = drive.listChildren(token, parent).filter { RemoteNames.visible(it.name) }
+        for (item in local) {
+            coroutineContext.ensureActive()
+            val same = remote.filter { it.name == item.name }
+            when (item) {
+                is UploadItem.File -> {
+                    val unchanged = same.singleOrNull()?.takeIf {
+                        it.mimeType != DriveMimeTypes.FOLDER && it.md5Checksum != null &&
+                            it.md5Checksum.equals(md5Hex(item.content), ignoreCase = true)
+                    }
+                    if (unchanged != null) {
+                        stats.unchanged++
+                    } else {
+                        same.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+                        drive.uploadFile(token, parent, item.name, item.content)
+                        stats.uploaded++
+                    }
+                }
+                is UploadItem.Folder -> {
+                    val existing = same.firstOrNull { it.mimeType == DriveMimeTypes.FOLDER }
+                    val id = existing?.id ?: drive.createFolder(token, parent, item.name).id.also { stats.foldersCreated++ }
+                    same.filter { it.id != id }.forEach { drive.trashFile(token, it.id); stats.trashed++ }
+                    mirrorChildren(token, id, item.children, stats)
+                }
+            }
+        }
+        val localNames = local.map { it.name }.toSet()
+        for (extra in remote.filter { it.name !in localNames }) {
+            coroutineContext.ensureActive()
+            drive.trashFile(token, extra.id)
+            stats.trashed++
+        }
+    }
+
+    private fun md5Hex(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private suspend fun uploadToDrive(location: Location, source: Source.Drive, items: List<UploadItem<File>>) {
