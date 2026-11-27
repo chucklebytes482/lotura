@@ -17,7 +17,7 @@ Berkas `05-cadangan-dan-sinkron.md` tidak berlaku kecuali repo ini menambah sink
 
 Keputusan pemilik repo. Mengalahkan panduan di atas:
 
-- **Online, bukan luring.** Fitur Google Drive dan GitHub tetap dipakai, jadi aplikasi memakai `INTERNET` dan `ACCESS_NETWORK_STATE`. Akses Drive lewat Google Sign-In (`GoogleAuthManager`, `DriveApiClient`). Akses GitHub lewat PAT (`GithubApiClient`). OkHttp dipakai untuk panggilan HTTP ini. Aturan luring di `02-struktur-proyek.md` bagian 6 tidak berlaku.
+- **Online, bukan luring.** Fitur Google Drive dan GitHub tetap dipakai, jadi aplikasi memakai `INTERNET` dan `ACCESS_NETWORK_STATE`. Akses Drive lewat Google Sign-In (`GoogleAuthManager`, `DriveApiClient`). Akses GitHub lewat PAT (`GithubApiClient`). OkHttp dipakai untuk panggilan HTTP ini.
 - **Tanpa tab Panduan.** Beranda hanya punya tab Google Drive dan GitHub. Kartu "Cadangan Perangkat" tidak dibuat.
 - **Kartu web panduan** hanya tampil di tab Google Drive, di atas daftar akun (`ui/screens/GuideWebCard.kt`). Kartu ini membuka `https://chucklebytes482.github.io/lotura/` di browser luar, bukan di WebView.
 - **Tanpa update APK.** Tidak ada pengecekan atau unduhan APK di dalam aplikasi.
