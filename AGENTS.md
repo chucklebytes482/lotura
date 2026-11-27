@@ -1,7 +1,6 @@
 # AGENTS.md
 
-Panduan umum (berlaku untuk semua repo) ada di repo `encrypt`, folder `panduan/`:
-https://github.com/chucklebytes482/encrypt/tree/main/panduan
+Panduan umum (berlaku untuk semua repo) ada di root repo `encrypt`: https://github.com/chucklebytes482/encrypt
 
 Baca dan ikuti berkas berikut, dalam urutan ini:
 - `00-prinsip-kerja-ai.md`
