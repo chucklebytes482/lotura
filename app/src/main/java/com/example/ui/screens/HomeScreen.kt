@@ -63,8 +63,6 @@ internal fun HomeScreen(
     var showPat by rememberSaveable { mutableStateOf(false) }
     var disconnect by remember { mutableStateOf<Disconnect?>(null) }
     var repoQuery by rememberSaveable { mutableStateOf("") }
-    var folderQuery by rememberSaveable { mutableStateOf("") }
-    val driveRootFolders by viewModel.driveRootFolders.collectAsState()
     val collapsed by viewModel.collapsedAccounts.collectAsState()
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = pager.currentPage) {
@@ -90,45 +88,12 @@ internal fun HomeScreen(
                         }
                     }
                     state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-                    val anyFolders = driveAccounts.any { driveRootFolders[it.email]?.folders?.isNotEmpty() == true }
-                    if (anyFolders) item {
-                        CompactSearchBar(folderQuery, "Cari folder", { folderQuery = it }, testTag = "search_drive_folders")
-                    }
                     for (acct in driveAccounts) {
-                        val key = "drive:${acct.email}"
-                        val open = key !in collapsed
                         item(key = "drive_account_${acct.email}") {
-                            LaunchedEffect(acct.email, open) { if (open) viewModel.loadDriveRootFolders(acct.email) }
-                            AccountRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email }, open,
-                                onToggle = { viewModel.toggleAccountCollapsed(key) }) {
-                                val loading = driveRootFolders[acct.email]?.loading == true
-                                IconButton(onClick = { viewModel.loadDriveRootFolders(acct.email, force = true) }, enabled = !loading,
-                                    modifier = Modifier.testTag("refresh_drive_folders")) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Muat ulang folder ${acct.email}")
-                                }
+                            SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
+                                onOpen = { viewModel.openSource(Source.Drive(acct.email)) }) {
                                 IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
                                     Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
-                                }
-                            }
-                        }
-                        val state = driveRootFolders[acct.email]
-                        if (open) when {
-                            state == null || (state.loading && state.folders.isEmpty()) -> item(key = "drive_loading_${acct.email}") {
-                                Text("Memuat folder…", style = MaterialTheme.typography.bodySmall)
-                            }
-                            state.error != null && state.folders.isEmpty() -> item(key = "drive_error_${acct.email}") {
-                                Text(state.error, color = MaterialTheme.colorScheme.error)
-                            }
-                            state.folders.isEmpty() -> item(key = "drive_empty_${acct.email}") {
-                                Text("Tidak ada folder di My Drive.", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                        if (open) {
-                            val matches = state?.folders.orEmpty().filter { it.name.contains(folderQuery, ignoreCase = true) }
-                            items(matches, key = { "drive_folder_${acct.email}_${it.ref}" }) { folder ->
-                                SourceRow(folder.name, null, onOpen = { viewModel.openDriveFolder(acct.email, folder) }) {
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Buka ${folder.name}",
-                                        modifier = Modifier.padding(12.dp))
                                 }
                             }
                         }

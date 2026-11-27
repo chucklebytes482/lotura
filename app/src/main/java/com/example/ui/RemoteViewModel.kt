@@ -53,14 +53,6 @@ internal data class BrowserState(
     val isOnline: Boolean = true
 )
 
-/** Daftar folder root Drive untuk satu akun. Disimpan di memori saja, dimuat ulang saat app dibuka lagi. */
-internal data class DriveRootFolders(
-    val loading: Boolean = false,
-    val folders: List<RemoteEntry> = emptyList(),
-    val error: String? = null,
-    val loaded: Boolean = false
-)
-
 internal class RemoteViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SyncBebasApp
     private val repository = app.repository
@@ -86,38 +78,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun openSource(source: Source) = navigate(Location(source))
 
-    private val _driveRootFolders = MutableStateFlow<Map<String, DriveRootFolders>>(emptyMap())
-    val driveRootFolders: StateFlow<Map<String, DriveRootFolders>> = _driveRootFolders.asStateFlow()
-
-    /** Memuat folder root sekali per akun. force = true untuk tombol muat ulang. */
-    fun loadDriveRootFolders(email: String, force: Boolean = false) {
-        val current = _driveRootFolders.value[email] ?: DriveRootFolders()
-        if (current.loading || (current.loaded && !force)) return
-        _driveRootFolders.update { it + (email to current.copy(loading = true, error = null)) }
-        viewModelScope.launch {
-            try {
-                val folders = files.driveRootFolders(email)
-                _driveRootFolders.update { it + (email to DriveRootFolders(folders = folders, loaded = true)) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _driveRootFolders.update { map ->
-                    val old = map[email] ?: DriveRootFolders()
-                    map + (email to old.copy(loading = false, loaded = true, error = e.message ?: "Folder tidak bisa dimuat."))
-                }
-            }
-        }
-    }
-
     /** Akun yang daftarnya sedang dilipat. Kunci: "drive:<email>" atau "github:<id>". Disimpan di ViewModel agar bertahan saat masuk folder. */
     private val _collapsedAccounts = MutableStateFlow<Set<String>>(emptySet())
     val collapsedAccounts: StateFlow<Set<String>> = _collapsedAccounts.asStateFlow()
 
     fun toggleAccountCollapsed(key: String) = _collapsedAccounts.update { if (key in it) it - key else it + key }
 
-    fun openDriveFolder(email: String, folder: RemoteEntry) {
-        navigate(Location(Source.Drive(email), listOf(Folder(folder.name, folder.ref))))
-    }
     fun openFolder(item: RemoteEntry) {
         val state = _uiState.value
         val current = state.location ?: return
@@ -343,7 +309,6 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     fun removeDriveAccount(email: String) {
         viewModelScope.launch {
             repository.removeDriveAccount(email)
-            _driveRootFolders.update { it - email }
             _uiState.update { it.copy(snackbarMessage = "Akun $email diputus. Folder lokal tidak dihapus.") }
         }
     }

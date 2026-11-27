@@ -61,13 +61,6 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     }.filter { RemoteNames.visible(it.name) }
         .sortedWith(compareByDescending<RemoteEntry> { it.isFolder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
-    /** Folder tingkat atas di My Drive, untuk daftar akun. Hanya folder yang terlihat, diurutkan dari A ke Z. */
-    suspend fun driveRootFolders(email: String): List<RemoteEntry> = withContext(Dispatchers.IO) {
-        driveEntries(app.resolveDriveToken(email), "root")
-            .filter { it.kind == RemoteEntry.Kind.FOLDER && RemoteNames.visible(it.name) }
-            .sortedBy { it.name.lowercase() }
-    }
-
     suspend fun createFolder(location: Location, name: String) {
         require(location.writable && RemoteNames.validNewName(name)) { "Nama folder tidak valid atau tersembunyi." }
         when (val source = location.source) {
