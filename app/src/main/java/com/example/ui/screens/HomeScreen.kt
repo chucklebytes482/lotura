@@ -9,6 +9,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -412,23 +413,18 @@ private fun DeviceScheduleDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Int) -> Unit
 ) {
-    var email by remember { mutableStateOf(accounts.firstOrNull()?.email) }
+    // Akun otomatis: akun Drive pertama yang tersambung.
+    val email = accounts.firstOrNull()?.email
     var hours by remember { mutableStateOf(MirrorAutoSync.OPTIONS.first()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Auto sync $folderName") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Sinkronkan folder ini ke Google Drive/autosync:", style = MaterialTheme.typography.bodyMedium)
-                if (accounts.isEmpty()) {
+                if (email == null) {
                     Text("Belum ada akun Google Drive. Sambungkan dulu di tab Google Drive.", color = MaterialTheme.colorScheme.error)
-                }
-                accounts.forEachIndexed { index, acct ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                        .selectable(selected = email == acct.email, role = Role.RadioButton, onClick = { email = acct.email })
-                        .testTag("drive_account_$index"),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = email == acct.email, onClick = null)
-                        Text(acct.email, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                } else {
+                    Text("Sinkronkan folder ini ke Google Drive/autosync:", style = MaterialTheme.typography.bodyMedium)
+                    Text(email, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text("Interval", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                 MirrorAutoSync.OPTIONS.forEach { option ->
