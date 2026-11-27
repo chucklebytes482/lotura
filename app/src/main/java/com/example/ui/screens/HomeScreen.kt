@@ -263,8 +263,8 @@ private fun BrowserScreen(
             }
             Text(location.title, style = MaterialTheme.typography.titleLarge, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconButton(onClick = viewModel::refreshFolder, enabled = !state.busy, modifier = Modifier.testTag("refresh_folder")) {
-                Icon(Icons.Default.Refresh, "Muat ulang folder")
+            IconButton(onClick = viewModel::goHome, enabled = !state.busy, modifier = Modifier.testTag("home_button")) {
+                Icon(Icons.Default.Home, "Kembali ke daftar akun")
             }
             if (location.writable) {
                 IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {

@@ -129,10 +129,8 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         navigate(if (current.folders.isEmpty()) null else current.copy(folders = current.folders.dropLast(1)))
     }
 
-    fun refreshFolder() {
-        val location = _uiState.value.location ?: return
-        navigate(location)
-    }
+    /** Kembali ke daftar akun (Drive dan GitHub), langsung dari folder mana pun. */
+    fun goHome() = navigate(null)
 
     private fun navigate(location: Location?) {
         if (_uiState.value.busy || pickerTarget != null) return
