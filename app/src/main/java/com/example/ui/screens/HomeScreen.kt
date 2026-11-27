@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -67,11 +68,6 @@ internal fun HomeScreen(
 ) {
     val pager = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
-    state.device?.let { device ->
-        BackHandler { viewModel.backDevice() }
-        DeviceBrowser(modifier, device, viewModel)
-        return
-    }
     val location = state.location
     if (location != null) {
         BackHandler { viewModel.back() }
@@ -82,6 +78,14 @@ internal fun HomeScreen(
     var showPat by rememberSaveable { mutableStateOf(false) }
     var disconnect by remember { mutableStateOf<Disconnect?>(null) }
     var repoQuery by rememberSaveable { mutableStateOf("") }
+    var scheduleDir by remember { mutableStateOf<File?>(null) }
+    var jobsOpen by remember { mutableStateOf(false) }
+    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
+    val driveAccount = driveAccounts.firstOrNull()
+    LaunchedEffect(driveAccount?.email) {
+        if (driveAccount != null && state.device == null) viewModel.openDevice(DeviceTarget(driveAccount.email, driveAccount.email))
+    }
+    BackHandler(enabled = pager.currentPage == 0 && state.device?.atRoot == false) { viewModel.backDevice() }
     val collapsed by viewModel.collapsedAccounts.collectAsState()
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = pager.currentPage) {
@@ -100,22 +104,26 @@ internal fun HomeScreen(
                 if (!state.isOnline) item { Text("Tidak tersambung ke internet.") }
                 if (page == 0) {
                     item { GuideWebCard() }
-                    item {
-                        Button(onClick = onConnectDrive, enabled = !state.isConnectingDrive,
-                            modifier = Modifier.testTag("connect_drive")) {
-                            Text(if (state.isConnectingDrive) "Menyambungkan…" else "Sambungkan Google Drive")
+                    if (driveAccount == null) {
+                        item {
+                            Button(onClick = onConnectDrive, enabled = !state.isConnectingDrive,
+                                modifier = Modifier.testTag("connect_drive")) {
+                                Text(if (state.isConnectingDrive) "Menyambungkan…" else "Sambungkan Google Drive")
+                            }
                         }
-                    }
-                    state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-                    for (acct in driveAccounts) {
-                        item(key = "drive_account_${acct.email}") {
-                            SourceRow(acct.email, acct.displayName.takeIf { it.isNotBlank() && it != acct.email },
-                                onOpen = { viewModel.openDevice(DeviceTarget(acct.email, acct.email)) }) {
-                                IconButton(onClick = { disconnect = Disconnect(acct.email) { viewModel.removeDriveAccount(acct.email) } }) {
-                                    Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${acct.email}")
+                    } else {
+                        item(key = "drive_account") {
+                            SourceRow(driveAccount.email, driveAccount.displayName.takeIf { it.isNotBlank() && it != driveAccount.email }) {
+                                IconButton(onClick = { disconnect = Disconnect(driveAccount.email) { viewModel.removeDriveAccount(driveAccount.email) } }) {
+                                    Icon(Icons.Default.LinkOff, contentDescription = "Putuskan ${driveAccount.email}")
                                 }
                             }
                         }
+                    }
+                    state.driveAuthError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+                    state.device?.takeIf { driveAccount != null }?.let { device ->
+                        deviceSection(device, viewModel, Environment.isExternalStorageManager(),
+                            onSchedule = { scheduleDir = it }, onOpenJobs = { jobsOpen = true })
                     }
                 } else {
                     item {
@@ -154,6 +162,24 @@ internal fun HomeScreen(
                 }
             }
         }
+    }
+    scheduleDir?.let { dir ->
+        driveAccount?.let { acct ->
+            DeviceScheduleDialog(dir.name, acct.email, onDismiss = { scheduleDir = null }) { hours ->
+                scheduleDir = null
+                viewModel.scheduleDeviceFolder(dir, acct.email, hours)
+            }
+        }
+    }
+    if (jobsOpen) {
+        AlertDialog(onDismissRequest = { jobsOpen = false }, title = { Text("Auto sync") },
+            text = {
+                if (mirrorJobs.isEmpty()) Text("Belum ada folder dengan auto sync.")
+                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(mirrorJobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { jobsOpen = false }) { Text("Tutup") } })
     }
     if (showPat) PatDialog(state, onDismiss = { showPat = false }) { pat ->
         viewModel.addGithubAccount(pat) { showPat = false }
@@ -327,83 +353,64 @@ private fun BrowserScreen(
     }
 }
 
-@Composable
-private fun DeviceBrowser(modifier: Modifier, device: DeviceBrowse, viewModel: RemoteViewModel) {
-    val context = LocalContext.current
-    val mirrorJobs by viewModel.mirrorJobs.collectAsState()
-    var scheduleDir by remember(device.dir) { mutableStateOf<File?>(null) }
-    var jobsOpen by remember { mutableStateOf(false) }
-    val hasAccess = Environment.isExternalStorageManager()
-    Column(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = viewModel::backDevice) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+/** Penjelajah autosync di bawah kartu Google Drive. Satu akun saja, jadi tidak ada pemilih akun. */
+private fun LazyListScope.deviceSection(
+    device: DeviceBrowse,
+    viewModel: RemoteViewModel,
+    hasAccess: Boolean,
+    onSchedule: (File) -> Unit,
+    onOpenJobs: () -> Unit
+) {
+    item(key = "device_header") {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (!device.atRoot) {
+                IconButton(onClick = viewModel::backDevice) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+                }
             }
-            Text(device.target.title, style = MaterialTheme.typography.titleLarge,
+            Text(device.dir.name, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconButton(onClick = viewModel::closeDevice, modifier = Modifier.testTag("home_button")) {
-                Icon(Icons.Default.Home, "Kembali ke daftar akun")
-            }
-            IconButton(onClick = { jobsOpen = true }, modifier = Modifier.testTag("auto_sync")) {
+            IconButton(onClick = onOpenJobs, modifier = Modifier.testTag("auto_sync")) {
                 Icon(Icons.Default.Schedule, "Daftar auto sync")
             }
         }
-        Text(device.dir.path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp))
-        if (!hasAccess) {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("Penjelajah perangkat butuh izin Akses semua file.", color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = {
-                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        android.net.Uri.parse("package:${context.packageName}")))
-                }, modifier = Modifier.heightIn(min = 48.dp).testTag("grant_all_files")) {
-                    Text("Buka izin Akses semua file")
-                }
+    }
+    item(key = "device_path") {
+        Text(device.dir.path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+    if (!hasAccess) item(key = "device_access") {
+        val context = LocalContext.current
+        Column {
+            Text("Penjelajah perangkat butuh izin Akses semua file.", color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = {
+                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    android.net.Uri.parse("package:${context.packageName}")))
+            }, modifier = Modifier.heightIn(min = 48.dp).testTag("grant_all_files")) {
+                Text("Buka izin Akses semua file")
             }
         }
-        if (!device.ready && device.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            device.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-            if (device.ready && device.entries.isEmpty()) item { Text("Folder ini kosong.") }
-            items(device.entries, key = { it.path }) { file ->
-                OutlinedCard {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).heightIn(min = 48.dp)
-                            .then(if (file.isDirectory) Modifier.clickable { viewModel.openDeviceFolder(file) } else Modifier)
-                            .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
-                                contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                        if (file.isDirectory && device.target.driveEmail != null) {
-                            IconButton(onClick = { scheduleDir = file }, modifier = Modifier.testTag("folder_auto_sync")) {
-                                Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
-                            }
-                        }
+    }
+    if (!device.ready && device.error == null) item(key = "device_loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+    device.error?.let { message -> item(key = "device_error") { Text(message, color = MaterialTheme.colorScheme.error) } }
+    if (device.ready && device.entries.isEmpty()) item(key = "device_empty") { Text("Folder ini kosong.") }
+    items(device.entries, key = { it.path }) { file ->
+        OutlinedCard {
+            Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).heightIn(min = 48.dp)
+                    .then(if (file.isDirectory) Modifier.clickable { viewModel.openDeviceFolder(file) } else Modifier)
+                    .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (file.isDirectory) Icons.Default.Folder else Icons.Default.Description,
+                        contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (file.isDirectory) {
+                    IconButton(onClick = { onSchedule(file) }, modifier = Modifier.testTag("folder_auto_sync")) {
+                        Icon(Icons.Default.Schedule, "Auto sync ${file.name}")
                     }
                 }
             }
         }
-    }
-
-    scheduleDir?.let { dir ->
-        val email = device.target.driveEmail ?: return@let
-        DeviceScheduleDialog(dir.name, email, onDismiss = { scheduleDir = null }) { hours ->
-            scheduleDir = null
-            viewModel.scheduleDeviceFolder(dir, email, hours)
-        }
-    }
-    if (jobsOpen) {
-        AlertDialog(onDismissRequest = { jobsOpen = false }, title = { Text("Auto sync") },
-            text = {
-                if (mirrorJobs.isEmpty()) Text("Belum ada folder dengan auto sync.")
-                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(mirrorJobs, key = { it.jobKey }) { job -> AutoSyncRow(job, onStop = { viewModel.stopMirrorJob(job) }) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { jobsOpen = false }) { Text("Tutup") } })
     }
 }
 

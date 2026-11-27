@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 internal data class FolderUploadQueue(
@@ -50,7 +51,9 @@ internal data class DeviceBrowse(
     val entries: List<File> = emptyList(),
     val ready: Boolean = false,
     val error: String? = null
-)
+) {
+    val atRoot: Boolean get() = dir == deviceRoot()
+}
 
 internal data class BrowserState(
     val location: Location? = null,
@@ -108,7 +111,7 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     fun backDevice() {
         val device = _uiState.value.device ?: return
-        if (device.dir == deviceRoot()) closeDevice() else loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
+        if (!device.atRoot) loadDevice(device.dir.parentFile ?: deviceRoot(), device.target)
     }
 
     fun closeDevice() = _uiState.update { it.copy(device = null) }
@@ -351,6 +354,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
             _uiState.update { it.copy(isConnectingDrive = true, driveAuthError = null) }
             try {
                 val info = driveApi.fetchUserInfo(accessToken)
+                if (repository.driveAccounts.first().any { it.email != info.email }) {
+                    _uiState.update {
+                        it.copy(driveAuthError = "Hanya bisa satu akun Google Drive. Putuskan akun yang ada dulu.")
+                    }
+                    return@launch
+                }
                 repository.addOrUpdateDriveAccount(info.email, info.displayName, accessToken)
             } catch (e: CancellationException) {
                 throw e
@@ -367,6 +376,7 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     fun removeDriveAccount(email: String) {
         viewModelScope.launch {
             repository.removeDriveAccount(email)
+            closeDevice()
             _uiState.update { it.copy(snackbarMessage = "Akun $email diputus. Folder lokal tidak dihapus.") }
         }
     }
