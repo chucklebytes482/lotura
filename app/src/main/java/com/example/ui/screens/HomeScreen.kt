@@ -417,7 +417,7 @@ private fun DeviceScheduleDialog(
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Auto sync $folderName") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Sinkronkan folder ini ke root Google Drive:", style = MaterialTheme.typography.bodyMedium)
+                Text("Sinkronkan folder ini ke Google Drive/autosync:", style = MaterialTheme.typography.bodyMedium)
                 if (accounts.isEmpty()) {
                     Text("Belum ada akun Google Drive. Sambungkan dulu di tab Google Drive.", color = MaterialTheme.colorScheme.error)
                 }

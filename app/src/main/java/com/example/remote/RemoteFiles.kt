@@ -18,8 +18,11 @@ import java.io.File
 import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
-/** Folder di penyimpanan utama perangkat yang dibaca untuk auto sync (/storage/emulated/0/google drive). */
-internal fun deviceRoot(): File = Environment.getExternalStorageDirectory()
+/** Nama folder yang dipakai bersama: di perangkat (/storage/emulated/0/autosync) dan di root Google Drive. */
+internal const val AUTOSYNC_NAME = "autosync"
+
+/** Satu-satunya folder perangkat yang bisa dijelajahi dan dijadwalkan untuk auto sync. */
+internal fun deviceRoot(): File = File(Environment.getExternalStorageDirectory(), AUTOSYNC_NAME)
 
 internal sealed interface Source {
     val title: String
@@ -99,13 +102,19 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     suspend fun enableMirrorAuto(location: Location, folders: List<PickedFolder>, hours: Int) = withContext(Dispatchers.IO) {
         val source = location.source as? Source.Drive ?: error("Auto sync hanya untuk Google Drive.")
         val persisted = persistedTrees()
+        // Memastikan folder autosync di Drive ada (dibuat jika belum) dan token akun masih berlaku.
+        ensureAutosyncFolder(app.resolveDriveToken(source.email))
+        val base = deviceRoot().canonicalPath + File.separator
         for (folder in folders) {
             check(folder.tree.isDeviceFile() && Environment.isExternalStorageManager() || folder.tree in persisted) { "Izin akses folder ${folder.name} tidak tersimpan. Auto sync tidak diaktifkan." }
+            check(!folder.tree.isDeviceFile() || File(folder.tree.path.orEmpty()).canonicalPath.startsWith(base)) {
+                "Folder ${folder.name} harus ada di dalam ${deviceRoot().path}."
+            }
             val job = MirrorJobEntity(
-                jobKey = MirrorAutoSync.mirrorJobKey(source.email, location.ref, folder.tree.toString()),
+                jobKey = MirrorAutoSync.mirrorJobKey(source.email, "root", folder.tree.toString()),
                 email = source.email,
-                parentRef = location.ref,
-                parentTitle = location.title,
+                parentRef = "root",
+                parentTitle = AUTOSYNC_NAME,
                 folderName = folder.name,
                 treeUri = folder.tree.toString(),
                 intervalHours = hours,
@@ -134,10 +143,8 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         if (folder.name != job.folderName) {
             throw MirrorStoppedException("nama folder perangkat berubah dari ${job.folderName} menjadi ${folder.name}.")
         }
-        val location = Location(
-            Source.Drive(job.email),
-            if (job.parentRef == "root") emptyList() else listOf(Folder(job.parentTitle, job.parentRef))
-        )
+        val autosyncId = ensureAutosyncFolder(app.resolveDriveToken(job.email))
+        val location = Location(Source.Drive(job.email), listOf(Folder(AUTOSYNC_NAME, autosyncId)))
         val roots = listOf(UploadDocument(folder.name, picker.rootUri(uri), isFolder = true))
         upload(location, scanUploadTrees(roots, picker::children), UploadMode.MIRROR)
     }
@@ -145,10 +152,17 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
     /** Isi satu folder perangkat untuk penjelajahan. Butuh izin Akses semua file. */
     suspend fun listDevice(dir: File): List<File> = withContext(Dispatchers.IO) {
         check(Environment.isExternalStorageManager()) { "Izin Akses semua file belum aktif." }
+        if (dir == deviceRoot()) dir.mkdirs()
         check(dir.isDirectory) { "Folder ${dir.path} tidak bisa dibaca." }
         (dir.listFiles() ?: emptyArray())
             .filter { RemoteNames.visible(it.name) }
             .sortedWith(compareByDescending<File> { it.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
+
+    /** Id folder "autosync" di root Google Drive. Dibuat otomatis jika belum ada. */
+    private suspend fun ensureAutosyncFolder(token: String): String {
+        val existing = drive.listChildren(token, "root").firstOrNull { it.name == AUTOSYNC_NAME && it.mimeType == DriveMimeTypes.FOLDER }
+        return existing?.id ?: drive.createFolder(token, "root", AUTOSYNC_NAME).id
     }
 
     private fun persistedTrees(): Set<Uri> =

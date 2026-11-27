@@ -120,12 +120,12 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    /** Auto sync dari satu folder perangkat ke root Google Drive akun [email]. */
+    /** Auto sync dari satu folder di /autosync ke folder autosync di root Google Drive akun [email]. */
     fun scheduleDeviceFolder(folder: File, email: String, hours: Int) {
         viewModelScope.launch {
             val message = try {
                 files.enableMirrorAuto(Location(Source.Drive(email)), listOf(PickedFolder(Uri.fromFile(folder), folder.name)), hours)
-                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${folder.name} ke Google Drive."
+                "Auto sync ${MirrorAutoSync.label(hours).lowercase()} aktif untuk ${folder.name} ke Google Drive/autosync."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
