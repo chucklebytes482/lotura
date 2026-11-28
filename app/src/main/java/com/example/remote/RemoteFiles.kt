@@ -52,6 +52,8 @@ internal data class RemoteEntry(
 
 internal data class DownloadResult(val file: File, val skipped: Int)
 
+internal data class DownloadBatch(val files: List<File>, val skipped: Int)
+
 internal enum class UploadMode { ADD, MIRROR }
 
 /** Auto sync berhenti karena folder perangkat tidak bisa dipakai lagi. Job dinonaktifkan. */
@@ -370,76 +372,188 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         }
     }
 
-    suspend fun delete(location: Location, item: RemoteEntry) {
-        check(location.writable && RemoteNames.visible(item.name))
+    /** Hapus satu atau lebih item. GitHub: satu commit. Drive: tiap item dipindah ke Sampah. */
+    suspend fun delete(location: Location, items: List<RemoteEntry>) {
+        check(location.writable && items.isNotEmpty() && items.all { RemoteNames.visible(it.name) })
         when (val source = location.source) {
             is Source.Drive -> {
                 val token = app.resolveDriveToken(source.email)
-                check(driveEntries(token, location.ref).any { it == item }) { changed }
-                drive.trashFile(token, item.ref)
+                val current = driveEntries(token, location.ref)
+                check(items.all { it in current }) { changed }
+                items.forEach { drive.trashFile(token, it.ref) }
             }
             is Source.Github -> with(git(source)) {
                 val snapshot = folder(location)
-                val entry = snapshot.entries.firstOrNull { it.remote(location.ref) == item } ?: error(changed)
-                val changes = mutableListOf(GithubTreeChange(item.ref, null, entry.mode, entry.type))
-                if (snapshot.entries.size == 1 && location.ref.isNotEmpty()) {
-                    val sha = github.createEmptyBlob(token, repo.owner, repo.name)
-                    changes += GithubTreeChange(childPath(location.ref, RemoteNames.EMPTY_FOLDER_MARKER), sha)
+                val entries = items.map { item -> item to (snapshot.entries.firstOrNull { it.remote(location.ref) == item } ?: error(changed)) }
+                val changes = entries.map { (item, entry) -> GithubTreeChange(item.ref, null, entry.mode, entry.type) }.toMutableList()
+                val removed = items.map { it.name }.toSet()
+                if (GithubMoves.needsKeep(location.ref, snapshot.entries.map { it.name }.filterNot { it in removed })) {
+                    changes += keepChange(location.ref)
                 }
-                commit(snapshot, changes, "Lotura: Hapus ${item.name}")
+                val message = if (items.size == 1) "Lotura: Hapus ${items[0].name}" else "Lotura: Hapus ${items.size} item"
+                commit(snapshot, changes, message)
             }
         }
     }
 
-    suspend fun download(location: Location, item: RemoteEntry): DownloadResult = withContext(Dispatchers.IO) {
-        check(item.downloadable && RemoteNames.visible(item.name))
+    /** Ganti nama satu item di GitHub dalam satu commit. Hanya GitHub. */
+    suspend fun rename(location: Location, item: RemoteEntry, newName: String) {
+        val source = location.source as? Source.Github ?: error("Ganti nama hanya untuk GitHub.")
+        check(location.writable && RemoteNames.visible(item.name) && newName != item.name && RemoteNames.validNewName(newName)) {
+            "Nama baru tidak valid atau tersembunyi."
+        }
+        with(git(source)) {
+            val snapshot = folder(location)
+            val entry = snapshot.entries.firstOrNull { it.remote(location.ref) == item } ?: error(changed)
+            requireAvailable(snapshot.entries.map { it.name }, listOf(newName))
+            val changes = listOf(
+                GithubTreeChange(item.ref, null, entry.mode, entry.type),
+                GithubTreeChange(childPath(location.ref, newName), entry.sha, entry.mode, entry.type)
+            )
+            commit(snapshot, changes, "Lotura: Ganti nama ${item.name} ke $newName")
+        }
+    }
+
+    /** Pindahkan item dalam repo yang sama ke folder [targetRef] (path dari root repo) dalam satu commit. Hanya GitHub. */
+    suspend fun move(location: Location, items: List<RemoteEntry>, targetRef: String) {
+        val source = location.source as? Source.Github ?: error("Pindah hanya untuk GitHub.")
+        check(location.writable && items.isNotEmpty() && items.all { RemoteNames.visible(it.name) })
+        GithubMoves.invalidTarget(items.map { it.ref }, location.ref, targetRef)?.let { error(it) }
+        with(git(source)) {
+            val snapshot = folder(location)
+            val root = checkNotNull(snapshot.root) { changed }
+            val entries = items.map { item -> item to (snapshot.entries.firstOrNull { it.remote(location.ref) == item } ?: error(changed)) }
+            requireAvailable(entriesAt(root, targetRef).map { it.name }, items.map { it.name })
+            val changes = mutableListOf<GithubTreeChange>()
+            for ((item, entry) in entries) {
+                changes += GithubTreeChange(item.ref, null, entry.mode, entry.type)
+                changes += GithubTreeChange(childPath(targetRef, item.name), entry.sha, entry.mode, entry.type)
+            }
+            val moved = items.map { it.name }.toSet()
+            if (GithubMoves.needsKeep(location.ref, snapshot.entries.map { it.name }.filterNot { it in moved })) {
+                changes += keepChange(location.ref)
+            }
+            commit(snapshot, changes, "Lotura: Pindah ${items.size} item")
+        }
+    }
+
+    /** Folder anak langsung di [location] untuk pemilih tujuan pindah. Semua folder tampil, tanpa filter berkas. Hanya GitHub. */
+    suspend fun listFolderNames(location: Location): List<RemoteEntry> {
+        val source = location.source as? Source.Github ?: error("Pemilih folder hanya untuk GitHub.")
+        return with(git(source)) {
+            folder(location).entries
+                .filter { it.type == "tree" && RemoteNames.visible(it.name) }
+                .map { it.remote(location.ref) }
+                .sortedBy { it.name.lowercase() }
+        }
+    }
+
+    /** Teks berkas .md dari GitHub. Revisi berkas = sha blob yang dibaca. */
+    suspend fun readMarkdown(location: Location, item: RemoteEntry): String {
+        val source = location.source as? Source.Github ?: error("Editor hanya untuk GitHub.")
+        check(item.kind == RemoteEntry.Kind.FILE && RemoteNames.markdown(item.name))
+        return with(git(source)) { github.getBlobText(token, repo.owner, repo.name, item.revision) }
+    }
+
+    /**
+     * Simpan teks .md dalam satu commit. Gagal bila berkas sudah berubah sejak [baseSha] dibaca.
+     * Mengembalikan sha blob baru, yang menjadi revisi berikutnya.
+     */
+    suspend fun saveMarkdown(location: Location, item: RemoteEntry, baseSha: String, text: String): String {
+        val source = location.source as? Source.Github ?: error("Editor hanya untuk GitHub.")
+        check(location.writable && item.kind == RemoteEntry.Kind.FILE && RemoteNames.markdown(item.name))
+        return with(git(source)) {
+            val snapshot = folder(location)
+            val entry = snapshot.entries.firstOrNull { it.name == item.name && it.type == "blob" } ?: error(changed)
+            check(entry.sha == baseSha) { changed }
+            val sha = github.createTextBlob(token, repo.owner, repo.name, text)
+            commit(snapshot, listOf(GithubTreeChange(item.ref, sha, entry.mode, entry.type)), "Lotura: Ubah ${item.name}")
+            sha
+        }
+    }
+
+    suspend fun download(location: Location, item: RemoteEntry): DownloadResult {
+        val batch = downloadMany(location, listOf(item))
+        return DownloadResult(batch.files.single(), batch.skipped)
+    }
+
+    /** Unduh beberapa item. Folder GitHub menjadi <nama>.zip, folder Drive tetap berupa folder. */
+    suspend fun downloadMany(location: Location, items: List<RemoteEntry>): DownloadBatch = withContext(Dispatchers.IO) {
+        check(items.isNotEmpty() && items.all { it.downloadable && RemoteNames.visible(it.name) })
+        val dest = downloadDir(location)
+        val files = mutableListOf<File>()
+        var skipped = 0
+        for (item in items) {
+            coroutineContext.ensureActive()
+            val stage = RemoteNames.safeChild(dest, ".lotura-${UUID.randomUUID()}")
+            check(stage.mkdir()) { "Tidak dapat membuat lokasi unduhan sementara." }
+            try {
+                val fetched = fetchInto(location, item, stage)
+                skipped += fetched.skipped
+                val produced = fetched.produced
+                val target = RemoteNames.unusedChild(dest, fetched.outName, folder = produced.isDirectory)
+                if (android.os.Build.VERSION.SDK_INT >= 26) {
+                    java.nio.file.Files.move(produced.toPath(), target.toPath())
+                } else {
+                    // Reserve the name first so a regular file can never overwrite an existing download.
+                    if (produced.isDirectory) check(target.mkdir()) else check(target.createNewFile())
+                    if (!produced.renameTo(target)) {
+                        target.delete()
+                        error("Tidak dapat menyimpan unduhan.")
+                    }
+                }
+                files += target
+            } finally {
+                stage.deleteRecursively()
+            }
+        }
+        DownloadBatch(files, skipped)
+    }
+
+    private fun downloadDir(location: Location): File {
         val base = Environment.getExternalStorageDirectory()
         val dirs = when (val source = location.source) {
             is Source.Drive -> listOf("google drive", source.email)
             is Source.Github -> listOf("github", source.repo.owner, source.repo.name)
         }
-        val dest = dirs.fold(base) { parent, name ->
+        return dirs.fold(base) { parent, name ->
             // Account and repo labels are grouping only, not untrusted path components.
             val child = RemoteNames.safeChild(parent, RemoteNames.localName(name.trimStart('.').ifBlank { "_" }))
             check(child.isDirectory || child.mkdir()) { "Tidak dapat membuat ${child.absolutePath}." }
             child
         }
-        val stage = RemoteNames.safeChild(dest, ".lotura-${UUID.randomUUID()}")
-        check(stage.mkdir()) { "Tidak dapat membuat lokasi unduhan sementara." }
-        try {
-            val payload = File(stage, "payload")
-            val skipped = when (val source = location.source) {
-                is Source.Drive -> {
-                    val token = app.resolveDriveToken(source.email)
-                    check(driveEntries(token, location.ref).any { it == item }) { changed }
-                    copyTree(item, payload, { driveEntries(token, it.ref) }) { entry, file ->
-                        val export = DriveMimeTypes.exportSpecFor(entry.mime)
-                        if (export == null) drive.downloadFile(token, entry.ref, file)
-                        else drive.exportGoogleWorkspaceFile(token, entry.ref, export.exportMimeType, file)
-                    }
+    }
+
+    private suspend fun fetchInto(location: Location, item: RemoteEntry, stage: File): Fetched {
+        val payload = File(stage, "payload")
+        return when (val source = location.source) {
+            is Source.Drive -> {
+                val token = app.resolveDriveToken(source.email)
+                check(driveEntries(token, location.ref).any { it == item }) { changed }
+                val skipped = copyTree(item, payload, { driveEntries(token, it.ref) }) { entry, file ->
+                    val export = DriveMimeTypes.exportSpecFor(entry.mime)
+                    if (export == null) drive.downloadFile(token, entry.ref, file)
+                    else drive.exportGoogleWorkspaceFile(token, entry.ref, export.exportMimeType, file)
                 }
-                is Source.Github -> with(git(source)) {
-                    copyTree(item, payload, { parent -> tree(parent.revision).map { it.remote(parent.ref) } }) { entry, file ->
-                        github.downloadBlobToFile(token, repo.owner, repo.name, entry.revision, file)
-                    }
+                Fetched(payload, skipped, downloadName(item))
+            }
+            is Source.Github -> with(git(source)) {
+                val skipped = copyTree(item, payload, { parent -> tree(parent.revision).map { it.remote(parent.ref) } }) { entry, file ->
+                    github.downloadBlobToFile(token, repo.owner, repo.name, entry.revision, file)
+                }
+                if (!item.isFolder) {
+                    Fetched(payload, skipped, downloadName(item))
+                } else {
+                    val archive = File(stage, "archive.zip")
+                    RemoteZip.zipDirectory(payload, RemoteNames.localName(item.name), archive)
+                    payload.deleteRecursively()
+                    Fetched(archive, skipped, "${item.name}.zip")
                 }
             }
-            val target = RemoteNames.unusedChild(dest, downloadName(item), item.isFolder)
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                java.nio.file.Files.move(payload.toPath(), target.toPath())
-            } else {
-                // Reserve the name first so a regular file can never overwrite an existing download.
-                if (item.isFolder) check(target.mkdir()) else check(target.createNewFile())
-                if (!payload.renameTo(target)) {
-                    target.delete()
-                    error("Tidak dapat menyimpan unduhan.")
-                }
-            }
-            DownloadResult(target, skipped)
-        } finally {
-            stage.deleteRecursively()
         }
     }
+
+    private data class Fetched(val produced: File, val skipped: Int, val outName: String)
 
     private suspend fun copyTree(
         entry: RemoteEntry,
@@ -510,6 +624,23 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                 .map { it.name.substringBefore('/') }
                 .toSet()
         }
+        /** Isi folder di [path] (dari root pohon [root]). Galat bila jalur tidak ada. */
+        suspend fun entriesAt(root: String, path: String): List<GithubTreeEntry> {
+            var current = tree(root)
+            if (path.isEmpty()) return current
+            for (segment in path.split('/')) {
+                val next = current.firstOrNull { it.name == segment && it.type == "tree" } ?: error(changed)
+                current = tree(next.sha)
+            }
+            return current
+        }
+
+        /** Perubahan yang menjaga [folder] tetap ada dengan .gitkeep. */
+        suspend fun keepChange(folder: String) = GithubTreeChange(
+            childPath(folder, RemoteNames.EMPTY_FOLDER_MARKER),
+            github.createEmptyBlob(token, repo.owner, repo.name)
+        )
+
         suspend fun commit(snapshot: GitFolder, changes: List<GithubTreeChange>, message: String) =
             github.createAtomicCommit(token, repo.owner, repo.name, repo.defaultBranch,
                 checkNotNull(snapshot.head), checkNotNull(snapshot.root), changes, message)

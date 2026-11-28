@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +37,7 @@ import com.example.data.db.DriveAccountEntity
 import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.MirrorJobEntity
+import com.example.remote.GithubMoves
 import com.example.remote.Location
 import com.example.remote.PickedFolder
 import com.example.remote.MirrorAutoSync
@@ -47,6 +50,7 @@ import com.example.ui.DeviceTarget
 import android.os.Environment
 import java.io.File
 import com.example.ui.BrowserState
+import com.example.ui.MovePicker
 import com.example.ui.RemoteViewModel
 import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.BrandIcons
@@ -69,6 +73,11 @@ internal fun HomeScreen(
     val pager = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
     val location = state.location
+    val editor = state.editor
+    if (location != null && editor != null) {
+        MarkdownEditorScreen(modifier, editor, viewModel)
+        return
+    }
     if (location != null) {
         BackHandler { viewModel.back() }
         BrowserScreen(modifier, state, location, viewModel, onUploadFiles, onUploadFolders, onDownload)
@@ -236,6 +245,7 @@ private fun PatDialog(state: BrowserState, onDismiss: () -> Unit, onAdd: (String
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BrowserScreen(
     modifier: Modifier, state: BrowserState, location: Location, viewModel: RemoteViewModel,
@@ -248,35 +258,54 @@ private fun BrowserScreen(
     var create by remember(location) { mutableStateOf(false) }
     var folderName by remember(location) { mutableStateOf("") }
     var delete by remember(location) { mutableStateOf<RemoteEntry?>(null) }
+    var bulkDelete by remember(location) { mutableStateOf(false) }
+    var rename by remember(location) { mutableStateOf(false) }
+    var renameText by remember(location) { mutableStateOf("") }
+    val isGithub = location.source is Source.Github
     val canEdit = location.writable && state.ready && !state.busy
     val listed = state.entries.filter { it.name.contains(search, ignoreCase = true) }
+    val selected = state.entries.filter { it.ref in state.selection }
+    val selecting = selected.isNotEmpty()
+
+    BackHandler(enabled = selecting) { viewModel.clearSelection() }
+
     Column(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = viewModel::back, enabled = !state.busy) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
-            }
-            Text(location.title, style = MaterialTheme.typography.titleLarge, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconButton(onClick = viewModel::goHome, enabled = !state.busy, modifier = Modifier.testTag("home_button")) {
-                Icon(Icons.Default.Home, "Kembali ke daftar akun")
-            }
-            if (location.writable) {
-                IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
-                    Icon(Icons.Default.CreateNewFolder, "Buat folder baru")
+        if (selecting) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = viewModel::clearSelection) {
+                    Icon(Icons.Default.Close, "Batal pilih")
                 }
-                Box {
-                    IconButton(onClick = { uploadMenu = true }, enabled = canEdit, modifier = Modifier.testTag("upload_menu")) {
-                        Icon(Icons.Default.Upload, "Unggah")
+                Text("${selected.size} dipilih", style = MaterialTheme.typography.titleLarge, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("selection_count"))
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = viewModel::back, enabled = !state.busy) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali")
+                }
+                Text(location.title, style = MaterialTheme.typography.titleLarge, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconButton(onClick = viewModel::goHome, enabled = !state.busy, modifier = Modifier.testTag("home_button")) {
+                    Icon(Icons.Default.Home, "Kembali ke daftar akun")
+                }
+                if (location.writable) {
+                    IconButton(onClick = { folderName = ""; create = true }, enabled = canEdit, modifier = Modifier.testTag("new_folder")) {
+                        Icon(Icons.Default.CreateNewFolder, "Buat folder baru")
                     }
-                    DropdownMenu(expanded = uploadMenu, onDismissRequest = { uploadMenu = false }) {
-                        DropdownMenuItem(text = { Text("Unggah file") }, onClick = {
-                            uploadMenu = false
-                            onUploadFiles()
-                        }, modifier = Modifier.testTag("upload_files"))
-                        DropdownMenuItem(text = { Text("Unggah folder") }, onClick = {
-                            uploadMenu = false
-                            onUploadFolders()
-                        }, modifier = Modifier.testTag("upload_folders"))
+                    Box {
+                        IconButton(onClick = { uploadMenu = true }, enabled = canEdit, modifier = Modifier.testTag("upload_menu")) {
+                            Icon(Icons.Default.Upload, "Unggah")
+                        }
+                        DropdownMenu(expanded = uploadMenu, onDismissRequest = { uploadMenu = false }) {
+                            DropdownMenuItem(text = { Text("Unggah file") }, onClick = {
+                                uploadMenu = false
+                                onUploadFiles()
+                            }, modifier = Modifier.testTag("upload_files"))
+                            DropdownMenuItem(text = { Text("Unggah folder") }, onClick = {
+                                uploadMenu = false
+                                onUploadFolders()
+                            }, modifier = Modifier.testTag("upload_folders"))
+                        }
                     }
                 }
             }
@@ -287,7 +316,7 @@ private fun BrowserScreen(
                 modifier = Modifier.weight(1f).padding(vertical = 4.dp))
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().testTag("remote_progress"))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.entries.isNotEmpty()) item { CompactSearchBar(search, "Cari di folder ini", { search = it }) }
             if (state.error != null) item { Text(state.error, color = MaterialTheme.colorScheme.error) }
@@ -295,11 +324,28 @@ private fun BrowserScreen(
                 Text(if (search.isBlank()) "Folder ini kosong." else "Tidak ada hasil.")
             }
             items(listed, key = { it.ref }) { entry ->
-                OutlinedCard {
+                val chosen = entry.ref in state.selection
+                val rowModifier = when {
+                    isGithub -> Modifier.combinedClickable(
+                        enabled = state.ready && !state.busy,
+                        onLongClickLabel = "Pilih item",
+                        onLongClick = { viewModel.toggleSelection(entry) },
+                        onClick = {
+                            when {
+                                selecting -> viewModel.toggleSelection(entry)
+                                entry.isFolder -> viewModel.openFolder(entry)
+                                else -> viewModel.openMarkdown(entry)
+                            }
+                        })
+                    entry.isFolder -> Modifier.clickable(enabled = !state.busy) { viewModel.openFolder(entry) }
+                    else -> Modifier
+                }
+                OutlinedCard(colors = CardDefaults.outlinedCardColors(
+                    containerColor = if (chosen) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f).heightIn(min = 48.dp)
-                            .then(if (entry.isFolder) Modifier.clickable(enabled = !state.busy) { viewModel.openFolder(entry) } else Modifier)
+                            .then(rowModifier)
                             .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             val (icon, label) = when (entry.kind) {
@@ -311,12 +357,37 @@ private fun BrowserScreen(
                             Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
                             Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        if (entry.downloadable) IconButton(onClick = { onDownload(entry) }, enabled = !state.busy) {
-                            Icon(Icons.Default.Download, "Unduh ${entry.name}")
+                        if (!isGithub) {
+                            if (entry.downloadable) IconButton(onClick = { onDownload(entry) }, enabled = !state.busy) {
+                                Icon(Icons.Default.Download, "Unduh ${entry.name}")
+                            }
+                            if (location.writable) IconButton(onClick = { delete = entry }, enabled = canEdit) {
+                                Icon(Icons.Default.DeleteOutline, "Hapus ${entry.name}", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
-                        if (location.writable) IconButton(onClick = { delete = entry }, enabled = canEdit) {
-                            Icon(Icons.Default.DeleteOutline, "Hapus ${entry.name}", tint = MaterialTheme.colorScheme.error)
-                        }
+                    }
+                }
+            }
+        }
+        if (selecting) {
+            Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().testTag("selection_bar")) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    if (selected.size == 1) IconButton(
+                        onClick = { renameText = selected.first().name; rename = true },
+                        enabled = canEdit, modifier = Modifier.testTag("rename_selected")
+                    ) { Icon(Icons.Default.Edit, "Ganti nama") }
+                    IconButton(onClick = viewModel::openMovePicker, enabled = canEdit,
+                        modifier = Modifier.testTag("move_selected")) {
+                        Icon(Icons.Default.DriveFileMove, "Pindah item terpilih")
+                    }
+                    IconButton(onClick = viewModel::downloadSelected, enabled = !state.busy,
+                        modifier = Modifier.testTag("download_selected")) {
+                        Icon(Icons.Default.Download, "Unduh item terpilih")
+                    }
+                    IconButton(onClick = { bulkDelete = true }, enabled = canEdit,
+                        modifier = Modifier.testTag("delete_selected")) {
+                        Icon(Icons.Default.DeleteOutline, "Hapus item terpilih", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -333,6 +404,32 @@ private fun BrowserScreen(
             confirmButton = { TextButton(enabled = valid, onClick = { create = false; viewModel.createFolder(folderName.trim()) }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { create = false }) { Text("Batal") } })
     }
+    if (rename && selected.size == 1) {
+        val valid = RemoteNames.validNewName(renameText.trim())
+        val current = selected.first().name
+        AlertDialog(onDismissRequest = { rename = false }, title = { Text("Ganti nama") },
+            text = {
+                OutlinedTextField(renameText, { renameText = it }, label = { Text("Nama baru") }, singleLine = true,
+                    isError = renameText.isNotEmpty() && !valid, modifier = Modifier.testTag("rename_name"))
+            },
+            confirmButton = {
+                TextButton(enabled = valid && renameText.trim() != current, onClick = {
+                    rename = false
+                    viewModel.renameSelected(renameText)
+                }) { Text("Ganti") }
+            },
+            dismissButton = { TextButton(onClick = { rename = false }) { Text("Batal") } })
+    }
+    if (bulkDelete && selecting) {
+        val contents = if (selected.any { it.isFolder }) " Isi folder ikut terhapus." else ""
+        AlertDialog(onDismissRequest = { bulkDelete = false }, title = { Text("Hapus ${selected.size} item?") },
+            text = { Text("${selected.size} item akan dihapus dari cabang GitHub ini dalam satu commit.$contents") },
+            confirmButton = { TextButton(onClick = { bulkDelete = false; viewModel.deleteSelected() }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { bulkDelete = false }) { Text("Batal") } })
+    }
+    state.movePicker?.let { picker ->
+        MovePickerDialog(picker, location, selected.map { it.ref }, viewModel)
+    }
     delete?.let { entry ->
         val place = if (location.source is Source.Drive) "dipindahkan ke Sampah Google Drive" else "dihapus dari cabang GitHub ini lewat commit"
         val contents = if (entry.isFolder) " Seluruh isi folder ikut terhapus, termasuk item tersembunyi." else ""
@@ -341,6 +438,40 @@ private fun BrowserScreen(
             confirmButton = { TextButton(onClick = { delete = null; viewModel.delete(entry) }) { Text("Hapus", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { delete = null }) { Text("Batal") } })
     }
+}
+
+/** Pemilih folder tujuan pindah di repo GitHub yang sama. Root repo boleh dipilih. */
+@Composable
+private fun MovePickerDialog(picker: MovePicker, location: Location, selectedRefs: List<String>, viewModel: RemoteViewModel) {
+    val target = picker.path
+    val moveError = if (picker.ready) GithubMoves.invalidTarget(selectedRefs, location.ref, target.ref) else null
+    val path = (listOf(location.source.title) + target.folders.map { it.name }).joinToString(" / ")
+    AlertDialog(onDismissRequest = viewModel::closeMovePicker, title = { Text("Pindah ke folder") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(path, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (target.folders.isNotEmpty()) TextButton(onClick = viewModel::movePickerUp, enabled = picker.ready,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("move_up")) { Text("Naik satu tingkat") }
+                if (!picker.ready) LinearProgressIndicator(Modifier.fillMaxWidth())
+                picker.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                moveError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                picker.folders.forEach { folder ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable(enabled = picker.ready) { viewModel.movePickerEnter(folder) }
+                        .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (picker.ready && picker.folders.isEmpty()) Text("Tidak ada subfolder di sini.")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = viewModel::movePickerConfirm, enabled = picker.ready && moveError == null,
+                modifier = Modifier.testTag("move_confirm")) { Text("Pindah ke sini") }
+        },
+        dismissButton = { TextButton(onClick = viewModel::closeMovePicker) { Text("Batal") } })
 }
 
 /** Daftar folder autosync di Google Drive. Hanya folder, tanpa penjelajahan file maupun masuk ke subfolder. */

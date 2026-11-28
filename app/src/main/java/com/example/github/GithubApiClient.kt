@@ -31,6 +31,7 @@ class GithubApiClient(
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
         private const val MAX_REPO_PAGES = 20
         const val MAX_GITHUB_FILE_BYTES = 45L * 1024L * 1024L // Safe limit below 50 MB warning / 100 MB hard cap
+        const val MAX_EDITABLE_TEXT_BYTES = 1024L * 1024L // Editor Markdown hanya untuk berkas teks kecil
     }
 
     suspend fun getAuthenticatedUser(pat: String): GithubUserInfo =
@@ -135,6 +136,32 @@ class GithubApiClient(
                 body.byteStream().use { input -> destFile.outputStream().use { input.copyTo(it) } }
             }
             Unit
+        }
+
+    /** Isi teks blob [blobSha]. Galat bila lebih dari [MAX_EDITABLE_TEXT_BYTES]. */
+    suspend fun getBlobText(pat: String, owner: String, repo: String, blobSha: String): String =
+        withContext(Dispatchers.IO) {
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs/$blobSha")
+                .header("Accept", "application/vnd.github.raw+json")
+                .build()
+            httpClient.newCall(req).execute().use { response ->
+                check(response.isSuccessful) { "Gagal baca GitHub (${response.code})." }
+                val body = checkNotNull(response.body) { "Respons GitHub kosong." }
+                body.byteStream().use { input ->
+                    val bytes = input.readNBytes((MAX_EDITABLE_TEXT_BYTES + 1).toInt())
+                    check(bytes.size <= MAX_EDITABLE_TEXT_BYTES) { "Berkas terlalu besar untuk diedit di aplikasi." }
+                    String(bytes, Charsets.UTF_8)
+                }
+            }
+        }
+
+    suspend fun createTextBlob(pat: String, owner: String, repo: String, content: String): String =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("content", content).put("encoding", "utf-8").toString()
+            val req = baseRequest(pat, "$BASE_URL/repos/$owner/$repo/git/blobs")
+                .post(payload.toRequestBody(JSON_MEDIA))
+                .build()
+            JSONObject(executeString(req)).getString("sha")
         }
 
     suspend fun createEmptyBlob(pat: String, owner: String, repo: String): String = withContext(Dispatchers.IO) {

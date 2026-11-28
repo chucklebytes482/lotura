@@ -13,6 +13,8 @@ import com.example.data.db.GithubAccountEntity
 import com.example.data.db.GithubRepoEntity
 import com.example.data.db.MirrorJobEntity
 import com.example.remote.Folder
+import com.example.remote.GithubMoves
+import com.example.remote.RemoteNames
 import com.example.remote.deviceRoot
 import com.example.remote.Location
 import com.example.remote.MirrorAutoSync
@@ -65,7 +67,33 @@ internal data class BrowserState(
     val folderUpload: FolderUploadQueue? = null,
     val snackbarMessage: String? = null,
     val isOnline: Boolean = true,
-    val device: DeviceBrowse? = null
+    val device: DeviceBrowse? = null,
+    /** Kunci [RemoteEntry.ref] item yang dipilih. Hanya dipakai di GitHub. */
+    val selection: Set<String> = emptySet(),
+    val editor: MarkdownEditor? = null,
+    val movePicker: MovePicker? = null
+)
+
+/** Editor .md GitHub. [original] null selama memuat. [item].revision adalah sha blob dasar untuk simpan. */
+internal data class MarkdownEditor(
+    val location: Location,
+    val item: RemoteEntry,
+    val original: String? = null,
+    val draft: String = "",
+    val editing: Boolean = false,
+    val saving: Boolean = false,
+    val error: String? = null
+) {
+    val loaded get() = original != null
+    val dirty get() = loaded && draft != original
+}
+
+/** Pemilih folder tujuan pindah di dalam repo yang sama. [path].ref kosong berarti root repo. */
+internal data class MovePicker(
+    val path: Location,
+    val folders: List<RemoteEntry> = emptyList(),
+    val ready: Boolean = false,
+    val error: String? = null
 )
 
 internal class RemoteViewModel(application: Application) : AndroidViewModel(application) {
@@ -148,7 +176,7 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
 
     private fun navigate(location: Location?) {
         if (_uiState.value.busy || pickerTarget != null) return
-        _uiState.update { it.copy(location = location, entries = emptyList(), ready = false, error = null) }
+        _uiState.update { it.copy(location = location, entries = emptyList(), ready = false, error = null, selection = emptySet(), editor = null, movePicker = null) }
         if (location != null) runBusy(location, refresh = true) { null }
     }
 
@@ -264,8 +292,14 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         "Folder $name dibuat di remote."
     }
 
-    fun delete(item: RemoteEntry) = action(refresh = true, item = item) { location ->
-        files.delete(location, item)
+    /** Hapus satu item (Drive atau GitHub). */
+    fun delete(item: RemoteEntry) = deleteItems(listOf(item))
+
+    fun deleteSelected() = deleteItems(selectedItems())
+
+    private fun deleteItems(items: List<RemoteEntry>) = runOn(items, refresh = true) { location ->
+        files.delete(location, items)
+        clearSelection()
         if (location.source is Source.Drive) "Dipindahkan ke Sampah Drive." else "Dihapus dari cabang GitHub."
     }
 
@@ -273,6 +307,188 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
         val result = files.download(location, item)
         "Disimpan: ${result.file.absolutePath}" +
             if (result.skipped > 0) " • ${result.skipped} item tidak mendukung unduhan." else ""
+    }
+
+    fun downloadSelected() {
+        val items = selectedItems()
+        runOn(items, refresh = false) { location ->
+            val batch = files.downloadMany(location, items)
+            clearSelection()
+            val dir = batch.files.firstOrNull()?.parentFile?.absolutePath.orEmpty()
+            if (batch.files.isEmpty()) "Tidak ada item yang bisa diunduh."
+            else "Disimpan ${batch.files.size} item ke $dir" +
+                if (batch.skipped > 0) " • ${batch.skipped} item tidak mendukung unduhan." else "."
+        }
+    }
+
+    fun renameSelected(newName: String) {
+        val item = selectedItems().singleOrNull() ?: return
+        val name = newName.trim()
+        runOn(listOf(item), refresh = true) { location ->
+            files.rename(location, item, name)
+            clearSelection()
+            "Diganti menjadi $name."
+        }
+    }
+
+    // ---------- Pilihan banyak (hanya GitHub) ----------
+
+    fun toggleSelection(item: RemoteEntry) {
+        val state = _uiState.value
+        if (state.location?.source !is Source.Github || !state.ready || state.busy || item !in state.entries) return
+        _uiState.update { s -> s.copy(selection = if (item.ref in s.selection) s.selection - item.ref else s.selection + item.ref) }
+    }
+
+    fun clearSelection() = _uiState.update { it.copy(selection = emptySet()) }
+
+    private fun selectedItems(): List<RemoteEntry> = _uiState.value.let { s -> s.entries.filter { it.ref in s.selection } }
+
+    // ---------- Pindah ke folder lain di repo yang sama ----------
+
+    fun openMovePicker() {
+        val state = _uiState.value
+        val location = state.location ?: return
+        if (location.source !is Source.Github || !location.writable || !state.ready || state.busy || state.selection.isEmpty()) return
+        val root = Location(location.source)
+        _uiState.update { it.copy(movePicker = MovePicker(root)) }
+        loadPicker(root)
+    }
+
+    fun movePickerEnter(folder: RemoteEntry) {
+        val picker = _uiState.value.movePicker?.takeIf { it.ready && folder in it.folders } ?: return
+        val next = picker.path.open(folder)
+        _uiState.update { it.copy(movePicker = MovePicker(next)) }
+        loadPicker(next)
+    }
+
+    fun movePickerUp() {
+        val picker = _uiState.value.movePicker?.takeIf { it.ready && it.path.folders.isNotEmpty() } ?: return
+        val next = picker.path.copy(folders = picker.path.folders.dropLast(1))
+        _uiState.update { it.copy(movePicker = MovePicker(next)) }
+        loadPicker(next)
+    }
+
+    fun movePickerConfirm() {
+        val state = _uiState.value
+        val location = state.location ?: return
+        val picker = state.movePicker?.takeIf { it.ready } ?: return
+        val items = selectedItems()
+        GithubMoves.invalidTarget(items.map { it.ref }, location.ref, picker.path.ref)?.let { message ->
+            _uiState.update { it.copy(movePicker = picker.copy(error = message)) }
+            return
+        }
+        val started = runOn(items, refresh = true) { loc ->
+            files.move(loc, items, picker.path.ref)
+            clearSelection()
+            "Dipindah ${items.size} item ke ${picker.path.title}."
+        }
+        if (started) _uiState.update { it.copy(movePicker = null) }
+    }
+
+    fun closeMovePicker() = _uiState.update { it.copy(movePicker = null) }
+
+    private fun loadPicker(path: Location) {
+        viewModelScope.launch {
+            try {
+                val folders = files.listFolderNames(path)
+                _uiState.update { s ->
+                    s.movePicker?.takeIf { it.path == path }?.let { s.copy(movePicker = it.copy(folders = folders, ready = true, error = null)) } ?: s
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { s ->
+                    s.movePicker?.takeIf { it.path == path }?.let {
+                        s.copy(movePicker = it.copy(ready = true, error = e.message ?: "Folder tidak bisa dimuat."))
+                    } ?: s
+                }
+            }
+        }
+    }
+
+    // ---------- Editor Markdown (hanya GitHub) ----------
+
+    fun openMarkdown(item: RemoteEntry) {
+        val state = _uiState.value
+        val location = state.location ?: return
+        if (location.source !is Source.Github || !state.ready || state.busy || pickerTarget != null || state.editor != null) return
+        if (item.kind != RemoteEntry.Kind.FILE || !RemoteNames.markdown(item.name) || item !in state.entries) return
+        _uiState.update { it.copy(editor = MarkdownEditor(location, item)) }
+        viewModelScope.launch {
+            try {
+                val text = files.readMarkdown(location, item)
+                _uiState.update { s ->
+                    s.editor?.takeIf { it.item.ref == item.ref }?.let { s.copy(editor = it.copy(original = text, draft = text)) } ?: s
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { s ->
+                    s.editor?.takeIf { it.item.ref == item.ref }?.let {
+                        s.copy(editor = it.copy(error = e.message ?: "Berkas tidak bisa dibaca."))
+                    } ?: s
+                }
+            }
+        }
+    }
+
+    fun startMarkdownEdit() = _uiState.update { s ->
+        s.editor?.takeIf { it.loaded && !it.saving }?.let { s.copy(editor = it.copy(editing = true, error = null)) } ?: s
+    }
+
+    fun updateMarkdownDraft(text: String) = _uiState.update { s ->
+        s.editor?.takeIf { it.editing && !it.saving }?.let { s.copy(editor = it.copy(draft = text)) } ?: s
+    }
+
+    /** Tombol "Selesai": bila ada perubahan, satu commit dibuat. Tanpa perubahan hanya kembali ke mode baca. */
+    fun finishMarkdownEdit() {
+        val editor = _uiState.value.editor ?: return
+        if (!editor.editing || editor.saving || !editor.loaded || _uiState.value.busy) return
+        if (!editor.dirty) {
+            _uiState.update { it.copy(editor = editor.copy(editing = false, error = null)) }
+            return
+        }
+        val text = editor.draft
+        _uiState.update { it.copy(editor = editor.copy(saving = true, error = null)) }
+        viewModelScope.launch {
+            try {
+                val sha = files.saveMarkdown(editor.location, editor.item, editor.item.revision, text)
+                val saved = editor.item.copy(revision = sha)
+                _uiState.update { s ->
+                    s.copy(
+                        entries = s.entries.map { if (it.ref == saved.ref) saved else it },
+                        editor = s.editor?.takeIf { it.item.ref == saved.ref }
+                            ?.copy(item = saved, original = text, editing = false, saving = false) ?: s.editor,
+                        snackbarMessage = "Tersimpan ke GitHub: ${saved.name}"
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { s ->
+                    s.copy(editor = s.editor?.takeIf { it.item.ref == editor.item.ref }
+                        ?.copy(saving = false, error = e.message ?: "Gagal menyimpan ke GitHub.") ?: s.editor)
+                }
+            }
+        }
+    }
+
+    /** Tombol "Batal" atau kembali saat mode edit: draft dikembalikan ke isi terakhir yang tersimpan. */
+    fun discardMarkdownEdit() = _uiState.update { s ->
+        s.editor?.takeIf { !it.saving }?.let { s.copy(editor = it.copy(draft = it.original.orEmpty(), editing = false, error = null)) } ?: s
+    }
+
+    fun closeMarkdown() {
+        if (_uiState.value.editor?.saving == true) return
+        _uiState.update { it.copy(editor = null) }
+    }
+
+    private fun runOn(items: List<RemoteEntry>, refresh: Boolean, block: suspend (Location) -> String?): Boolean {
+        val state = _uiState.value
+        val location = state.location ?: return false
+        if (!state.ready || state.busy || pickerTarget != null || items.isEmpty() || items.any { it !in state.entries }) return false
+        runBusy(location, refresh) { block(location) }
+        return true
     }
 
     private fun action(refresh: Boolean, item: RemoteEntry? = null, block: suspend (Location) -> String) {

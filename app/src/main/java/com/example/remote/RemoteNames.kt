@@ -8,6 +8,8 @@ internal object RemoteNames {
 
     fun visible(name: String): Boolean = name.isNotBlank() && !name.trimStart().startsWith('.')
 
+    fun markdown(name: String): Boolean = name.endsWith(".md", ignoreCase = true)
+
     fun validNewName(name: String): Boolean =
         visible(name) && name.none { it == '/' || it == '\\' || it.isISOControl() } &&
             name.toByteArray(Charsets.UTF_8).size <= 255
