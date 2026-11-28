@@ -16,6 +16,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import java.util.zip.ZipFile
 import kotlin.coroutines.coroutineContext
 
 /** Nama folder yang dipakai bersama: di perangkat (/storage/emulated/0/autosync) dan di root Google Drive. */
@@ -50,9 +51,8 @@ internal data class RemoteEntry(
     val downloadable get() = kind == Kind.FILE || isFolder
 }
 
-internal data class DownloadResult(val file: File, val skipped: Int)
 
-internal data class DownloadBatch(val files: List<File>, val skipped: Int)
+internal data class DownloadBatch(val files: List<File>, val skipped: Int, val unchanged: Int = 0)
 
 internal enum class UploadMode { ADD, MIRROR }
 
@@ -472,26 +472,40 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
         }
     }
 
-    suspend fun download(location: Location, item: RemoteEntry): DownloadResult {
-        val batch = downloadMany(location, listOf(item))
-        return DownloadResult(batch.files.single(), batch.skipped)
-    }
-
-    /** Unduh beberapa item. Folder GitHub menjadi <nama>.zip, folder Drive tetap berupa folder. */
+    /**
+     * Unduh beberapa item. Folder GitHub menjadi <repo>_<nama>.zip, folder Drive tetap berupa folder.
+     * GitHub memakai satu folder datar <lokal>/github/. Item yang isinya sama dengan GitHub dilewati
+     * tanpa unduh ulang: berkas dicek lewat SHA blob, folder lewat komentar zip yang berisi SHA tree.
+     * Item yang berbeda menimpa berkas lokal.
+     */
     suspend fun downloadMany(location: Location, items: List<RemoteEntry>): DownloadBatch = withContext(Dispatchers.IO) {
         check(items.isNotEmpty() && items.all { it.downloadable && RemoteNames.visible(it.name) })
         val dest = downloadDir(location)
+        val github = location.source as? Source.Github
         val files = mutableListOf<File>()
         var skipped = 0
+        var unchanged = 0
         for (item in items) {
             coroutineContext.ensureActive()
+            val fixed = github?.let {
+                File(dest, RemoteNames.localName("${RemoteNames.localName(it.repo.name)}_${item.name}" + if (item.isFolder) ".zip" else ""))
+            }
+            if (fixed != null && isUnchanged(fixed, item)) {
+                unchanged++
+                continue
+            }
             val stage = RemoteNames.safeChild(dest, ".lotura-${UUID.randomUUID()}")
             check(stage.mkdir()) { "Tidak dapat membuat lokasi unduhan sementara." }
             try {
                 val fetched = fetchInto(location, item, stage)
                 skipped += fetched.skipped
                 val produced = fetched.produced
-                val target = RemoteNames.unusedChild(dest, fetched.outName, folder = produced.isDirectory)
+                val target = if (fixed != null) {
+                    fixed.takeIf { !it.isDirectory }?.also { if (it.exists()) check(it.delete()) { "Tidak dapat mengganti ${it.name}." } }
+                        ?: error("Nama ${fixed.name} dipakai folder.")
+                } else {
+                    RemoteNames.unusedChild(dest, fetched.outName, folder = produced.isDirectory)
+                }
                 if (android.os.Build.VERSION.SDK_INT >= 26) {
                     java.nio.file.Files.move(produced.toPath(), target.toPath())
                 } else {
@@ -507,17 +521,26 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                 stage.deleteRecursively()
             }
         }
-        DownloadBatch(files, skipped)
+        DownloadBatch(files, skipped, unchanged)
+    }
+
+    /** Sama bila berkas lokal sudah berisi versi GitHub yang sama. Tidak ada jaringan yang dipakai. */
+    private fun isUnchanged(target: File, item: RemoteEntry): Boolean {
+        if (!target.isFile) return false
+        return runCatching {
+            if (item.isFolder) ZipFile(target).use { it.comment == item.revision }
+            else GitBlobHash.of(target) == item.revision
+        }.getOrDefault(false)
     }
 
     private fun downloadDir(location: Location): File {
         val base = Environment.getExternalStorageDirectory()
         val dirs = when (val source = location.source) {
             is Source.Drive -> listOf("google drive", source.email)
-            is Source.Github -> listOf("github", source.repo.owner, source.repo.name)
+            is Source.Github -> listOf("github")
         }
         return dirs.fold(base) { parent, name ->
-            // Account and repo labels are grouping only, not untrusted path components.
+            // Account label is grouping only, not an untrusted path component.
             val child = RemoteNames.safeChild(parent, RemoteNames.localName(name.trimStart('.').ifBlank { "_" }))
             check(child.isDirectory || child.mkdir()) { "Tidak dapat membuat ${child.absolutePath}." }
             child
@@ -545,7 +568,7 @@ internal class RemoteFiles(private val app: SyncBebasApp) {
                     Fetched(payload, skipped, downloadName(item))
                 } else {
                     val archive = File(stage, "archive.zip")
-                    RemoteZip.zipDirectory(payload, RemoteNames.localName(item.name), archive)
+                    RemoteZip.zipDirectory(payload, RemoteNames.localName(item.name), archive, comment = item.revision)
                     payload.deleteRecursively()
                     Fetched(archive, skipped, "${item.name}.zip")
                 }

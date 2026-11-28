@@ -304,21 +304,30 @@ internal class RemoteViewModel(application: Application) : AndroidViewModel(appl
     }
 
     fun download(item: RemoteEntry) = action(refresh = false, item = item) { location ->
-        val result = files.download(location, item)
-        "Disimpan: ${result.file.absolutePath}" +
-            if (result.skipped > 0) " • ${result.skipped} item tidak mendukung unduhan." else ""
+        summarizeDownload(location, listOf(item))
     }
 
     fun downloadSelected() {
         val items = selectedItems()
         runOn(items, refresh = false) { location ->
-            val batch = files.downloadMany(location, items)
+            val message = summarizeDownload(location, items)
             clearSelection()
-            val dir = batch.files.firstOrNull()?.parentFile?.absolutePath.orEmpty()
-            if (batch.files.isEmpty()) "Tidak ada item yang bisa diunduh."
-            else "Disimpan ${batch.files.size} item ke $dir" +
-                if (batch.skipped > 0) " • ${batch.skipped} item tidak mendukung unduhan." else "."
+            message
         }
+    }
+
+    private suspend fun summarizeDownload(location: Location, items: List<RemoteEntry>): String {
+        val batch = files.downloadMany(location, items)
+        val dir = batch.files.firstOrNull()?.parentFile?.absolutePath.orEmpty()
+        if (batch.files.isEmpty()) {
+            return if (batch.unchanged > 0) "Sudah ada di perangkat dan sama, tidak diunduh ulang."
+            else "Tidak ada item yang bisa diunduh."
+        }
+        val parts = StringBuilder("Disimpan ${batch.files.size} item ke $dir")
+        if (batch.unchanged > 0) parts.append(" • ${batch.unchanged} sudah sama, dilewati.")
+        if (batch.skipped > 0) parts.append(" • ${batch.skipped} item tidak mendukung unduhan.")
+        if (batch.unchanged == 0 && batch.skipped == 0) parts.append(".")
+        return parts.toString()
     }
 
     fun renameSelected(newName: String) {

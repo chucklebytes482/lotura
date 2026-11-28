@@ -29,4 +29,12 @@ class RemoteZipTest {
             assertEquals("satu", zip.getInputStream(zip.getEntry("docs/a.md")).bufferedReader().readText())
         }
     }
+
+    @Test fun `zip stores the given comment`() {
+        val dir = temp.newFolder("notes").apply { File(this, "a.md").writeText("satu") }
+        val out = File(temp.root, "notes.zip")
+        RemoteZip.zipDirectory(dir, "notes", out, comment = "tree-sha-123")
+
+        ZipFile(out).use { zip -> assertEquals("tree-sha-123", zip.comment) }
+    }
 }
